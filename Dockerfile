@@ -9,6 +9,7 @@ RUN apk add --no-cache tini curl postgresql16-client gzip
 COPY --from=builder /app/node_modules ./node_modules
 COPY server.js package.json knexfile.js ./
 COPY backend/ ./backend/
+COPY middleware/ ./middleware/
 COPY public/ ./public/
 COPY ai/ ./ai/
 COPY migrations/ ./migrations/
