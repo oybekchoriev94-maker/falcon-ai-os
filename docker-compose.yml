@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-common: &common
   restart: unless-stopped
   networks: [falcon]
@@ -44,6 +42,7 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin-change-me-now}
       SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:-reception-change-me-now}
       SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:-doctor-change-me-now}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOG_LEVEL: info
     volumes:
