@@ -9,7 +9,7 @@ export default {
     client: 'postgresql',
     connection: {
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     },
     pool: { min: 2, max: 25 },
     migrations: { tableName: 'knex_migrations' },

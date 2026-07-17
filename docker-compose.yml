@@ -29,6 +29,7 @@ services:
     ports: ["3000:3000"]
     environment:
       NODE_ENV: production
+      DB_SSL: "false"
       PORT: 3000
       DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:-falcon-secret}@db:5432/falcon_ai_os
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
