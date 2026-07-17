@@ -11,6 +11,7 @@ x-common: &common
 
 services:
   db:
+    <<: *common
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: falcon_ai_os
