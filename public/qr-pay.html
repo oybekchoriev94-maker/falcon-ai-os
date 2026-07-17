@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>To'lov — Falcon AI OS</title>
+<style>
+:root{--bg:#f8fafc;--card:#ffffff;--text:#1e293b;--text-muted:#64748b;--border:#e2e8f0;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#eab308}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+.card{background:var(--card);border-radius:20px;box-shadow:0 2px 16px rgba(0,0,0,.08);padding:24px;max-width:420px;width:100%;margin-top:20px}
+.header{text-align:center;margin-bottom:20px}
+.header .icon{font-size:48px;margin-bottom:8px}
+.header h1{font-size:22px;font-weight:700;color:var(--text)}
+.header p{font-size:14px;color:var(--text-muted);margin-top:4px}
+.amount-box{text-align:center;padding:20px;background:linear-gradient(135deg,#eff6ff,#dbeafe);border-radius:16px;margin-bottom:16px}
+.amount-box .label{font-size:13px;color:var(--text-muted);margin-bottom:4px}
+.amount-box .value{font-size:40px;font-weight:800;color:var(--accent)}
+.amount-box .value span{font-size:16px;font-weight:400;color:var(--text-muted)}
+.desc-box{padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px;font-size:14px;color:var(--text)}
+.desc-box strong{color:var(--text)}
+.pay-methods{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.pay-method{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-radius:14px;border:2px solid var(--border);background:var(--card);cursor:pointer;transition:all .2s}
+.pay-method:hover{border-color:var(--accent);background:#f8faff}
+.pay-method .left{display:flex;align-items:center;gap:12px}
+.pay-method .icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.pay-method .icon.payme{background:#ecfdf5;color:#059669}
+.pay-method .icon.click{background:#eff6ff;color:#2563eb}
+.pay-method .icon.uzum{background:#fef3c7;color:#d97706}
+.pay-method .icon.naqt{background:#f1f5f9;color:#475569}
+.pay-method .name{font-size:15px;font-weight:600}
+.pay-method .sub{font-size:12px;color:var(--text-muted)}
+.pay-method .check{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center}
+.pay-method.selected{border-color:var(--accent);background:#f0f7ff}
+.pay-method.selected .check{border-color:var(--accent);background:var(--accent)}
+.pay-method.selected .check::after{content:'✓';color:#fff;font-size:12px;font-weight:700}
+.btn{display:block;width:100%;padding:14px;border-radius:14px;border:none;font-size:16px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center;text-decoration:none}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-primary:disabled{background:#94a3b8;cursor:not-allowed}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#16a34a}
+.btn-outline{background:transparent;color:var(--text);border:2px solid var(--border)}
+.btn-outline:hover{background:var(--bg)}
+.status-box{padding:16px;border-radius:14px;text-align:center;font-size:14px;font-weight:600;margin-bottom:16px}
+.status-box.success{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0}
+.status-box.pending{background:#fefce8;color:#a16207;border:1px solid #fde68a}
+.status-box.error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.loading{text-align:center;padding:40px;color:var(--text-muted)}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.qr-display{text-align:center;padding:20px;background:var(--bg);border-radius:16px;margin-bottom:16px}
+.qr-display img{width:200px;height:200px;margin-bottom:8px}
+.qr-display .hint{font-size:13px;color:var(--text-muted)}
+.hidden{display:none!important}
+.info-row{display:flex;justify-content:space-between;padding:8px 0;font-size:14px;border-bottom:1px solid var(--border)}
+.info-row:last-child{border-bottom:none}
+.info-row .label{color:var(--text-muted)}
+.info-row .value{font-weight:600}
+.footer{text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted)}
+.footer a{color:var(--accent);text-decoration:none}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+</style>
+</head>
+<body>
+
+<div id="loadingScreen" class="loading">
+  <div class="spinner"></div>
+  <div>To'lov ma'lumotlari yuklanmoqda...</div>
+</div>
+
+<div id="paymentScreen" class="card hidden">
+  <div class="header">
+    <div class="icon">💳</div>
+    <h1>To'lov</h1>
+    <p>Falcon AI OS — Klinikangiz ishonchli to'lov tizimi</p>
+  </div>
+
+  <!-- Payment info -->
+  <div class="amount-box">
+    <div class="label">To'lov summasi</div>
+    <div class="value"><span id="amountDisplay">0</span> <span>so'm</span></div>
+  </div>
+
+  <div class="desc-box">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span>📝 <strong>Xizmat:</strong></span>
+      <span id="descDisplay">—</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span>👤 <strong>Bemor:</strong></span>
+      <span id="patientDisplay">—</span>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span>📅 <strong>Sana:</strong></span>
+      <span id="dateDisplay">—</span>
+    </div>
+  </div>
+
+  <!-- Status messages -->
+  <div id="statusMessage" class="hidden status-box"></div>
+
+  <!-- Payment methods -->
+  <h3 style="font-size:15px;margin-bottom:10px;color:var(--text-muted)">To'lov usulini tanlang</h3>
+  <div class="pay-methods" id="payMethods">
+    <div class="pay-method selected" data-method="payme" onclick="selectMethod('payme', this)">
+      <div class="left">
+        <div class="icon payme">💳</div>
+        <div>
+          <div class="name">Payme</div>
+          <div class="sub">Komissiya 1.5%</div>
+        </div>
+      </div>
+      <div class="check"></div>
+    </div>
+    <div class="pay-method" data-method="click" onclick="selectMethod('click', this)">
+      <div class="left">
+        <div class="icon click">🖱️</div>
+        <div>
+          <div class="name">Click</div>
+          <div class="sub">Komissiya 1.8%</div>
+        </div>
+      </div>
+      <div class="check"></div>
+    </div>
+    <div class="pay-method" data-method="uzum" onclick="selectMethod('uzum', this)">
+      <div class="left">
+        <div class="icon uzum">🏦</div>
+        <div>
+          <div class="name">Uzum Bank</div>
+          <div class="sub">Komissiya 1.2%</div>
+        </div>
+      </div>
+      <div class="check"></div>
+    </div>
+    <div class="pay-method" data-method="naqt" onclick="selectMethod('naqt', this)">
+      <div class="left">
+        <div class="icon naqt">💵</div>
+        <div>
+          <div class="name">Naqt / Karta terminali</div>
+          <div class="sub">Kassada to'lang</div>
+        </div>
+      </div>
+      <div class="check"></div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="payButton" onclick="pay()">
+    💳 To'lash
+  </button>
+
+  <!-- QR display for Payme/Click -->
+  <div id="qrDisplay" class="qr-display hidden">
+    <img id="qrImage" alt="QR kod">
+    <div class="hint">📱 Skaner qiling yoki pastdagi tugmani bosing</div>
+    <button class="btn btn-outline" id="openAppBtn" onclick="openApp()" style="margin-top:8px;font-size:13px">
+      🔗 Ilovada ochish
+    </button>
+  </div>
+
+  <div class="footer">
+    🔒 Xavfsiz to'lov. Pul to'g'ridan-to'g'ri klinika kartasiga tushadi<br>
+    <a href="#" onclick="alert('Falcon AI OS — Barcha huquqlar himoyalangan')">Falcon AI OS</a>
+  </div>
+</div>
+
+<div id="successScreen" class="card hidden">
+  <div class="header">
+    <div class="icon">✅</div>
+    <h1>To'lov o'tdi!</h1>
+    <p id="successAmount" style="font-size:32px;font-weight:800;color:var(--green);margin-top:12px">0 so'm</p>
+  </div>
+  <div style="text-align:center;padding:16px">
+    <div style="font-size:14px;color:var(--text-muted);margin-bottom:6px">To'lov oluvchi</div>
+    <div style="font-size:16px;font-weight:600">🏥 Klinika kartasiga</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:4px" id="successDesc">—</div>
+    <div style="margin-top:16px;padding:12px;background:#f0fdf4;border-radius:12px;font-size:13px;color:#166534">
+      💰 3% cashback hisobingizga qo'shildi
+    </div>
+  </div>
+  <button class="btn btn-success" onclick="window.close()" style="margin-top:8px">
+    ✅ Yakunlash
+  </button>
+</div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────
+const API = '';
+let state = {
+  orderId: new URLSearchParams(location.search).get('order'),
+  patientId: new URLSearchParams(location.search).get('patient'),
+  amount: 0,
+  description: '',
+  method: 'payme',
+  paymentUrl: null,
+  pollingInterval: null
+};
+
+// ─── INIT ─────────────────────────────────────────────
+if (state.orderId) {
+  loadPaymentInfo();
+} else {
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('paymentScreen').classList.remove('hidden');
+  document.getElementById('amountDisplay').textContent = '0';
+}
+
+async function loadPaymentInfo() {
+  try {
+    const r = await fetch(API + '/api/payments/pay/' + state.orderId);
+    const d = await r.json();
+
+    document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('paymentScreen').classList.remove('hidden');
+
+    if (!d.success) {
+      showStatus('error', '❌ To\'lov topilmadi yoki muddati o\'tgan');
+      document.getElementById('payButton').disabled = true;
+      return;
+    }
+
+    if (d.status === 'paid') {
+      showSuccessScreen(d.amount, d.description || 'To\'lov');
+      return;
+    }
+
+    state.amount = d.amount;
+    state.description = d.description || 'To\'lov';
+
+    document.getElementById('amountDisplay').textContent = (d.amount || 0).toLocaleString('uz-UZ');
+    document.getElementById('descDisplay').textContent = d.description || '—';
+    document.getElementById('patientDisplay').textContent = d.patient_name || '—';
+    document.getElementById('dateDisplay').textContent = new Date(d.created_at).toLocaleString('uz-UZ');
+
+    if (d.payment_url) {
+      state.paymentUrl = d.payment_url;
+    }
+
+    // Payment already pending — start polling
+    if (d.status === 'pending') {
+      startPolling(state.orderId);
+    }
+
+  } catch(e) {
+    document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('paymentScreen').classList.remove('hidden');
+    showStatus('error', '⚠️ Server bilan bog\'lanishda xatolik');
+  }
+}
+
+function selectMethod(method, el) {
+  state.method = method;
+  document.querySelectorAll('.pay-method').forEach(m => m.classList.remove('selected'));
+  el.classList.add('selected');
+
+  // QR display ni yashirish
+  document.getElementById('qrDisplay').classList.add('hidden');
+  document.getElementById('payButton').textContent = method === 'naqt'
+    ? '💵 Kassada to\'lash'
+    : `💳 ${method.charAt(0).toUpperCase() + method.slice(1)} orqali to\'lash`;
+}
+
+async function pay() {
+  const btn = document.getElementById('payButton');
+  btn.disabled = true;
+  btn.textContent = '⏳...';
+
+  if (state.method === 'naqt') {
+    showStatus('pending', '💵 Kassaga murojaat qiling. To\'lovingiz kutilyapti.');
+    btn.textContent = '💵 Kassada to\'lash';
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const r = await fetch(API + '/api/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patient_id: state.patientId || null,
+        amount: state.amount,
+        description: state.description,
+        provider: state.method
+      })
+    });
+    const d = await r.json();
+
+    if (!d.success) {
+      showStatus('error', '❌ ' + (d.error || 'Xatolik yuz berdi'));
+      btn.disabled = false;
+      btn.textContent = `💳 ${state.method} orqali to\'lash`;
+      return;
+    }
+
+    state.orderId = d.orderId;
+
+    // QR kodni ko'rsatish
+    const qrEl = document.getElementById('qrDisplay');
+    qrEl.classList.remove('hidden');
+
+    const qrResp = await fetch(API + '/api/payments/qr/' + d.orderId);
+    if (qrResp.ok) {
+      const blob = await qrResp.blob();
+      document.getElementById('qrImage').src = URL.createObjectURL(blob);
+    }
+
+    state.paymentUrl = d.paymentUrl || `${window.location.origin}/api/payments/pay/${d.orderId}`;
+    document.getElementById('openAppBtn').textContent = `🔗 ${state.method} ilovasida ochish`;
+
+    showStatus('pending', `📱 QR kodni skaner qiling yoki "${state.method}" ilovasida to'lang`);
+    btn.textContent = '⏳ To\'lov kutilmoqda';
+
+    // Polling boshlash
+    startPolling(state.orderId);
+
+  } catch(e) {
+    showStatus('error', '⚠️ Server bilan bog\'lanishda xatolik');
+    btn.disabled = false;
+    btn.textContent = `💳 ${state.method} orqali to\'lash`;
+  }
+}
+
+function openApp() {
+  if (state.paymentUrl) {
+    window.open(state.paymentUrl, '_blank');
+  }
+}
+
+function startPolling(orderId) {
+  if (state.pollingInterval) clearInterval(state.pollingInterval);
+
+  state.pollingInterval = setInterval(async () => {
+    try {
+      const r = await fetch(API + '/api/payments/status/' + orderId);
+      const d = await r.json();
+      if (d.status === 'paid') {
+        clearInterval(state.pollingInterval);
+        state.pollingInterval = null;
+        showSuccessScreen(d.amount, state.description);
+      }
+    } catch(e) {}
+  }, 2000);
+}
+
+function showSuccessScreen(amount, desc) {
+  document.getElementById('paymentScreen').classList.add('hidden');
+  document.getElementById('successScreen').classList.remove('hidden');
+  document.getElementById('successAmount').textContent = (amount || 0).toLocaleString('uz-UZ') + ' so\'m';
+  document.getElementById('successDesc').textContent = desc || 'To\'lov muvaffaqiyatli o\'tdi';
+  if (state.pollingInterval) {
+    clearInterval(state.pollingInterval);
+    state.pollingInterval = null;
+  }
+}
+
+function showStatus(type, msg) {
+  const el = document.getElementById('statusMessage');
+  el.className = 'status-box ' + type;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+</script>
+</body>
+</html>

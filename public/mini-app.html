@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Falcon AI OS — Bemor kabineti</title>
+<style>
+:root{--bg:#f8fafc;--card:#ffffff;--primary:#1e3a5f;--primary-light:#3b82f6;--text:#0f172a;--text-secondary:#64748b;--border:#e2e8f0;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--orange:#ea580c;--accent:#2563eb;--ref-bg:#0d1117;--ref-card:#161b22;--ref-neon:#58a6ff;--ref-text:#e6edf3;--ref-muted:#8b949e;--ref-border:#30363d;--ref-green:#3fb950;--ref-gold:#d29922}
+.ref-header{background:linear-gradient(135deg,#0d1117,#161b22)!important}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:0 0 80px 0}
+.header{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;padding:20px 16px 16px;position:sticky;top:0;z-index:10}
+.header h1{font-size:20px;font-weight:700;margin-bottom:2px}
+.header p{font-size:13px;opacity:.85}
+.meta-row{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;opacity:.85}
+.meta-row span{background:rgba(255,255,255,.15);padding:2px 10px;border-radius:20px}
+.tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:64px;z-index:9;overflow-x:auto}
+.tab{flex:1;text-align:center;padding:12px 4px;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:3px solid transparent;cursor:pointer;transition:all .2s;white-space:nowrap;min-width:70px}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none;padding:12px}
+.tab-content.active{display:block}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card-title{font-size:14px;font-weight:700;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.field-row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.field-row:last-child{border-bottom:none}
+.field-label{color:var(--text-secondary);flex-shrink:0}
+.field-value{text-align:right;font-weight:500;color:var(--text);max-width:55%;word-break:break-word}
+.badge{display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#fff}
+.badge-green{background:var(--green)}
+.badge-red{background:var(--red)}
+.badge-yellow{background:var(--yellow)}
+.badge-orange{background:var(--orange)}
+.badge-blue{background:var(--accent)}
+.section-title{font-size:13px;font-weight:700;color:var(--primary);margin:14px 0 6px;text-transform:capitalize}
+.obj-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.obj-item{background:#f8fafc;border-radius:8px;padding:8px}
+.obj-item .key{font-size:11px;color:var(--text-secondary)}
+.obj-item .val{font-size:14px;font-weight:600;color:var(--text)}
+.status-norma{color:var(--green)}
+.status-yuqori{color:var(--red)}
+.status-past{color:var(--yellow)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:12px;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;border:none;transition:all .2s;width:100%;justify-content:center}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-outline{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.btn-green{background:var(--green);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.placeholder{text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:14px}
+.placeholder .icon{font-size:48px;margin-bottom:12px;opacity:.5}
+.loading{text-align:center;padding:60px 20px;color:var(--text-secondary)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.med-card{background:#fef9e7;border-left:4px solid var(--yellow);border-radius:8px;padding:12px;margin-bottom:8px}
+.med-card .name{font-weight:700;font-size:14px;color:#92400e}
+.med-card .detail{font-size:12px;color:var(--text-secondary);margin-top:4px}
+.checklist-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.checklist-item:last-child{border-bottom:none}
+.check-icon{width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:2px}
+.check-icon.pending{background:var(--border);color:var(--text-secondary)}
+.qr-wrapper{text-align:center;padding:20px}
+.qr-wrapper canvas{max-width:180px;margin:0 auto}
+
+/* Booking tab */
+.doc-select{width:100%;padding:12px;border-radius:10px;border:2px solid var(--border);background:var(--card);color:var(--text);font-size:14px;font-weight:500;appearance:none;cursor:pointer;margin-bottom:12px}
+.doc-select:focus{outline:none;border-color:var(--accent)}
+.days-scroll{display:flex;gap:6px;overflow-x:auto;padding:4px 0 12px;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory}
+.day-btn{flex-shrink:0;width:64px;padding:8px 4px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);text-align:center;cursor:pointer;transition:all .2s;scroll-snap-align:start}
+.day-btn .dow{font-size:9px;color:var(--text-secondary);font-weight:600;text-transform:uppercase}
+.day-btn .dnum{font-size:16px;font-weight:700;margin:2px 0;color:var(--text)}
+.day-btn .dmon{font-size:9px;color:var(--text-secondary)}
+.day-btn.active{border-color:var(--accent);background:var(--accent)}
+.day-btn.active .dow,.day-btn.active .dnum,.day-btn.active .dmon{color:#fff}
+.day-btn.past{opacity:.4;pointer-events:none}
+.slots-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin:12px 0}
+.slot-btn{padding:10px 4px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);text-align:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;transition:all .15s}
+.slot-btn:hover{border-color:var(--accent)}
+.slot-btn.selected{border-color:var(--accent);background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.3)}
+.slot-btn.unavailable{opacity:.3;pointer-events:none;text-decoration:line-through}
+.book-footer{position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--card);border-top:1px solid var(--border);z-index:20}
+.book-btn{width:100%;padding:14px;border-radius:12px;border:none;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.book-btn.bg-green{background:var(--green);color:#fff}
+.book-btn.bg-green:disabled{opacity:.5}
+.book-btn.bg-blue{background:var(--accent);color:#fff}
+
+/* Success modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;animation:fadeIn .3s}
+.modal-overlay.show{display:flex}
+.modal-content{background:var(--card);border-radius:24px;padding:32px 24px 24px;max-width:320px;width:90%;text-align:center;animation:scaleIn .3s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes scaleIn{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+.checkmark-anim{width:72px;height:72px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:36px;color:#fff;animation:popIn .4s ease}
+@keyframes popIn{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
+.modal-title{font-size:18px;font-weight:700;color:var(--green);margin-bottom:6px}
+.modal-detail{font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6}
+
+/* Doctor card in booking */
+.doc-card{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:6px;cursor:pointer;border:1.5px solid var(--border);transition:all .15s}
+.doc-card.selected{border-color:var(--accent);background:rgba(37,99,235,.08)}
+.doc-card .avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--primary);color:#fff;flex-shrink:0}
+.doc-card .info{flex:1}
+.doc-card .name{font-weight:600;font-size:13px}
+.doc-card .spec{font-size:11px;color:var(--text-secondary)}
+
+@media(prefers-color-scheme:dark){:root{--bg:#18222d;--card:#232e3c;--text:#e8edf2;--text-secondary:#8e9aaf;--border:#2e3a4a;--primary:#5b9cf6}.header{background:linear-gradient(135deg,#0f1a2e,#1a3a6e)}.obj-item{background:#1c2938}.badge-blue{background:var(--accent)}.med-card{background:#2a2510;border-left-color:#ca8a04}.med-card .name{color:#fbbf24}.doc-card.selected{background:rgba(37,99,235,.15)}}
+</style>
+</head>
+<body>
+<div class="header" id="appHeader">
+  <h1 id="headerTitle">🏥 Falcon AI OS</h1>
+  <p id="headerSub">Bemor kabineti</p>
+  <div class="meta-row" id="headerMeta"></div>
+</div>
+
+<!-- Normal tabs (hidden during referral view) -->
+<div id="normalView" style="display:none">
+<div class="tabs" id="tabBar">
+  <div class="tab active" data-tab="analysis" onclick="switchTab('analysis')">📊 AI Tahlil</div>
+  <div class="tab" data-tab="medicines" onclick="switchTab('medicines')">💊 Dorilar</div>
+  <div class="tab" data-tab="booking" onclick="switchTab('booking')">📅 Qabulga yozilish</div>
+  <div class="tab" data-tab="pdf" onclick="switchTab('pdf')">📄 Hujjat</div>
+</div>
+
+<div id="tab-analysis" class="tab-content active">
+  <div id="analysisLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Ma'lumotlar yuklanmoqda...</p>
+  </div>
+  <div id="analysisContent" style="display:none"></div>
+  <div id="analysisError" style="display:none" class="placeholder">
+    <div class="icon">❌</div>
+    <p>Hisobot topilmadi yoki yuklashda xatolik yuz berdi.</p>
+  </div>
+</div>
+
+<div id="tab-medicines" class="tab-content">
+  <div id="medLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Yuklanmoqda...</p>
+  </div>
+  <div id="medContent" style="display:none"></div>
+  <div id="medEmpty" style="display:none" class="placeholder">
+    <div class="icon">💊</div>
+    <p>Ushbu ko'rikda dorilar yozilmagan.</p>
+  </div>
+</div>
+
+<div id="tab-booking" class="tab-content">
+  <div id="bookingLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Yuklanmoqda...</p>
+  </div>
+  <div id="bookingContent" style="display:none"></div>
+  <div id="bookingSuccess" style="display:none" class="placeholder">
+    <div class="icon" style="font-size:64px">✅</div>
+    <p style="font-size:16px;font-weight:700;color:var(--green)">Muvaffaqiyatli band qilindi!</p>
+    <p id="bookingSuccessDetail" style="font-size:13px;margin-top:6px"></p>
+  </div>
+</div>
+
+<div id="tab-pdf" class="tab-content">
+  <div id="pdfLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Yuklanmoqda...</p>
+  </div>
+  <div id="pdfContent" style="display:none"></div>
+  <div id="pdfEmpty" style="display:none" class="placeholder">
+    <div class="icon">📄</div>
+    <p>PDF hujjat tayyorlanmagan.</p>
+  </div>
+</div>
+<!-- Referral Offer Banner (campaign-controlled) -->
+<div id="referralOfferBanner" style="display:none;margin:0 12px 12px;background:linear-gradient(135deg,#065f46,#047857);border-radius:14px;padding:16px;border:1px solid rgba(52,211,153,.3)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <span style="font-size:28px">🎁</span>
+    <div><span style="font-size:14px;font-weight:700;color:#34d399">Do'stingni taklif qil va keshbek ol!</span></div>
+  </div>
+  <p style="font-size:12px;color:#a7f3d0;line-height:1.5;margin:0">
+    Do'stlaringizga shifoxona xizmatlaridan foydalanishni taklif qiling va ular to'lagan summaning <strong style="color:#fff">3%</strong> keshbek sifatida hisobingizga o'tkaziladi.
+  </p>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button onclick="copyReferralLink()" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;cursor:pointer">🔗 Havolani nusxalash</button>
+    <span id="copyToast" style="font-size:11px;color:#6ee7b7;display:none;align-items:center">✓ Nusxalandi</span>
+  </div>
+</div>
+<div id="referralOfferEnded" style="display:none;margin:0 12px 12px;background:#1e293b;border-radius:14px;padding:14px;border:1px solid #334155;text-align:center">
+  <span style="font-size:13px;color:#94a3b8">🎁 Aksiya vaqtincha yakunlandi</span>
+</div>
+
+<!-- Referral View (shown when startapp=ref_xxx) -->
+<div id="referralView" style="display:none">
+  <div id="refLoading" class="loading">
+    <div class="spinner"></div>
+    <p>Yo'llanma yuklanmoqda...</p>
+  </div>
+  <div id="refContent" style="display:none"></div>
+  <div id="refError" style="display:none" class="placeholder">
+    <div class="icon">❌</div>
+    <p>Yo'llanma topilmadi.</p>
+  </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal-overlay" id="successModal">
+  <div class="modal-content">
+    <div class="checkmark-anim">✓</div>
+    <div class="modal-title">Muvaffaqiyatli band qilindi!</div>
+    <div class="modal-detail" id="modalDetail">
+      Sizning navbatingiz tasdiqlandi.<br>
+      Belgilangan vaqtda klinikaga yetib keling.
+    </div>
+    <button class="btn btn-primary" onclick="closeSuccessModal()">Tushunarli</button>
+  </div>
+</div>
+
+<script>
+const Telegram = window.Telegram?.WebApp;
+if (Telegram) { Telegram.expand(); Telegram.enableClosingConfirmation?.(); Telegram.setHeaderColor?.('#0d1117'); }
+
+const params = new URLSearchParams(window.location.search);
+const reportId = params.get('report_id');
+
+// Detect startapp from Telegram WebApp or URL
+let referralId = null;
+const startParam = Telegram?.initDataUnsafe?.start_param || params.get('tgWebAppStartParam') || '';
+if (startParam.startsWith('ref_')) {
+  referralId = startParam.replace('ref_', '');
+}
+
+let reportData = null;
+let bookingState = {
+  doctors: [],
+  selectedDoctor: null,
+  selectedDate: null,
+  selectedTime: null,
+  slots: [],
+  days: []
+};
+
+const specIcons = { uzi:'🔬', laborant:'🧪', terapevt:'🩺', ginekolog:'🤰', kardiolog:'🫀', stomatolog:'🦷', nevrolog:'🧠', pediatr:'👶', oftalmolog:'👁️', endokrinolog:'🏥' };
+const specLabels = { uzi:'UZI', laborant:'Laboratoriya', terapevt:'Terapevt', ginekolog:'Ginekolog', kardiolog:'Kardiolog', stomatolog:'Stomatolog', nevrolog:'Nevrolog', pediatr:'Pediatr', oftalmolog:'Oftalmolog', endokrinolog:'Endokrinolog' };
+const DAYS_UZ = ['Yak','Dush','Sesh','Chor','Pay','Jum','Shan'];
+
+async function loadReferral() {
+  try {
+    const resp = await fetch('/api/referrals/details/' + encodeURIComponent(referralId));
+    const data = await resp.json();
+    if (!data.success || !data.referral) throw new Error(data.error || 'Yo\'llanma topilmadi');
+    document.getElementById('refLoading').style.display = 'none';
+    document.getElementById('refContent').style.display = 'block';
+    renderReferral(data.referral);
+  } catch (e) {
+    document.getElementById('refLoading').style.display = 'none';
+    document.getElementById('refError').style.display = 'block';
+    document.getElementById('refError').querySelector('p').textContent = '❌ Yo\'llanma topilmadi: ' + e.message;
+  }
+}
+
+function renderReferral(ref) {
+  document.getElementById('headerTitle').textContent = '🎫 Raqamli Yo\'llanma';
+  document.getElementById('headerSub').textContent = (ref.referring_doctor || 'Shifokor') + ' tomonidan';
+  document.getElementById('headerMeta').innerHTML = '<span>🆔 ' + (ref.referral_id || ref.id).substring(0,12) + '</span>';
+
+  const container = document.getElementById('refContent');
+  container.style.background = 'var(--ref-bg)';
+  container.style.minHeight = 'calc(100vh - 120px)';
+  container.style.padding = '24px 16px 100px';
+
+  // Status badge colors
+  const statusMap = { pending: 'Kutilmoqda', completed: 'Bajarilgan', cancelled: 'Bekor qilingan' };
+  const statusColor = ref.status === 'pending' ? 'var(--ref-gold)' : ref.status === 'completed' ? 'var(--ref-green)' : '#f85149';
+
+  let html = '';
+
+  // Top card: clinic + treatment
+  html += '<div style="background:var(--ref-card);border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid var(--ref-border)">';
+  html += '<div style="font-size:28px;margin-bottom:8px">🏥</div>';
+  html += '<div style="font-size:15px;color:var(--ref-neon);font-weight:700;margin-bottom:4px">' + (ref.receiver_clinic_id || 'Falcon Medical Center') + '</div>';
+  html += '<div style="font-size:13px;color:var(--ref-muted);margin-bottom:12px">Qabul qiluvchi klinika</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-top:8px">';
+  html += '<span style="background:rgba(88,166,255,.12);color:var(--ref-neon);padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600">🩺 ' + (ref.service_required || 'Tibbiy xizmat') + '</span>';
+  html += '<span style="background:rgba(63,185,80,.12);color:var(--ref-green);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500">' + statusMap[ref.status] || ref.status + '</span>';
+  html += '</div></div>';
+
+  // Discount card
+  html += '<div style="background:linear-gradient(135deg,rgba(210,153,34,.15),rgba(63,185,80,.1));border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid rgba(210,153,34,.3)">';
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">';
+  html += '<span style="font-size:24px">🎉</span>';
+  html += '<span style="font-size:15px;color:var(--ref-gold);font-weight:700">Siz uchun Maxsus Chegirma</span></div>';
+  html += '<p style="color:var(--ref-text);font-size:14px;line-height:1.6;margin:0">';
+  html += 'Ushbu raqamli yo\'llanma orqali siz <strong style="color:var(--ref-green)">10% chegirma</strong> olishingiz mumkin. Klinikaga borganingizda yo\'llanmani ko\'rsating.</p></div>';
+
+  // Doctor info
+  html += '<div style="background:var(--ref-card);border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid var(--ref-border)">';
+  html += '<div style="font-size:13px;color:var(--ref-muted);margin-bottom:12px">👨‍⚕️ Yo\'llanma haqida</div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ref-border)">';
+  html += '<span style="color:var(--ref-muted);font-size:13px">Bemor</span>';
+  html += '<span style="color:var(--ref-text);font-weight:600;font-size:13px">' + (ref.patient_name || 'Noma\'lum') + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ref-border)">';
+  html += '<span style="color:var(--ref-muted);font-size:13px">Shifokor</span>';
+  html += '<span style="color:var(--ref-text);font-weight:600;font-size:13px">' + (ref.referring_doctor || 'Noma\'lum') + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ref-border)">';
+  html += '<span style="color:var(--ref-muted);font-size:13px">Xizmat turi</span>';
+  html += '<span style="color:var(--ref-text);font-weight:600;font-size:13px">' + (ref.service_required || '-') + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:6px 0">';
+  html += '<span style="color:var(--ref-muted);font-size:13px">Holati</span>';
+  html += '<span style="color:' + statusColor + ';font-weight:600;font-size:13px">' + (statusMap[ref.status] || ref.status) + '</span></div>';
+  html += '</div>';
+
+  // QR code
+  html += '<div style="background:var(--ref-card);border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid var(--ref-border);text-align:center">';
+  html += '<div style="font-size:13px;color:var(--ref-muted);margin-bottom:12px">📱 Yo\'llanma QR-kodi</div>';
+  html += '<canvas id="refQrCanvas" style="max-width:180px;margin:0 auto"></canvas>';
+  html += '<p style="font-size:11px;color:var(--ref-muted);margin-top:10px">Ushbu QR-kodni klinikada skanerlab, yo\'llanmani tasdiqlang</p></div>';
+
+  // Map button
+  const mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(ref.receiver_clinic_id || 'Falcon Medical Center Tashkent');
+  html += '<a href="' + mapsUrl + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:14px;background:linear-gradient(135deg,var(--ref-neon),#2563eb);color:#fff;font-size:15px;font-weight:700;text-decoration:none;border:none;cursor:pointer;margin-top:8px">';
+  html += '📍 Xaritada ko\'rish</a>';
+
+  // PDF download
+  html += '<a href="/api/referrals/' + encodeURIComponent(ref.referral_id || ref.id) + '/download-pdf" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;background:var(--ref-card);color:var(--ref-neon);font-size:14px;font-weight:600;text-decoration:none;border:1px solid var(--ref-border);cursor:pointer;margin-top:10px">';
+  html += '📥 PDF yuklab olish</a>';
+
+  container.innerHTML = html;
+
+  // Generate QR
+  generateRefQR('refQrCanvas', ref);
+}
+
+function generateRefQR(canvasId, ref) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const qrLink = 'https://t.me/falcon_ai_bot/app?startapp=ref_' + (ref.referral_id || ref.id);
+  const ctx = canvas.getContext('2d');
+  const s = 180;
+  canvas.width = s; canvas.height = s;
+  ctx.fillStyle = '#161b22'; ctx.fillRect(0,0,s,s);
+  ctx.fillStyle = '#58a6ff';
+  const cell = s / 25;
+  function drawMarker(x,y) {
+    ctx.fillRect(x,y,5*cell,5*cell);
+    ctx.fillStyle = '#161b22';
+    ctx.fillRect(x+cell,y+cell,3*cell,3*cell);
+    ctx.fillStyle = '#58a6ff';
+    ctx.fillRect(x+2*cell,y+2*cell,cell,cell);
+    ctx.fillStyle = '#58a6ff';
+  }
+  drawMarker(0,0); drawMarker(s-5*cell,0); drawMarker(0,s-5*cell);
+  for(let i=0;i<30;i++) {
+    const x = Math.floor((i * 13 + 7) % 19 + 3) * cell;
+    const y = Math.floor((i * 17 + 11) % 19 + 3) * cell;
+    if (x >= 5*cell && x < s-5*cell && y >= 5*cell && y < s-5*cell) {
+      ctx.fillRect(x,y,cell,cell);
+    }
+  }
+  ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('FALCON', s/2, s/2+2);
+}
+
+async function loadReport() {
+  if (!reportId) {
+    document.getElementById('analysisLoading').style.display = 'none';
+    document.getElementById('analysisError').style.display = 'block';
+    document.getElementById('analysisError').querySelector('p').textContent = '❌ Hisobot ID ko\'rsatilmagan. URL: ?report_id=... qo\'shing.';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/patient/report/' + encodeURIComponent(reportId));
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'Hisobot topilmadi');
+    reportData = data;
+    renderHeader(data.report);
+    renderAnalysis(data.report);
+    renderMedicines(data);
+    renderPdf(data.report);
+    document.getElementById('analysisLoading').style.display = 'none';
+    document.getElementById('analysisContent').style.display = 'block';
+    initBooking(data.report);
+  } catch (e) {
+    document.getElementById('analysisLoading').style.display = 'none';
+    document.getElementById('analysisError').style.display = 'block';
+    document.getElementById('analysisError').querySelector('p').textContent = '❌ ' + e.message;
+  }
+}
+
+function renderHeader(r) {
+  document.getElementById('headerTitle').textContent = '🏥 ' + (r.patient_name || 'Bemor');
+  document.getElementById('headerSub').textContent = r.specialization_label || 'Tibbiy ko\'rik';
+  const meta = document.getElementById('headerMeta');
+  meta.innerHTML = '';
+  if (r.doctor_name) meta.innerHTML += '<span>👨‍⚕️ ' + r.doctor_name + '</span>';
+  if (r.created_at) meta.innerHTML += '<span>📅 ' + new Date(r.created_at).toLocaleDateString('uz-UZ') + '</span>';
+  meta.innerHTML += '<span>🆔 ' + r.id.substring(0,8) + '...</span>';
+}
+
+function renderAnalysis(r) {
+  const container = document.getElementById('analysisContent');
+  const d = r.data || {};
+  let html = '';
+
+  for (const [key, val] of Object.entries(d)) {
+    if (key === 'patient_name') continue;
+    if (val === null || val === undefined || val === '') continue;
+    const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    if (Array.isArray(val) && val.length > 0) {
+      html += '<div class="card"><div class="card-title">📊 ' + label + '</div>';
+      const cols = Object.keys(val[0] || {});
+      html += '<div style="display:flex;font-size:11px;font-weight:700;color:var(--text-secondary);padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:4px">';
+      cols.forEach(c => { html += '<div style="flex:1;padding:0 4px;text-transform:capitalize">' + c.replace(/_/g,' ') + '</div>'; });
+      html += '</div>';
+      val.forEach(row => {
+        html += '<div class="field-row" style="font-size:12px">';
+        cols.forEach(c => {
+          let cell = row[c] !== undefined ? String(row[c]) : '-';
+          if ((c === 'status' || c === 'holat') && ['Norma','Normal','Yuqori','Past'].includes(cell)) {
+            const cls = cell === 'Norma' || cell === 'Normal' ? 'badge-green' : cell === 'Yuqori' ? 'badge-red' : 'badge-yellow';
+            cell = '<span class="badge ' + cls + '">' + cell + '</span>';
+          }
+          html += '<div style="flex:1;padding:0 4px;word-break:break-word">' + cell + '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div>';
+    } else if (typeof val === 'object' && val !== null) {
+      html += '<div class="card"><div class="card-title">📋 ' + label + '</div>';
+      html += '<div class="obj-grid">';
+      for (const [sk, sv] of Object.entries(val)) {
+        const sLabel = sk.replace(/_/g, ' ');
+        html += '<div class="obj-item"><div class="key">' + sLabel + '</div><div class="val">' + sv + '</div></div>';
+      }
+      html += '</div></div>';
+    } else {
+      html += '<div class="card"><div class="field-row"><span class="field-label">' + label + '</span>';
+      if (key === 'diagnosis' || key === 'conclusion' || key === 'recommendations' || key === 'treatment_plan') {
+        html += '<span class="field-value" style="color:var(--primary);font-weight:600">' + val + '</span>';
+      } else {
+        html += '<span class="field-value">' + val + '</span>';
+      }
+      html += '</div></div>';
+    }
+  }
+
+  if (!html) html = '<div class="placeholder"><div class="icon">📋</div><p>Ma\'lumotlar mavjud emas.</p></div>';
+  container.innerHTML = html;
+}
+
+function renderMedicines(data) {
+  const d = data.report?.data || {};
+  const medicines = data.medicines || d.medicines || d.medication || null;
+
+  document.getElementById('medLoading').style.display = 'none';
+  const container = document.getElementById('medContent');
+  const empty = document.getElementById('medEmpty');
+
+  if (!medicines) {
+    container.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  container.style.display = 'block';
+  empty.style.display = 'none';
+  let html = '<div class="card"><div class="card-title">💊 Shifokor tomonidan yozilgan dorilar</div>';
+
+  if (Array.isArray(medicines)) {
+    medicines.forEach(m => {
+      const name = typeof m === 'string' ? m : (m.name || m.dori || '-');
+      const detail = typeof m === 'object' ? (m.dosage || m.doza || m.instructions || m.qabul || '') : '';
+      html += '<div class="med-card"><div class="name">💊 ' + name + '</div>';
+      if (detail) html += '<div class="detail">' + detail + '</div>';
+      html += '</div>';
+    });
+  } else if (typeof medicines === 'string') {
+    const items = medicines.split(/[;,]\s*/).filter(Boolean);
+    if (items.length > 1) {
+      items.forEach(item => {
+        html += '<div class="checklist-item"><div class="check-icon">✓</div><div>' + item + '</div></div>';
+      });
+    } else {
+      html += '<div class="field-row"><span class="field-label">Retsept</span><span class="field-value">' + medicines + '</span></div>';
+    }
+  }
+  html += '</div>';
+
+  if (d.medication_schedule || d.dosage_times) {
+    html += '<div class="card"><div class="card-title">⏰ Qabul qilish vaqtlari</div>';
+    const schedule = d.medication_schedule || d.dosage_times;
+    if (Array.isArray(schedule)) {
+      schedule.forEach((t, i) => {
+        html += '<div class="checklist-item"><div class="check-icon">' + (i+1) + '</div><div>' + t + '</div></div>';
+      });
+    } else {
+      html += '<div class="field-row"><span class="field-value">' + schedule + '</span></div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="card" style="background:#edf7ed"><div class="card-title">ℹ️ Esingizda bo\'lsin</div>' +
+    '<p style="font-size:13px;color:var(--text-secondary);line-height:1.5">' +
+    '💊 Dorilarni shifokor ko\'rsatmasiga muvofiq qabul qiling.<br>' +
+    '📞 Agar nojo\'ya ta\'sir yuz bersa, darhol shifokorga murojaat qiling.</p></div>';
+
+  container.innerHTML = html;
+}
+
+function renderPdf(r) {
+  document.getElementById('pdfLoading').style.display = 'none';
+  const container = document.getElementById('pdfContent');
+  const empty = document.getElementById('pdfEmpty');
+
+  if (!r.pdf_url) {
+    container.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  container.style.display = 'block';
+  empty.style.display = 'none';
+
+  const verifyUrl = window.location.origin + '/api/verify-report/' + r.id;
+  let html = '<div class="card"><div class="card-title">📄 Rasmiy hujjat</div>';
+  html += '<p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">' +
+    'Quyidagi tugma orqali shifokor tomonidan imzolangan rasmiy PDF hujjatni yuklab oling yoki QR-kodni skanerlang.</p>';
+  html += '<a href="' + r.pdf_url + '" target="_blank" class="btn btn-primary" style="margin-bottom:10px">📥 PDF yuklab olish</a>';
+  html += '<a href="/api/verify-report/' + r.id + '" target="_blank" class="btn btn-outline">✅ Hujjatni tekshirish</a>';
+  html += '</div>';
+
+  html += '<div class="card"><div class="card-title">📱 Xavfsizlik QR-kodi</div>';
+  html += '<div class="qr-wrapper"><canvas id="qrCanvas"></canvas></div>';
+  html += '<p style="font-size:12px;color:var(--text-secondary);text-align:center">' +
+    'QR-kodni skanerlab hujjat haqiqiyligini tekshiring</p></div>';
+
+  container.innerHTML = html;
+  generateSimpleQR('qrCanvas', verifyUrl);
+}
+
+function generateSimpleQR(canvasId, text) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const s = 180;
+  canvas.width = s; canvas.height = s;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,s,s);
+  ctx.fillStyle = '#1e3a5f';
+  const cell = s / 25;
+  function drawMarker(x,y) {
+    ctx.fillRect(x,y,5*cell,5*cell);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x+cell,y+cell,3*cell,3*cell);
+    ctx.fillStyle = '#1e3a5f';
+    ctx.fillRect(x+2*cell,y+2*cell,cell,cell);
+    ctx.fillStyle = '#1e3a5f';
+  }
+  drawMarker(0,0); drawMarker(s-5*cell,0); drawMarker(0,s-5*cell);
+  for(let i=0;i<30;i++) {
+    const x = Math.floor(Math.random() * 19 + 3) * cell;
+    const y = Math.floor(Math.random() * 19 + 3) * cell;
+    ctx.fillRect(x,y,cell,cell);
+  }
+  ctx.fillStyle = '#1e3a5f'; ctx.font = '6px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('FAI', s/2, s/2+2);
+  ctx.fillText(text.substring(0,12)+'..', s/2, s/2+9);
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === 'tab-' + tab));
+  if (tab === 'pdf' && reportData) renderPdf(reportData.report);
+  if (tab === 'booking') renderBooking();
+}
+
+// ============================================================
+// BOOKING SYSTEM
+// ============================================================
+async function initBooking(report) {
+  try {
+    const resp = await fetch('/api/appointments/doctors');
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    bookingState.doctors = data.doctors;
+    renderBooking();
+  } catch (e) {
+    document.getElementById('bookingLoading').style.display = 'none';
+    document.getElementById('bookingContent').innerHTML = '<div class="placeholder"><div class="icon">❌</div><p>Shifokorlar ro\'yxatini yuklashda xatolik: ' + e.message + '</p></div>';
+    document.getElementById('bookingContent').style.display = 'block';
+  }
+}
+
+function getDoctorIdByName(name) {
+  if (!name || !bookingState.doctors.length) return null;
+  const parts = name.trim().toLowerCase().split(/\s+/);
+  for (const d of bookingState.doctors) {
+    const full = (d.first_name + ' ' + (d.last_name || '')).toLowerCase();
+    if (parts.every(p => full.includes(p))) return d.id;
+  }
+  return null;
+}
+
+function renderBooking() {
+  document.getElementById('bookingLoading').style.display = 'none';
+  const container = document.getElementById('bookingContent');
+  container.style.display = 'block';
+  document.getElementById('bookingSuccess').style.display = 'none';
+
+  const docName = reportData?.report?.doctor_name;
+  const autoDocId = docName ? getDoctorIdByName(docName) : null;
+
+  let html = '<div class="card"><div class="card-title">👨‍⚕️ Shifokorni tanlang</div>';
+  html += '<select class="doc-select" id="docSelect" onchange="onDoctorChange(this.value)">';
+  html += '<option value="">— Shifokorni tanlang —</option>';
+  const grouped = {};
+  for (const d of bookingState.doctors) {
+    const spec = d.specialization || 'doctor';
+    const grp = specLabels[spec] || 'Shifokor';
+    if (!grouped[grp]) grouped[grp] = [];
+    grouped[grp].push(d);
+  }
+  for (const [grp, docs] of Object.entries(grouped)) {
+    html += '<optgroup label="' + (specIcons[grp.toLowerCase()] || '👨‍⚕️') + ' ' + grp + '">';
+    for (const d of docs) {
+      const selected = autoDocId === d.id ? ' selected' : '';
+      const fullName = d.first_name + ' ' + (d.last_name || '');
+      html += '<option value="' + d.id + '"' + selected + '>' + fullName + '</option>';
+    }
+    html += '</optgroup>';
+  }
+  html += '</select></div>';
+
+  // Days
+  html += '<div class="card"><div class="card-title">📅 Kunni tanlang</div>';
+  html += '<div class="days-scroll" id="daysScroll"></div></div>';
+
+  // Slots
+  html += '<div class="card"><div class="card-title">⏰ Vaqtni tanlang</div>';
+  html += '<div id="slotsContainer"><p class="placeholder" style="padding:20px">Avval shifokor va kunni tanlang</p></div></div>';
+
+  // Footer button (fixed)
+  html += '<div class="book-footer"><button class="book-btn bg-green" id="confirmBookBtn" disabled onclick="confirmBooking()">📋 Qabul vaqtini tasdiqlash</button></div>';
+
+  container.innerHTML = html;
+
+  if (autoDocId) {
+    bookingState.selectedDoctor = autoDocId;
+    generateDays();
+  }
+}
+
+function onDoctorChange(doctorId) {
+  bookingState.selectedDoctor = doctorId || null;
+  bookingState.selectedDate = null;
+  bookingState.selectedTime = null;
+  bookingState.slots = [];
+  document.getElementById('confirmBookBtn').disabled = true;
+  if (doctorId) generateDays();
+}
+
+function generateDays() {
+  const scroll = document.getElementById('daysScroll');
+  if (!scroll) return;
+  bookingState.days = [];
+  bookingState.selectedDate = null;
+  bookingState.selectedTime = null;
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  let html = '';
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const dateStr = yyyy + '-' + mm + '-' + dd;
+    const dow = DAYS_UZ[d.getDay()];
+    const dnum = d.getDate();
+    const months = ['Yan','Fev','Mar','Apr','May','Iyun','Iyul','Avg','Sen','Okt','Noy','Dek'];
+    const dmon = months[d.getMonth()];
+    const isPast = i === 0 && d.getTime() <= today.getTime() && d.getHours() >= 17;
+    const cls = isPast ? 'day-btn past' : 'day-btn';
+    html += '<div class="' + cls + '" data-date="' + dateStr + '" onclick="selectDay(\'' + dateStr + '\', this)"><div class="dow">' + dow + '</div><div class="dnum">' + dnum + '</div><div class="dmon">' + dmon + '</div></div>';
+    bookingState.days.push(dateStr);
+  }
+
+  scroll.innerHTML = html;
+  // Auto-select first day
+  if (bookingState.days.length > 0) {
+    const firstDay = scroll.querySelector('.day-btn:not(.past)');
+    if (firstDay) selectDay(firstDay.dataset.date, firstDay);
+    else selectDay(bookingState.days[0], scroll.querySelector('.day-btn'));
+  }
+}
+
+async function selectDay(dateStr, el) {
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  bookingState.selectedDate = dateStr;
+  bookingState.selectedTime = null;
+  document.getElementById('confirmBookBtn').disabled = true;
+
+  if (!bookingState.selectedDoctor) return;
+
+  try {
+    const resp = await fetch('/api/appointments/slots?doctor_id=' + encodeURIComponent(bookingState.selectedDoctor) + '&date=' + encodeURIComponent(dateStr));
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+
+    bookingState.slots = data.slots || [];
+    const container = document.getElementById('slotsContainer');
+    if (!bookingState.slots.length) {
+      container.innerHTML = '<p class="placeholder" style="padding:16px;color:var(--orange)">Bu kunda bo\'sh vaqt yo\'q</p>';
+      return;
+    }
+
+    const availableCount = bookingState.slots.filter(s => s.available).length;
+    if (!availableCount) {
+      container.innerHTML = '<p class="placeholder" style="padding:16px;color:var(--orange)">Barcha vaqtlar band qilingan</p>';
+      return;
+    }
+
+    let html = '<div class="slots-grid">';
+    bookingState.slots.forEach(s => {
+      const cls = 'slot-btn' + (s.available ? '' : ' unavailable');
+      html += '<div class="' + cls + '" data-time="' + s.time + '" onclick="selectTime(\'' + s.time + '\', this' + (s.available ? '' : ', true') + ')">' + s.time + '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (e) {
+    document.getElementById('slotsContainer').innerHTML = '<p class="placeholder" style="padding:16px">❌ ' + e.message + '</p>';
+  }
+}
+
+function selectTime(time, el, isUnavailable) {
+  if (isUnavailable) return;
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  bookingState.selectedTime = time;
+  document.getElementById('confirmBookBtn').disabled = false;
+}
+
+async function confirmBooking() {
+  if (!bookingState.selectedDoctor || !bookingState.selectedDate || !bookingState.selectedTime) return;
+  const btn = document.getElementById('confirmBookBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Band qilinmoqda...';
+
+  const doctor = bookingState.doctors.find(d => d.id === bookingState.selectedDoctor);
+  const patientName = reportData?.report?.patient_name || 'Bemor';
+  const telegramId = params.get('telegram_id') || null;
+
+  try {
+    const resp = await fetch('/api/appointments/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doctor_id: bookingState.selectedDoctor,
+        patient_name: patientName,
+        telegram_id: telegramId,
+        date: bookingState.selectedDate,
+        time: bookingState.selectedTime
+      })
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+
+    // Success modal
+    const doctorName = doctor ? (doctor.first_name + ' ' + (doctor.last_name || '')) : 'Shifokor';
+    const dateFormatted = new Date(bookingState.selectedDate + 'T00:00:00').toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' });
+    document.getElementById('modalDetail').innerHTML =
+      '👤 Bemor: ' + patientName + '<br>' +
+      '👨‍⚕️ Shifokor: ' + doctorName + '<br>' +
+      '📅 Sana: ' + dateFormatted + '<br>' +
+      '⏰ Vaqt: ' + bookingState.selectedTime;
+    document.getElementById('successModal').classList.add('show');
+
+    btn.innerHTML = '✅ Band qilindi';
+    btn.style.background = 'var(--green)';
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '📋 Qabul vaqtini tasdiqlash';
+    alert('❌ ' + e.message);
+  }
+}
+
+function closeSuccessModal() {
+  document.getElementById('successModal').classList.remove('show');
+}
+
+// Kampaniya holatini yuklash va referral bannerni ko'rsatish/yashirish
+async function loadCampaignStatus() {
+  try {
+    const resp = await fetch('/api/campaign/settings', { headers: { 'Content-Type': 'application/json' } });
+    const data = await resp.json();
+    if (data.success) {
+      if (data.campaign_mode === 'off') {
+        document.getElementById('referralOfferBanner').style.display = 'none';
+        document.getElementById('referralOfferEnded').style.display = 'block';
+      } else {
+        document.getElementById('referralOfferBanner').style.display = 'block';
+        document.getElementById('referralOfferEnded').style.display = 'none';
+      }
+    }
+  } catch (e) { console.warn('Campaign status error:', e); }
+}
+
+function copyReferralLink() {
+  const link = 'https://t.me/falcon_ai_bot/app?startapp=ref_promo';
+  navigator.clipboard.writeText(link).then(() => {
+    const toast = document.getElementById('copyToast');
+    toast.style.display = 'inline-flex';
+    setTimeout(() => { toast.style.display = 'none'; }, 2000);
+  }).catch(() => {
+    // fallback
+    const input = document.createElement('input');
+    input.value = link;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+  });
+}
+
+// Auto load — referral or normal report
+if (referralId) {
+  document.getElementById('normalView').style.display = 'none';
+  document.getElementById('referralView').style.display = 'block';
+  document.getElementById('appHeader').classList.add('ref-header');
+  loadReferral();
+} else {
+  document.getElementById('normalView').style.display = 'block';
+  loadReport();
+  loadCampaignStatus();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Loyallik va To'lovlar</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+  <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <div class="glass rounded-3xl p-8 w-full max-w-md fade-in">
+      <div class="text-center mb-8">
+        <div class="text-5xl mb-3">🦅</div>
+        <h1 class="text-2xl font-bold">Falcon AI OS</h1>
+        <p class="text-slate-400 mt-1">Klinika boshqaruv tizimiga kirish</p>
+      </div>
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Foydalanuvchi nomi</label>
+          <input type="text" id="loginUsername" class="input-field" placeholder="ceo, admin" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Parol</label>
+          <input type="password" id="loginPassword" class="input-field" placeholder="Parolni kiriting" required>
+        </div>
+        <div id="loginError" class="text-red-400 text-sm hidden"></div>
+        <button type="submit" id="loginBtn" class="btn-primary w-full text-lg">Kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="dashboardMain" class="hidden min-h-screen" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <nav class="glass sticky top-0 z-50 border-b border-slate-700/50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🦅</span>
+            <span class="font-bold text-lg">Falcon AI OS</span>
+            <span id="roleBadge" class="badge ml-2 text-xs px-3 py-1"></span>
+          </div>
+          <div class="flex items-center gap-4">
+            <a href="/dashboard.html" class="text-slate-300 hover:text-white text-sm">Dashboard</a>
+            <span id="userNameDisplay" class="text-slate-300 text-sm"></span>
+            <button onclick="logout()" class="btn-danger text-sm px-4 py-2">Chiqish</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Loyallik va To'lovlar</h1>
+      </div>
+
+      <!-- Patient Search -->
+      <div class="glass rounded-2xl p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">Bemor qidirish</h2>
+        <div class="flex gap-3">
+          <input type="text" id="patientSearchInput" class="input-field flex-1" placeholder="Bemor ismi yoki telefon raqami..." onkeydown="if(event.key==='Enter') searchPatient()">
+          <button onclick="searchPatient()" class="btn-primary">Qidirish</button>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button onclick="searchPatient('me')" class="btn-secondary text-sm px-3 py-1.5">Mening ma'lumotlarim</button>
+        </div>
+        <div id="patientSearchError" class="text-red-400 text-sm mt-2 hidden"></div>
+      </div>
+
+      <!-- Patient Info & Balance -->
+      <div id="patientInfoCard" class="glass rounded-2xl p-6 mb-6 hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold" id="patientName">-</h2>
+            <p class="text-slate-400 text-sm" id="patientPhone">-</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-slate-400">Cashback balansi</p>
+            <p class="text-3xl font-bold text-green-400" id="cashbackBalance">0</p>
+          </div>
+        </div>
+
+        <!-- Redeem Cashback -->
+        <div class="border-t border-slate-700/50 pt-4 mt-4">
+          <h3 class="font-semibold mb-3">Cashback yechish</h3>
+          <div class="flex gap-3 items-end">
+            <div class="flex-1">
+              <label class="block text-xs text-slate-400 mb-1">Summa (UZS)</label>
+              <input type="number" id="redeemAmount" class="input-field" min="1000" step="1000" placeholder="Min 1000 UZS">
+            </div>
+            <button onclick="redeemCashback()" class="btn-primary">Yechish</button>
+          </div>
+          <div id="redeemResult" class="mt-2 text-sm hidden"></div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-4 border-b border-slate-700/50 mb-6">
+        <button id="tabLedgerBtn" class="tab-btn active" onclick="switchBillingTab('ledger')">Loyalty ledjeri</button>
+        <button id="tabInvoicesBtn" class="tab-btn" onclick="switchBillingTab('invoices')">Schyot-fakturalar</button>
+      </div>
+
+      <!-- Loyalty Ledger -->
+      <div id="tabLedger" class="billing-tab">
+        <div class="glass rounded-2xl p-6">
+          <h3 class="font-semibold mb-4">Cashback harakatlari</h3>
+          <div id="ledgerContent">
+            <p class="text-slate-500 text-sm">Bemor qidiring yoki "Mening ma'lumotlarim" tugmasini bosing</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invoices -->
+      <div id="tabInvoices" class="billing-tab hidden">
+        <div class="glass rounded-2xl p-6">
+          <h3 class="font-semibold mb-4">Schyot-fakturalar</h3>
+          <div id="invoicesContent">
+            <p class="text-slate-500 text-sm">Bemor qidiring yoki "Mening ma'lumotlarim" tugmasini bosing</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = '';
+let token = localStorage.getItem('token');
+let user = JSON.parse(localStorage.getItem('user') || 'null');
+let currentPatientId = null;
+
+async function apiPost(url, body) {
+  const r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json', ...(token ? { 'Authorization':'Bearer '+token } : {}) }, body: JSON.stringify(body) });
+  return r.json();
+}
+async function apiGet(url) {
+  const r = await fetch(url, { headers: { ...(token ? { 'Authorization':'Bearer '+token } : {}) } });
+  return r.json();
+}
+
+function showToast(msg, type='success') {
+  const el = document.getElementById('redeemResult');
+  el.className = 'mt-2 text-sm text-' + (type === 'success' ? 'green' : 'red') + '-400';
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function searchPatient(mode) {
+  const searchInput = document.getElementById('patientSearchInput');
+  const errorEl = document.getElementById('patientSearchError');
+  errorEl.classList.add('hidden');
+
+  let patientId;
+  if (mode === 'me') {
+    if (!user || !user.id) return showToast('Avval tizimga kiring', 'error');
+    patientId = user.id;
+    searchInput.value = user.first_name || '';
+  } else {
+    const q = searchInput.value.trim();
+    if (!q) return showToast('Bemor ismini yoki telefon raqamini kiriting', 'error');
+    const res = await apiGet(`/api/face/patients?q=${encodeURIComponent(q)}`);
+    if (!res.success || !res.patients || res.patients.length === 0) {
+      errorEl.textContent = 'Bemor topilmadi. Boshqa ism yoki telefon bilan urinib ko\'ring.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+    patientId = res.patients[0].id;
+  }
+  currentPatientId = patientId;
+  await loadPatientData(patientId);
+}
+
+async function loadPatientData(patientId) {
+  const [patientRes, ledgerRes, invoicesRes] = await Promise.all([
+    apiGet(`/api/face/patients?q=${patientId}`),
+    apiGet(`/api/billing/loyalty-ledger/${patientId}`),
+    apiGet(`/api/billing/invoices/${patientId}`)
+  ]);
+
+  const card = document.getElementById('patientInfoCard');
+  card.classList.remove('hidden');
+
+  if (patientRes.success && patientRes.patients && patientRes.patients.length > 0) {
+    const p = patientRes.patients[0];
+    document.getElementById('patientName').textContent = `${p.first_name} ${p.last_name || ''}`;
+    document.getElementById('patientPhone').textContent = p.phone || 'Telefon yo\'q';
+  }
+
+  const balance = ledgerRes.balance || 0;
+  document.getElementById('cashbackBalance').textContent = balance.toLocaleString();
+
+  renderLedger(ledgerRes);
+  renderInvoices(invoicesRes);
+}
+
+function renderLedger(data) {
+  const container = document.getElementById('ledgerContent');
+  const items = data.data || [];
+  if (items.length === 0) {
+    container.innerHTML = '<p class="text-slate-500 text-sm">Cashback harakatlari mavjud emas</p>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 border-b border-slate-700">
+          <th class="text-left py-2 px-2">Sana</th>
+          <th class="text-left py-2 px-2">Tur</th>
+          <th class="text-right py-2 px-2">Summa</th>
+          <th class="text-right py-2 px-2">Balans</th>
+          <th class="text-left py-2 px-2">Izoh</th>
+        </tr></thead>
+        <tbody>${items.map(t => `
+          <tr class="border-b border-slate-700/50">
+            <td class="py-2 px-2 text-xs text-slate-400">${new Date(t.created_at).toLocaleDateString('uz-UZ')}</td>
+            <td class="py-2 px-2"><span class="badge ${t.type === 'earned' ? 'badge-green' : 'badge-red'}">${t.type === 'earned' ? 'Qo\'shilgan' : t.type === 'redeemed' ? 'Yechilgan' : t.type}</span></td>
+            <td class="py-2 px-2 text-right ${t.type === 'earned' ? 'text-green-400' : 'text-red-400'}">${t.type === 'earned' ? '+' : '-'}${Math.abs(t.amount || 0).toLocaleString()}</td>
+            <td class="py-2 px-2 text-right">${(t.balance_after || 0).toLocaleString()}</td>
+            <td class="py-2 px-2 text-slate-400 text-xs">${t.note || '-'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderInvoices(data) {
+  const container = document.getElementById('invoicesContent');
+  const items = data.data || [];
+  if (items.length === 0) {
+    container.innerHTML = '<p class="text-slate-500 text-sm">Schyot-fakturalar mavjud emas</p>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 border-b border-slate-700">
+          <th class="text-left py-2 px-2">Sana</th>
+          <th class="text-left py-2 px-2">Xizmat</th>
+          <th class="text-right py-2 px-2">Summa</th>
+          <th class="text-right py-2 px-2">To'langan</th>
+          <th class="text-left py-2 px-2">Holat</th>
+        </tr></thead>
+        <tbody>${items.map(inv => `
+          <tr class="border-b border-slate-700/50">
+            <td class="py-2 px-2 text-xs text-slate-400">${new Date(inv.created_at).toLocaleDateString('uz-UZ')}</td>
+            <td class="py-2 px-2">${inv.service_name || '-'}</td>
+            <td class="py-2 px-2 text-right">${(inv.total_amount || 0).toLocaleString()}</td>
+            <td class="py-2 px-2 text-right text-green-400">${(inv.paid_amount || 0).toLocaleString()}</td>
+            <td class="py-2 px-2"><span class="badge ${inv.status === 'paid' ? 'badge-green' : inv.status === 'pending' ? 'badge-yellow' : 'badge-red'}">${inv.status === 'paid' ? 'To\'langan' : inv.status === 'pending' ? 'Kutilmoqda' : 'Bekor'}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function redeemCashback() {
+  if (!currentPatientId) return showToast('Avval bemorni qidiring', 'error');
+  const amount = parseInt(document.getElementById('redeemAmount').value);
+  if (!amount || amount < 1000) return showToast('Minimal yechish summasi 1000 UZS', 'error');
+
+  const res = await apiPost('/api/billing/redeem', {
+    patient_id: currentPatientId,
+    amount,
+    idempotency_key: `${currentPatientId}_redeem_${Date.now()}`
+  });
+  if (res.success) {
+    showToast(`✅ ${amount.toLocaleString()} UZS cashback yechildi`);
+    document.getElementById('redeemAmount').value = '';
+    await loadPatientData(currentPatientId);
+  } else {
+    showToast('❌ ' + (res.error || 'Xatolik'), 'error');
+  }
+}
+
+function switchBillingTab(tab) {
+  document.querySelectorAll('.billing-tab').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
+  document.getElementById('tab' + (tab === 'ledger' ? 'Ledger' : 'Invoices') + 'Btn').classList.add('active');
+}
+
+// ---- AUTH ----
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  document.getElementById('loginBtn').disabled = true;
+  document.getElementById('loginBtn').textContent = 'Kirilmoqda...';
+  document.getElementById('loginError').classList.add('hidden');
+
+  const res = await apiPost('/api/auth/login', { username, password });
+  if (res.success) {
+    token = res.token;
+    user = res.user;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('dashboardMain').classList.remove('hidden');
+    document.getElementById('roleBadge').textContent = user.role.toUpperCase();
+    document.getElementById('userNameDisplay').textContent = user.first_name || user.username || '';
+  } else {
+    document.getElementById('loginError').textContent = (res.error || 'Login xatosi') + (res.locked_until ? ` (Blok: ${res.locked_until})` : '');
+    document.getElementById('loginError').classList.remove('hidden');
+  }
+  document.getElementById('loginBtn').disabled = false;
+  document.getElementById('loginBtn').textContent = 'Kirish';
+});
+
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = '/login.html';
+}
+
+if (token && user) {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('dashboardMain').classList.remove('hidden');
+  document.getElementById('roleBadge').textContent = user.role.toUpperCase();
+  document.getElementById('userNameDisplay').textContent = user.first_name || user.username || '';
+}
+</script>
+<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script>
+</body>
+</html>

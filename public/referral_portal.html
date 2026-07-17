@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Hamkor Portal — Falcon AI OS</title>
+  <script src="https://telegram.org/js/telegram-webapp.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/css/index.css">
+  <style>
+    :root {
+      --bg-app: #131314;
+      --bg-surface: #1e1f20;
+      --bg-surface-variant: #282a2c;
+      --border-color: #444746;
+      --primary: #a8c7fa;
+      --on-primary: #062e6f;
+      --primary-container: #0842a0;
+      --on-primary-container: #d3e3fd;
+      --secondary: #c4c7c5;
+      --error: #f2b8b5;
+      --text-main: #e3e3e3;
+      --text-muted: #c4c7c5;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg-app); color: var(--text-main); font-family: 'Inter', system-ui, -apple-system, sans-serif; min-height: 100vh; overflow-x: hidden; }
+    .app { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; }
+
+    /* Header */
+    .app-bar { background: var(--bg-surface); border-bottom: 1px solid var(--border-color); padding: 16px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 50; }
+    .app-bar .icon { width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--primary-container); display: flex; align-items: center; justify-content: center; }
+    .app-bar .icon span { color: var(--on-primary-container); font-size: 22px; }
+    .app-bar h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; flex: 1; }
+    .app-bar .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .app-bar .status-dot.online { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,.4); }
+
+    /* Agent bar */
+    .agent-bar { background: var(--bg-surface); border-bottom: 1px solid var(--border-color); padding: 10px 20px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .agent-bar::-webkit-scrollbar { display: none; }
+    .agent-chip { display: flex; align-items: center; gap: 4px; padding: 6px 12px 6px 8px; border-radius: 20px; background: var(--bg-surface-variant); border: 1px solid var(--border-color); font-size: 11px; white-space: nowrap; color: var(--text-muted); }
+    .agent-chip.active { border-color: var(--primary); color: var(--primary); }
+    .agent-chip span { font-size: 14px; }
+
+    /* Tab Navigation */
+    .tab-nav { display: flex; background: var(--bg-surface); border-bottom: 1px solid var(--border-color); padding: 0 4px; position: sticky; top: 97px; z-index: 40; }
+    .tab-btn { flex: 1; padding: 12px 8px; background: none; border: none; color: var(--text-muted); font-size: 12px; font-weight: 500; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; position: relative; transition: var(--transition); font-family: 'Inter', sans-serif; }
+    .tab-btn span { font-size: 20px; }
+    .tab-btn::after { content: ''; position: absolute; bottom: 0; left: 20%; right: 20%; height: 3px; border-radius: 3px 3px 0 0; background: var(--primary); transform: scaleX(0); transition: var(--transition); }
+    .tab-btn.active { color: var(--primary); }
+    .tab-btn.active::after { transform: scaleX(1); }
+
+    /* Content */
+    .tab-content { display: none; padding: 16px; animation: fadeIn 0.3s cubic-bezier(0.2, 0, 0, 1); }
+    .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Cards */
+    .card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; }
+    .card + .card { margin-top: 12px; }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+    /* Stat cards */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .stat-card { background: var(--bg-surface-variant); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; text-align: center; transition: var(--transition); cursor: default; }
+    .stat-card:hover { background: #333537; }
+    .stat-card .stat-icon { font-size: 24px; margin-bottom: 4px; display: block; }
+    .stat-card .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 2px 0; }
+    .stat-card .stat-label { font-size: 11px; color: var(--text-muted); }
+
+    /* Forms */
+    .input-group { margin-bottom: 10px; }
+    .input-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
+    .input-field { width: 100%; padding: 12px 14px; background: var(--bg-surface-variant); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; transition: var(--transition); }
+    .input-field:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(168,199,250,.15); }
+    .input-field::placeholder { color: #5f6368; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 24px; border-radius: 9999px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: var(--transition); font-family: 'Inter', sans-serif; }
+    .btn-primary { background: var(--primary); color: var(--on-primary); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-primary:disabled { opacity: .35; cursor: not-allowed; filter: none; }
+    .btn-secondary { background: var(--bg-surface-variant); color: var(--text-main); border: 1px solid var(--border-color); }
+    .btn-secondary:hover { background: #333537; }
+    .btn-success { background: #059669; color: #fff; }
+    .btn-success:hover { filter: brightness(1.1); }
+    .btn-danger { background: rgba(242,184,181,.15); color: var(--error); }
+    .btn-sm { padding: 6px 14px; font-size: 12px; }
+    .btn-block { width: 100%; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 3px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-pending { background: rgba(234,179,8,.12); color: #eab308; }
+    .badge-completed { background: rgba(34,197,94,.12); color: #22c55e; }
+    .badge-cancelled { background: rgba(242,184,181,.12); color: var(--error); }
+    .badge-agent { background: rgba(168,199,250,.12); color: var(--primary); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: #2e3130; color: #e3e3e3; padding: 10px 20px; border-radius: 9999px; font-size: 13px; z-index: 200; display: none; box-shadow: 0 4px 24px rgba(0,0,0,.5); animation: fadeIn 0.2s ease; max-width: calc(100% - 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .toast.error { background: rgba(242,184,181,.15); color: var(--error); }
+
+    /* QR Scanner */
+    .scanner-area { min-height: 220px; display: flex; align-items: center; justify-content: center; background: #0a0a0b; border-radius: var(--radius-md); border: 1px dashed var(--border-color); overflow: hidden; position: relative; transition: var(--transition); }
+    .scanner-area.active { min-height: 280px; border-style: solid; }
+    .scanner-placeholder { text-align: center; color: var(--text-muted); }
+    .scanner-placeholder span { font-size: 48px; display: block; margin-bottom: 8px; color: var(--primary); opacity: .5; }
+    .scanner-placeholder p { font-size: 13px; }
+    .scan-result { background: rgba(5,150,105,.08); border: 1px solid rgba(5,150,105,.25); border-radius: var(--radius-md); padding: 14px; margin-top: 10px; }
+    .scan-result .info-line { font-size: 13px; margin-bottom: 4px; }
+    .scan-result .info-line strong { color: var(--text-main); }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
+
+    /* QR Display */
+    .qr-display { background: #fff; padding: 12px; border-radius: var(--radius-md); display: inline-block; }
+    .qr-wrapper { text-align: center; padding: 16px 0; }
+
+    /* Referral list items */
+    .ref-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+    .ref-item:last-child { border-bottom: none; }
+    .ref-item .ref-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-surface-variant); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ref-item .ref-icon span { font-size: 18px; }
+    .ref-item .ref-body { flex: 1; min-width: 0; }
+    .ref-item .ref-body .ref-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ref-item .ref-body .ref-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; animation: fadeIn .15s ease; }
+    .modal-overlay.active { display: flex; }
+    .modal-card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px; max-width: 360px; width: 100%; }
+    .modal-card .modal-icon { font-size: 48px; display: block; text-align: center; margin-bottom: 8px; }
+    .modal-card h3 { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .modal-card p { text-align: center; font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+    .modal-card .modal-actions { display: flex; gap: 8px; }
+    .modal-card .modal-actions .btn { flex: 1; }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border-color); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; }
+    .spinner-sm { width: 14px; height: 14px; border-width: 2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Processing overlay */
+    .processing { display: none; text-align: center; padding: 20px; }
+    .processing.active { display: block; }
+    .processing p { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+
+    /* Execution log */
+    .log-entry { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 12px; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry .log-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .log-entry .log-dot.success { background: #22c55e; }
+    .log-entry .log-dot.error { background: var(--error); }
+
+    /* Responsive */
+    @media (min-width: 480px) { .app { border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); } }
+  </style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- App Bar -->
+  <div class="app-bar">
+    <div class="icon"><span class="material-symbols-outlined">handshake</span></div>
+    <h1>Hamkor Portal</h1>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)">
+      <span class="status-dot online" id="statusDot"></span>
+      <span id="statusLabel">7 agent</span>
+    </div>
+  </div>
+
+  <!-- Agent Chips -->
+  <div class="agent-bar" id="agentBar">
+    <div class="agent-chip active"><span class="material-symbols-outlined">handshake</span>b2b-referral</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">front_hand</span>receptionist</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">pill</span>medication-coach</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">bar_chart</span>analytics-agent</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">inventory_2</span>inventory-manager</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">face</span>face-recognizer</div>
+    <div class="agent-chip"><span class="material-symbols-outlined">stethoscope</span>medical-scribe</div>
+  </div>
+
+  <!-- Tab Nav -->
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="scan"><span class="material-symbols-outlined">qr_code_scanner</span>Skaner</button>
+    <button class="tab-btn" data-tab="create"><span class="material-symbols-outlined">add_circle</span>Yaratish</button>
+    <button class="tab-btn" data-tab="income"><span class="material-symbols-outlined">account_balance</span>Split-kassa</button>
+    <button class="tab-btn" data-tab="logs"><span class="material-symbols-outlined">terminal</span>Agentlar</button>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ============================== TAB 1: SCAN ============================== -->
+  <div class="tab-content active" id="tab-scan">
+    <!-- QR Scanner -->
+    <div class="card">
+      <div class="card-title"><span class="material-symbols-outlined" style="color:var(--primary);font-size:20px">qr_code_scanner</span> QR-kod skanerlash</div>
+      <button class="btn btn-secondary btn-sm" id="btnToggleScan" onclick="toggleScanner()" style="margin-bottom:10px">
+        <span class="material-symbols-outlined" style="font-size:16px">videocam</span> <span id="scanBtnLabel">Kamerani yoqish</span>
+      </button>
+      <div class="scanner-area" id="scannerContainer">
+        <div class="scanner-placeholder">
+          <span class="material-symbols-outlined">qr_code_scanner</span>
+          <p>QR-kodni skanerlash uchun<br>kamerani yoqing</p>
+        </div>
+      </div>
+      <div id="scanResult" style="display:none">
+        <div class="scan-result" id="scanResultContent"></div>
+        <button class="btn btn-success btn-block" id="btnConfirm" onclick="confirmReferral()" style="margin-top:8px">
+          <span class="material-symbols-outlined" style="font-size:18px">check_circle</span> Yo'llanmani tasdiqlash
+        </button>
+      </div>
+    </div>
+
+    <!-- Referral Code Convert -->
+    <div class="card">
+      <div class="card-title"><span class="material-symbols-outlined" style="color:var(--primary);font-size:20px">vpn_key</span> Referral kod orqali</div>
+      <div id="convertSection">
+        <div class="input-group">
+          <label>Referral kod</label>
+          <div style="display:flex;gap:8px">
+            <input class="input-field" id="convertCode" placeholder="Masalan: PARTNER-ABC123" style="flex:1;font-family:var(--font-mono,monospace);letter-spacing:1px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+            <button class="btn btn-secondary btn-sm" onclick="lookupCode()" id="lookupBtn" style="padding:12px 16px;border-radius:var(--radius-sm);white-space:nowrap">
+              <span class="material-symbols-outlined" style="font-size:16px">search</span>
+            </button>
+          </div>
+          <div id="codeLookupResult" style="margin-top:6px;font-size:12px;min-height:20px"></div>
+        </div>
+        <div id="convertForm" style="display:none">
+          <div class="input-group">
+            <label>Bemor — ism, familiya yoki telefon</label>
+            <input class="input-field" id="convertPatientQuery" placeholder="Qidirish..." oninput="debounceSearchPatient()">
+            <div id="convertPatientResults" style="margin-top:4px;max-height:120px;overflow-y:auto"></div>
+            <input type="hidden" id="convertPatientId">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="input-group">
+              <label>To'lov summasi (so'm)</label>
+              <input class="input-field" id="convertAmount" type="number" placeholder="0" min="0">
+            </div>
+            <div class="input-group">
+              <label>Taklif qiluvchi</label>
+              <input class="input-field" id="convertPartnerName" readonly style="font-weight:500;color:var(--primary)">
+            </div>
+          </div>
+          <div class="input-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="background:var(--bg-surface-variant);border-radius:var(--radius-sm);padding:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-muted)">Hamkor ulushi (40%)</div>
+              <div style="font-size:18px;font-weight:700;color:#22c55e" id="calcPartner">0</div>
+            </div>
+            <div style="background:var(--bg-surface-variant);border-radius:var(--radius-sm);padding:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text-muted)">Platforma (2000 so'm)</div>
+              <div style="font-size:18px;font-weight:700;color:var(--primary)" id="calcPlatform">2,000</div>
+            </div>
+          </div>
+          <button class="btn btn-success btn-block" id="btnConvert" onclick="executeConvert()" style="margin-top:8px">
+            <span class="material-symbols-outlined" style="font-size:18px">swap_horiz</span> Konvertatsiya qilish
+          </button>
+          <div id="convertResult" style="margin-top:8px;display:none"></div>
+        </div>
+        <div class="processing" id="convertProcessing">
+          <div class="spinner"></div>
+          <p>Referral konvertatsiya qilinmoqda...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="material-symbols-outlined" style="font-size:20px">pending_actions</span> Kutilayotgan yo'llanmalar</div>
+      <div id="pendingList" style="min-height:40px">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Yuklanmoqda...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== TAB 2: CREATE ============================== -->
+  <div class="tab-content" id="tab-create">
+    <div class="card">
+      <div class="card-title"><span class="material-symbols-outlined" style="color:var(--primary);font-size:20px">add_circle</span> Yangi yo'llanma yaratish</div>
+
+      <div id="createForm">
+        <div class="input-group">
+          <label>Bemor ismi</label>
+          <input class="input-field" id="crPatient" placeholder="Masalan: Akbar Aliyev" />
+        </div>
+        <div class="input-group">
+          <label>Kerakli xizmat</label>
+          <input class="input-field" id="crService" placeholder="MRI, UZI, qon tahlili..." />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="input-group">
+            <label>Yuboruvchi klinika</label>
+            <input class="input-field" id="crClinic" placeholder="Falcon Clinic" />
+          </div>
+          <div class="input-group">
+            <label>Taxminiy summa (so'm)</label>
+            <input class="input-field" id="crAmount" type="number" placeholder="0" />
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" id="btnCreateRef" onclick="createReferral()">
+          <span class="material-symbols-outlined" style="font-size:18px">send</span> Yo'llanmani yaratish
+        </button>
+      </div>
+
+      <!-- Processing state -->
+      <div class="processing" id="createProcessing">
+        <div class="spinner"></div>
+        <p><strong>b2b-referral</strong> agenti ishlamoqda...</p>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)" id="processingSteps"></div>
+      </div>
+
+      <!-- QR Result -->
+      <div id="qrResult" style="display:none">
+        <div style="text-align:center;margin-bottom:4px">
+          <span class="material-symbols-outlined" style="font-size:36px;color:#22c55e">check_circle</span>
+        </div>
+        <div class="qr-wrapper">
+          <div class="qr-display" id="qrCodeDisplay"></div>
+        </div>
+        <p style="text-align:center;font-size:14px;font-weight:600;margin:4px 0" id="qrRefInfo">REF-XXXXX</p>
+        <p style="text-align:center;font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+          Split: <span id="qrSplitInfo">40% / 20% / 2000 so'm</span>
+        </p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" style="flex:1" onclick="downloadQR()">
+            <span class="material-symbols-outlined" style="font-size:16px">download</span> Yuklash
+          </button>
+          <button class="btn btn-secondary" style="flex:1" onclick="resetCreate()">
+            <span class="material-symbols-outlined" style="font-size:16px">add</span> Yangi
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== TAB 3: SPLIT-KASSA ============================== -->
+  <div class="tab-content" id="tab-income">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="stat-icon material-symbols-outlined" style="color:var(--primary)">trending_up</span>
+        <div class="stat-value" id="totalIncome">0</div>
+        <div class="stat-label">To'langan daromad</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon material-symbols-outlined" style="color:#f59e0b">hourglass_bottom</span>
+        <div class="stat-value" id="pendingIncome">0</div>
+        <div class="stat-label">Kutilayotgan</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon material-symbols-outlined" style="color:#22c55e">check_circle</span>
+        <div class="stat-value" id="completedCount">0</div>
+        <div class="stat-label">Bajarilgan</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon material-symbols-outlined" style="color:#a855f7">people</span>
+        <div class="stat-value" id="referralsCount">0</div>
+        <div class="stat-label">Jami yo'llanmalar</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="material-symbols-outlined" style="font-size:20px">receipt_long</span> Referral operatsiyalar</div>
+      <div id="transactionsList" style="min-height:40px">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Yuklanmoqda...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== TAB 4: AGENT LOGS ============================== -->
+  <div class="tab-content" id="tab-logs">
+    <div class="card">
+      <div class="card-title">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-size:20px">terminal</span> Agent ijro loglari
+        <button class="btn btn-secondary btn-sm" onclick="refreshLogs()" style="margin-left:auto;padding:4px 10px">
+          <span class="material-symbols-outlined" style="font-size:14px">refresh</span>
+        </button>
+      </div>
+      <div id="logsContainer" style="min-height:40px">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Yuklanmoqda...</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="card-title"><span class="material-symbols-outlined" style="font-size:20px">psychology</span> Agentlar tizimi</div>
+      <div id="agentsStatus" style="font-size:13px;line-height:1.8"></div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-card">
+      <span class="modal-icon material-symbols-outlined" style="color:#22c55e;font-size:48px">check_circle</span>
+      <h3>Yo'llanmani tasdiqlash</h3>
+      <p id="confirmInfo">Ma'lumot yuklanmoqda...</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Bekor qilish</button>
+        <button class="btn btn-success" onclick="executeRedeem()">✅ Tasdiqlash</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '';
+let tg = null, telegramId = '', html5QrCode = null, scannerActive = false, scannedData = null, lastQrDataUrl = '';
+
+try { tg = window.Telegram?.WebApp; if (tg) { tg.expand(); tg.ready(); telegramId = tg.initDataUnsafe?.user?.id?.toString() || ''; } } catch(e) {}
+if (!telegramId) telegramId = new URLSearchParams(window.location.search).get('telegram_id') || 'demo_clinic';
+
+function toast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast' + (isError ? ' error' : '');
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2800);
+}
+
+// ===== TABS =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'income') loadIncome();
+    else if (btn.dataset.tab === 'logs') { loadLogs(); loadAgentStatus(); }
+    else if (btn.dataset.tab === 'scan') loadPendingList();
+  });
+});
+
+// ===== QR SCANNER =====
+async function toggleScanner() {
+  const btn = document.getElementById('btnToggleScan');
+  const container = document.getElementById('scannerContainer');
+  if (scannerActive) { stopScanner(); return; }
+  try {
+    container.innerHTML = '<div class="pulse" style="text-align:center;color:var(--primary)"><span class="material-symbols-outlined" style="font-size:40px;display:block;margin-bottom:6px">qr_code_scanner</span><p style="font-size:13px">Kamera ishga tushmoqda...</p></div>';
+    container.classList.add('active');
+    html5QrCode = new Html5Qrcode('scannerContainer');
+    await html5QrCode.start({ facingMode: 'environment' }, { fps: 12, qrbox: { width: 220, height: 220 } }, onScanSuccess);
+    scannerActive = true;
+    document.getElementById('scanBtnLabel').textContent = "Kamerani to'xtatish";
+    btn.className = 'btn btn-sm';
+    btn.style.cssText = 'margin-bottom:10px;background:rgba(239,68,68,.15);color:#fca5a5;border-color:rgba(239,68,68,.3)';
+  } catch (e) {
+    container.innerHTML = '<div class="scanner-placeholder"><span class="material-symbols-outlined" style="color:var(--error);opacity:.6">videocam_off</span><p>Kamera ishlamadi</p></div>';
+    container.classList.remove('active');
+    toast('Kamera xatosi: ' + e.message, true);
+  }
+}
+
+function stopScanner() {
+  const container = document.getElementById('scannerContainer');
+  if (html5QrCode) { html5QrCode.stop().catch(() => {}); html5QrCode = null; }
+  scannerActive = false;
+  container.innerHTML = '<div class="scanner-placeholder"><span class="material-symbols-outlined">qr_code_scanner</span><p>QR-kodni skanerlash uchun<br>kamerani yoqing</p></div>';
+  container.classList.remove('active');
+  document.getElementById('scanBtnLabel').textContent = "Kamerani yoqish";
+  const btn = document.getElementById('btnToggleScan');
+  btn.className = 'btn btn-secondary btn-sm';
+  btn.style.cssText = 'margin-bottom:10px';
+}
+
+async function onScanSuccess(decodedText) {
+  stopScanner();
+  let refId = decodedText;
+  try { const p = JSON.parse(decodedText); refId = p.ref || p.referral_id || p.token || decodedText; } catch(e) {}
+  try {
+    const res = await fetch(API + '/api/referrals/qr/' + encodeURIComponent(refId));
+    const data = await res.json();
+    const r = data.referral;
+    document.getElementById('scanResult').style.display = 'block';
+    const statusBadge = r.status === 'completed' ? '<span class="badge badge-completed">Tasdiqlangan</span>' : '<span class="badge badge-pending">Kutilmoqda</span>';
+    document.getElementById('scanResultContent').innerHTML = `
+      <div class="info-line"><strong>Yo'llanma:</strong> ${r.referral_id}</div>
+      <div class="info-line"><strong>Bemor:</strong> ${r.patient_name}</div>
+      <div class="info-line"><strong>Xizmat:</strong> ${r.service_required}</div>
+      <div class="info-line"><strong>Holat:</strong> ${statusBadge}</div>
+    `;
+    scannedData = { referral_id: r.referral_id, status: r.status };
+    const btn = document.getElementById('btnConfirm');
+    if (r.status === 'completed') { btn.disabled = true; btn.innerHTML = '✅ Allaqachon tasdiqlangan'; }
+    else { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">check_circle</span> Yo\'llanmani tasdiqlash'; }
+    toast('QR kod o\'qildi: ' + r.patient_name);
+  } catch (e) {
+    document.getElementById('scanResult').style.display = 'block';
+    document.getElementById('scanResultContent').innerHTML = '<div class="info-line" style="color:var(--error)">Serverga ulanib bo\'lmadi</div>';
+    scannedData = { raw: refId };
+  }
+}
+
+// ===== REDEEM =====
+function confirmReferral() {
+  if (!scannedData) return toast('QR-kod skanerlanmagan', true);
+  document.getElementById('confirmInfo').textContent = `Yo'llanmani tasdiqlaysizmi?\nID: ${scannedData.referral_id || scannedData.raw}`;
+  document.getElementById('confirmModal').classList.add('active');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+async function executeRedeem() {
+  const refId = scannedData?.referral_id || scannedData?.raw;
+  if (!refId) return toast('Referral ID topilmadi', true);
+  try {
+    const res = await fetch(API + '/api/referrals/redeem', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referral_id: refId, receiver_clinic_id: clinicId || telegramId })
+    });
+    const data = await res.json();
+    closeModal('confirmModal');
+    if (data.success) {
+      toast('Yo\'llanma tasdiqlandi! Split-kassa hisoblandi.');
+      document.getElementById('scanResult').style.display = 'none';
+      scannedData = null; loadPendingList(); loadIncome();
+    } else toast(data.error || 'Xatolik', true);
+  } catch (e) { closeModal('confirmModal'); toast('Xatolik: ' + e.message, true); }
+}
+
+// ===== CREATE REFERRAL (via agent) =====
+async function createReferral() {
+  const patient = document.getElementById('crPatient').value.trim();
+  const service = document.getElementById('crService').value.trim();
+  const clinic = document.getElementById('crClinic').value.trim();
+  const amount = parseFloat(document.getElementById('crAmount').value) || 0;
+  if (!patient || !service) return toast('Bemor ismi va xizmat talab qilinadi', true);
+
+  document.getElementById('createForm').style.display = 'none';
+  document.getElementById('qrResult').style.display = 'none';
+  const proc = document.getElementById('createProcessing');
+  proc.classList.add('active');
+  document.getElementById('processingSteps').textContent = 'b2b-referral agenti ishga tushdi...';
+
+  try {
+    const res = await fetch(API + '/api/referrals/agent-create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patient_name: patient, service_required: service, sender_clinic: clinic, estimated_amount: amount, auto_save: true })
+    });
+    const data = await res.json();
+    proc.classList.remove('active');
+
+    if (data.success) {
+      const ag = data.agent;
+      const refId = ag.saved_referral?.referral_id || 'REF-XXX';
+      const split = data.split || {};
+
+      document.getElementById('qrRefInfo').textContent = refId + '  ·  ' + service;
+      document.getElementById('qrSplitInfo').textContent =
+        `Hamkor ${(split.partner_commission || 0).toLocaleString()} so'm (40%) · Shifokor ${(split.doctor_share || 0).toLocaleString()} so'm (20%) · Platforma ${(split.platform_fee || 2000).toLocaleString()} so'm`;
+
+      const qrContainer = document.getElementById('qrCodeDisplay');
+      qrContainer.innerHTML = '';
+      new QRCode(qrContainer, { text: data.qr_data || refId, width: 180, height: 180, colorDark: '#000', colorLight: '#fff' });
+      setTimeout(() => { lastQrDataUrl = qrContainer.querySelector('canvas')?.toDataURL() || ''; }, 200);
+
+      document.getElementById('qrResult').style.display = 'block';
+      toast('Yo\'llanma yaratildi! Agent: b2b-referral');
+    } else {
+      document.getElementById('createForm').style.display = 'block';
+      toast('Agent xatosi: ' + (data.error || 'Xatolik'), true);
+    }
+  } catch(e) {
+    proc.classList.remove('active');
+    document.getElementById('createForm').style.display = 'block';
+    toast('Xatolik: ' + e.message, true);
+  }
+}
+
+function downloadQR() {
+  if (!lastQrDataUrl) return toast('QR kod tayyor emas', true);
+  const a = document.createElement('a'); a.href = lastQrDataUrl; a.download = 'referral-' + Date.now() + '.png'; a.click();
+  toast('QR kod yuklandi');
+}
+
+function resetCreate() {
+  document.getElementById('qrResult').style.display = 'none';
+  document.getElementById('createForm').style.display = 'block';
+  document.getElementById('crPatient').value = '';
+  document.getElementById('crService').value = '';
+  document.getElementById('crAmount').value = '';
+}
+
+// ===== PENDING LIST =====
+async function loadPendingList() {
+  try {
+    const res = await fetch(API + '/api/b2b/referrals?status=pending');
+    const data = await res.json();
+    const items = data?.data || data?.referrals || [];
+    const list = document.getElementById('pendingList');
+    if (!items.length) {
+      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Kutilayotgan yo\'llanmalar yo\'q</div>';
+      return;
+    }
+    list.innerHTML = items.slice(0, 10).map(r => `
+      <div class="ref-item">
+        <div class="ref-icon"><span class="material-symbols-outlined" style="color:var(--primary)">assignment</span></div>
+        <div class="ref-body">
+          <div class="ref-title">${r.service_required || 'Muolaja'}</div>
+          <div class="ref-meta">${r.patient_name || 'Bemor'} · ${new Date(r.created_at).toLocaleDateString('uz-UZ')}</div>
+        </div>
+        <span class="badge badge-pending">${r.referral_id || ''}</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('pendingList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Xatolik</div>';
+  }
+}
+
+// ===== INCOME =====
+async function loadIncome() {
+  try {
+    const stats = await fetch(API + '/api/b2b/stats').then(r => r.json());
+    document.getElementById('totalIncome').textContent = (stats.total_financial || 0).toLocaleString() + ' so\'m';
+    document.getElementById('pendingIncome').textContent = (stats.unpaid_commission || 0).toLocaleString() + ' so\'m';
+    document.getElementById('completedCount').textContent = stats.completed_referrals || 0;
+    document.getElementById('referralsCount').textContent = stats.total_referrals || 0;
+
+    const refsRes = await fetch(API + '/api/b2b/referrals');
+    const refsData = await refsRes.json();
+    const refs = refsData?.data || refsData?.referrals || [];
+    const txList = document.getElementById('transactionsList');
+    if (!refs.length) {
+      txList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Operatsiyalar yo\'q</div>';
+    } else {
+      txList.innerHTML = refs.slice(0, 10).map(r => `
+        <div class="ref-item">
+          <div class="ref-icon"><span class="material-symbols-outlined" style="color:${r.status === 'completed' ? '#22c55e' : '#f59e0b'}">${r.status === 'completed' ? 'check_circle' : 'schedule'}</span></div>
+          <div class="ref-body">
+            <div class="ref-title">${r.patient_name} → ${r.service_required}</div>
+            <div class="ref-meta">${r.referral_id} · ${new Date(r.created_at).toLocaleDateString('uz-UZ')}</div>
+          </div>
+          <span class="badge ${r.status === 'completed' ? 'badge-completed' : 'badge-pending'}">${r.status === 'completed' ? 'To\'langan' : 'Kutilmoqda'}</span>
+        </div>
+      `).join('');
+    }
+  } catch(e) { console.error(e); }
+}
+
+// ===== AGENT LOGS & STATUS =====
+async function loadLogs() {
+  try {
+    const res = await fetch(API + '/api/ai/logs?limit=15');
+    const data = await res.json();
+    const logs = data?.logs || [];
+    const container = document.getElementById('logsContainer');
+    if (!logs.length) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Hozircha agent ishga tushmagan</div>';
+      return;
+    }
+    container.innerHTML = logs.map(l => `
+      <div class="log-entry">
+        <span class="log-dot ${l.status === 'success' ? 'success' : 'error'}"></span>
+        <span style="font-weight:500;min-width:100px;font-size:11px;font-family:monospace">${l.agent}</span>
+        <span style="color:var(--text-muted);flex:1;font-size:11px">${l.duration ? l.duration + 'ms' : l.error?.substring(0,30) || ''}</span>
+        <span style="font-size:10px;color:#5f6368;white-space:nowrap">${new Date(l.timestamp).toLocaleTimeString('uz-UZ')}</span>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('logsContainer').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Xatolik</div>';
+  }
+}
+
+async function loadAgentStatus() {
+  try {
+    const res = await fetch(API + '/api/ai/status');
+    const data = await res.json();
+    const container = document.getElementById('agentsStatus');
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="padding:10px;background:var(--bg-surface-variant);border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:var(--primary)">${data.agents}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Agentlar</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-surface-variant);border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:${data.engines.llm === 'ready' ? '#22c55e' : '#f59e0b'}">${data.engines.llm === 'ready' ? '✅' : '⚠️'}</div>
+          <div style="font-size:11px;color:var(--text-muted)">LLM (${data.engines.llm})</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-surface-variant);border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:${data.engines.stt === 'ready' ? '#22c55e' : '#f59e0b'}">${data.engines.stt === 'ready' ? '✅' : '⚠️'}</div>
+          <div style="font-size:11px;color:var(--text-muted)">STT (${data.engines.stt})</div>
+        </div>
+        <div style="padding:10px;background:var(--bg-surface-variant);border-radius:8px;text-align:center">
+          <div style="font-size:20px;font-weight:700;color:${data.database === 'connected' ? '#22c55e' : '#ef4444'}">${data.database === 'connected' ? '✅' : '❌'}</div>
+          <div style="font-size:11px;color:var(--text-muted)">DB (${data.database})</div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        ${(data.agents_list || []).map(a => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:12px">
+            <span class="badge badge-agent" style="min-width:120px">${a.name}</span>
+            <span style="color:var(--text-muted);flex:1;font-size:11px">${a.description}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('agentsStatus').innerHTML = '<div style="color:var(--error);font-size:13px">Xatolik</div>';
+  }
+}
+
+function refreshLogs() { loadLogs(); }
+
+// ===== REFERRAL CODE CONVERT =====
+let _convertPartner = null;
+let _convertDebounceTimer = null;
+
+function debounceSearchPatient() {
+  clearTimeout(_convertDebounceTimer);
+  _convertDebounceTimer = setTimeout(searchConvertPatient, 300);
+}
+
+async function searchConvertPatient() {
+  const q = document.getElementById('convertPatientQuery').value.trim();
+  const resultsEl = document.getElementById('convertPatientResults');
+  if (q.length < 2) { resultsEl.innerHTML = ''; return; }
+  try {
+    const res = await fetch(API + '/api/face/patients?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    const patients = data?.patients || [];
+    if (!patients.length) {
+      resultsEl.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--text-muted)">Bemor topilmadi</div>';
+      return;
+    }
+    resultsEl.innerHTML = patients.slice(0, 5).map(p =>
+      `<div class="ref-item" style="cursor:pointer;padding:8px 6px" onclick="selectConvertPatient('${p.id}','${p.first_name} ${p.last_name || ''}','${p.phone || ''}')">
+        <div class="ref-icon"><span class="material-symbols-outlined" style="font-size:16px">person</span></div>
+        <div class="ref-body">
+          <div class="ref-title">${p.first_name} ${p.last_name || ''}</div>
+          <div class="ref-meta">${p.phone || 'Telefon yo\'q'}</div>
+        </div>
+      </div>`
+    ).join('');
+  } catch(e) { resultsEl.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--error)">Xatolik</div>'; }
+}
+
+function selectConvertPatient(id, name) {
+  document.getElementById('convertPatientQuery').value = name;
+  document.getElementById('convertPatientId').value = id;
+  document.getElementById('convertPatientResults').innerHTML =
+    `<div style="padding:6px 8px;font-size:12px;color:#22c55e;display:flex;align-items:center;gap:6px">
+      <span class="material-symbols-outlined" style="font-size:14px">check_circle</span> Tanlandi: ${name}
+    </div>`;
+  updateCalc();
+}
+
+async function lookupCode() {
+  const code = document.getElementById('convertCode').value.trim();
+  const resultEl = document.getElementById('codeLookupResult');
+  if (!code) { resultEl.innerHTML = '<span style="color:var(--error)">Kodni kiriting</span>'; return; }
+  document.getElementById('lookupBtn').disabled = true;
+  resultEl.innerHTML = '<span class="spinner spinner-sm" style="display:inline-block;vertical-align:middle;margin-right:6px"></span> Tekshirilmoqda...';
+  try {
+    const res = await fetch(API + '/api/referral/qr/' + encodeURIComponent(code));
+    const data = await res.json();
+    if (data.success && data.referral) {
+      const ref = data.referral;
+      _convertPartner = { name: ref.referring_doctor || 'Hamkor', id: code };
+      resultEl.innerHTML = `<span style="color:#22c55e">✅ Topildi: ${ref.patient_name} — ${ref.service_required}</span>`;
+      document.getElementById('convertPartnerName').value = _convertPartner.name;
+      document.getElementById('convertPatientQuery').value = ref.patient_name || '';
+      document.getElementById('convertPatientQuery').disabled = true;
+      document.getElementById('convertAmount').value = ref.estimated_amount || 0;
+      document.getElementById('convertForm').style.display = 'block';
+      updateCalc();
+    } else {
+      const partnerRes = await fetch(API + '/api/referral/partners');
+      const partnerData = await partnerRes.json();
+      const partner = (partnerData?.partners || []).find(p => p.referral_code === code);
+      if (partner) {
+        _convertPartner = { name: partner.name, id: partner.id, code: partner.referral_code };
+        resultEl.innerHTML = `<span style="color:#22c55e">✅ Hamkor topildi: ${partner.name} (balans: ${(partner.balance || 0).toLocaleString()} so'm)</span>`;
+        document.getElementById('convertPartnerName').value = partner.name;
+        document.getElementById('convertPatientQuery').disabled = false;
+        document.getElementById('convertForm').style.display = 'block';
+        updateCalc();
+      } else {
+        resultEl.innerHTML = '<span style="color:var(--error)">❌ Referral kod yoki hamkor topilmadi</span>';
+        _convertPartner = null;
+      }
+    }
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:var(--error)">Server xatosi: ' + e.message + '</span>';
+  }
+  document.getElementById('lookupBtn').disabled = false;
+}
+
+function updateCalc() {
+  const amount = parseFloat(document.getElementById('convertAmount').value) || 0;
+  if (amount > 0) {
+    document.getElementById('calcPartner').textContent = Math.round(amount * 0.4).toLocaleString() + ' so\'m';
+    document.getElementById('calcPlatform').textContent = '2,000 so\'m';
+  } else {
+    document.getElementById('calcPartner').textContent = '0';
+    document.getElementById('calcPlatform').textContent = '2,000 so\'m';
+  }
+}
+
+document.getElementById('convertAmount').addEventListener('input', updateCalc);
+
+async function executeConvert() {
+  const code = document.getElementById('convertCode').value.trim();
+  const patientId = document.getElementById('convertPatientId').value;
+  const amount = parseFloat(document.getElementById('convertAmount').value) || 0;
+
+  if (!code) return toast('Referral kodini kiriting', true);
+  if (!patientId) return toast('Bemorni tanlang', true);
+  if (amount < 1000) return toast('Minimal summa 1000 so\'m', true);
+
+  document.getElementById('convertForm').style.display = 'none';
+  document.getElementById('convertProcessing').classList.add('active');
+
+  try {
+    const res = await fetch(API + '/api/referral/convert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        referral_code: code,
+        patient_id: patientId,
+        total_amount: amount,
+        idempotency_key: 'convert_' + code + '_' + Date.now()
+      })
+    });
+    const data = await res.json();
+    document.getElementById('convertProcessing').classList.remove('active');
+
+    if (data.success) {
+      const split = data.split || {};
+      document.getElementById('convertResult').style.display = 'block';
+      document.getElementById('convertResult').innerHTML = `
+        <div style="background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.25);border-radius:var(--radius-md);padding:16px;text-align:center">
+          <span class="material-symbols-outlined" style="font-size:36px;color:#22c55e;display:block;margin-bottom:4px">check_circle</span>
+          <div style="font-size:15px;font-weight:700;color:#22c55e">✅ Konvertatsiya muvaffaqiyatli</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Yo'llanma: ${data.referral?.id || '-'}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;text-align:center">
+            <div style="background:var(--bg-surface-variant);border-radius:8px;padding:10px">
+              <div style="font-size:11px;color:var(--text-muted)">Hamkor</div>
+              <div style="font-size:16px;font-weight:700;color:#22c55e">${(split.partner_commission || 0).toLocaleString()}</div>
+            </div>
+            <div style="background:var(--bg-surface-variant);border-radius:8px;padding:10px">
+              <div style="font-size:11px;color:var(--text-muted)">Platforma</div>
+              <div style="font-size:16px;font-weight:700;color:var(--primary)">${(split.platform_fee || 0).toLocaleString()}</div>
+            </div>
+            <div style="background:var(--bg-surface-variant);border-radius:8px;padding:10px">
+              <div style="font-size:11px;color:var(--text-muted)">Hamkor balansi</div>
+              <div style="font-size:16px;font-weight:700;color:#f59e0b">${(data.partner_balance || 0).toLocaleString()}</div>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="resetConvert()" style="margin-top:12px">Yangi konvertatsiya</button>
+        </div>
+      `;
+      toast('✅ Referral konvertatsiya qilindi');
+      loadIncome();
+      loadPendingList();
+    } else {
+      document.getElementById('convertForm').style.display = 'block';
+      toast('❌ ' + (data.error || 'Xatolik'), true);
+    }
+  } catch(e) {
+    document.getElementById('convertProcessing').classList.remove('active');
+    document.getElementById('convertForm').style.display = 'block';
+    toast('❌ Xatolik: ' + e.message, true);
+  }
+}
+
+function resetConvert() {
+  document.getElementById('convertResult').style.display = 'none';
+  document.getElementById('convertCode').value = '';
+  document.getElementById('convertPatientQuery').value = '';
+  document.getElementById('convertPatientQuery').disabled = false;
+  document.getElementById('convertPatientId').value = '';
+  document.getElementById('convertAmount').value = '';
+  document.getElementById('convertPartnerName').value = '';
+  document.getElementById('codeLookupResult').innerHTML = '';
+  document.getElementById('convertPatientResults').innerHTML = '';
+  document.getElementById('convertForm').style.display = 'none';
+  _convertPartner = null;
+  updateCalc();
+}
+
+// ===== INIT =====
+async function init() {
+  try {
+    const status = await fetch(API + '/api/ai/status').then(r => r.json());
+    document.getElementById('statusLabel').textContent = status.agents + ' agent';
+    document.getElementById('statusDot').style.background = status.database === 'connected' ? '#22c55e' : '#ef4444';
+  } catch(e) {}
+  loadPendingList();
+}
+init();
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+</body>
+</html>

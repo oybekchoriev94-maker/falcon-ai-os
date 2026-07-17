@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Dashboard</title>
+  
+  <link rel="stylesheet" href="/css/index.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+</head>
+<body>
+  <!-- ===== LOGIN SCREEN ===== -->
+  <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <div class="glass rounded-3xl p-8 w-full max-w-md fade-in">
+      <div class="text-center mb-8">
+        <div class="text-5xl mb-3">🦅</div>
+        <h1 class="text-2xl font-bold">Falcon AI OS</h1>
+        <p class="text-slate-400 mt-1">Klinika boshqaruv tizimiga kirish</p>
+      </div>
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Foydalanuvchi nomi</label>
+          <input type="text" id="loginUsername" class="input-field" placeholder="ceo, admin, receptionist yoki doctor" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">Parol</label>
+          <input type="password" id="loginPassword" class="input-field" placeholder="Parolni kiriting" required>
+        </div>
+        <div id="loginError" class="text-red-400 text-sm hidden"></div>
+        <button type="submit" id="loginBtn" class="btn-primary w-full text-lg">Kirish</button>
+      </form>
+      <div class="mt-6 text-center text-xs text-slate-500">
+        <p>Test hisoblar:</p>
+        <p class="mt-1">ceo, admin, receptionist, doctor</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN DASHBOARD ===== -->
+  <div id="dashboardMain" class="hidden min-h-screen" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <!-- Navbar -->
+    <nav class="glass sticky top-0 z-50 border-b border-slate-700/50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🦅</span>
+            <span class="font-bold text-lg">Falcon AI OS</span>
+            <span id="roleBadge" class="badge ml-2 text-xs px-3 py-1"></span>
+          </div>
+          <div class="flex items-center gap-4">
+            <a href="/billing.html" class="text-slate-300 hover:text-white text-sm">Loyallik</a>
+            <span id="userNameDisplay" class="text-slate-300 text-sm"></span>
+            <button onclick="logout()" class="btn-danger text-sm px-4 py-2">Chiqish</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <!-- ============================================= -->
+      <!-- CEO VIEW -->
+      <!-- ============================================= -->
+      <div data-role="ceo" class="hidden-role space-y-6 fade-in">
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="stat-card"><p class="text-slate-400 text-sm">Umumiy tushum</p><p id="ceoRevenue" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Sof foyda</p><p id="ceoProfit" class="stat-value mt-1" style="background:linear-gradient(135deg,#22c55e,#16a34a);-webkit-background-clip:text">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Bemorlar soni</p><p id="ceoPatients" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Ombor qiymati</p><p id="ceoInventory" class="stat-value mt-1">0</p></div>
+        </div>
+        <!-- Referral Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="ceoReferralStats" style="display:none">
+          <div class="stat-card border-l-4 border-blue-500"><p class="text-slate-400 text-sm">Jami yo'llanmalar</p><p id="ceoRefTotal" class="stat-value mt-1">0</p></div>
+          <div class="stat-card border-l-4 border-yellow-500"><p class="text-slate-400 text-sm">Kutilmoqda</p><p id="ceoRefPending" class="stat-value mt-1">0</p></div>
+          <div class="stat-card border-l-4 border-green-500"><p class="text-slate-400 text-sm">Bajarilgan</p><p id="ceoRefCompleted" class="stat-value mt-1">0</p></div>
+          <div class="stat-card border-l-4 border-purple-500"><p class="text-slate-400 text-sm">Komissiya tushumi</p><p id="ceoRefRevenue" class="stat-value mt-1">0</p></div>
+        </div>
+        <!-- Chart -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">📊 Haftalik tushum trendi</h3>
+          <canvas id="revenueChart" height="250"></canvas>
+        </div>
+        <!-- KPI Leaderboard -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🏆 Doktor KPI Leaderboard</h3>
+          <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-3 px-2">#</th><th class="text-left py-3 px-2">Doktor</th><th class="text-right py-3 px-2">Bemorlar</th><th class="text-right py-3 px-2">Tushum</th><th class="text-right py-3 px-2">Samaradorlik</th></tr></thead><tbody id="leaderboardBody"></tbody></table></div>
+        </div>
+
+        <!-- Inventory Waste Monitoring -->
+        <div class="card" id="wasteWidget">
+          <h3 class="text-lg font-semibold mb-4">⚠️ Ombor isrofi monitoringi</h3>
+          <div id="wasteAlert" class="hidden p-4 rounded-xl mb-4 text-sm font-medium" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#fca5a5">
+            🚨 Diqqat: Bu oy normalardan tashqari <strong id="wasteSum">0</strong> UZS lik material ortiqcha sarflandi
+          </div>
+          <div id="wasteNoData" class="text-slate-500 text-sm py-4 text-center">✅ Hozircha isrof qayd etilmagan</div>
+          <div id="wasteTableWrap" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-slate-400 border-b border-slate-700">
+                <th class="text-left py-2 px-2">Shifokor</th>
+                <th class="text-right py-2 px-2">Ortiqcha sarf (dona)</th>
+                <th class="text-right py-2 px-2">Zarar (UZS)</th>
+                <th class="text-right py-2 px-2">Holatlar soni</th>
+              </tr></thead>
+              <tbody id="wasteDoctorBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================= -->
+      <!-- ADMIN VIEW -->
+      <!-- ============================================= -->
+      <div data-role="admin" class="hidden-role space-y-6 fade-in">
+        <!-- Stats row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="stat-card"><p class="text-slate-400 text-sm">Ombor elementlari</p><p id="adminItemCount" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Kam qoldiq</p><p id="adminLowStock" class="stat-value mt-1" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Doktorlar</p><p id="adminDoctorCount" class="stat-value mt-1">0</p></div>
+        </div>
+        <!-- Inventory management -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">📦 Ombor boshqaruvi</h3>
+          <form id="inventoryForm" class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
+            <input type="text" id="invName" class="input-field" placeholder="Material nomi" required>
+            <input type="text" id="invSku" class="input-field" placeholder="SKU (masalan PL-001)" required>
+            <input type="number" id="invQty" class="input-field" placeholder="Miqdor" required>
+            <input type="text" id="invUnit" class="input-field" placeholder="Birlik (dona/kg)">
+            <input type="number" id="invCost" class="input-field" placeholder="Narxi" step="0.01">
+            <button type="submit" class="btn-primary">Qo'shish</button>
+          </form>
+          <div class="overflow-x-auto max-h-60 overflow-y-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">Nomi</th><th class="text-left py-2 px-2">SKU</th><th class="text-right py-2 px-2">Soni</th><th class="text-right py-2 px-2">Min</th></tr></thead><tbody id="inventoryBody"></tbody></table></div>
+        </div>
+        <!-- Material Norms -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">📋 Materiallar normasi</h3>
+          <form id="normsForm" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <input type="text" id="normProcedure" class="input-field" placeholder="Muolaja nomi" required>
+            <input type="text" id="normItemId" class="input-field" placeholder="Material ID" required>
+            <input type="number" id="normQty" class="input-field" placeholder="Standart miqdor" required>
+            <button type="submit" class="btn-primary">Qo'shish</button>
+          </form>
+          <div id="normsList" class="overflow-x-auto max-h-48 overflow-y-auto">
+            <p class="text-sm text-slate-400">Yuklanmoqda...</p>
+          </div>
+          <div id="normsResult" class="mt-2 text-sm"></div>
+        </div>
+        <!-- Face Registration -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">😀 Face ID registratsiyasi</h3>
+          <p class="text-sm text-slate-400 mb-3">Doktorning yuz modelini ro'yxatga olish uchun <a href="/face_id" class="text-blue-400 underline">face_id.html</a> sahifasiga o'ting.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label class="block text-sm text-slate-400 mb-1">Doktor ID</label><input type="text" id="faceDoctorId" class="input-field" placeholder="doktor id"></div>
+            <div><label class="block text-sm text-slate-400 mb-1">Descriptor JSON</label><input type="text" id="faceDescriptor" class="input-field" placeholder='[0.1, 0.2, ...]'></div>
+          </div>
+          <button onclick="registerFace()" class="btn-primary mt-3">Yuzni ro'yxatga olish</button>
+          <div id="faceResult" class="mt-2 text-sm"></div>
+        </div>
+        <!-- Mijozdan-Mijozga Keshbek Aksiyasi Sozlamalari -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🎯 Mijozdan-Mijozga Keshbek Aksiyasi Sozlamalari</h3>
+          <div class="text-xs text-slate-500 mb-4 border border-slate-600/50 rounded-lg p-3 bg-slate-800/30">
+            <span class="text-cyan-400 font-medium">📊 Platforma komissiyasi: 3% (Tizimli qulflangan)</span>
+            <br>Quyida faqat bemorlarning bir-birini taklif qilish aksiyasini boshqarishingiz mumkin.
+          </div>
+          <div class="space-y-3">
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-700 cursor-pointer hover:border-slate-500 transition" onclick="document.getElementById('modeOff').checked=true;saveCampaignMode('off')">
+              <input type="radio" name="campaignMode" id="modeOff" value="off" class="accent-red-500 w-5 h-5" onchange="saveCampaignMode('off')">
+              <div><span class="text-sm font-medium text-slate-200">🔴 Butunlay o'chirish</span><br><span class="text-xs text-slate-400">Bemorlar bir-biridan keshbek olmaydi</span></div>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-700 cursor-pointer hover:border-slate-500 transition" onclick="document.getElementById('modeAlways').checked=true;saveCampaignMode('always')">
+              <input type="radio" name="campaignMode" id="modeAlways" value="always" class="accent-green-500 w-5 h-5" onchange="saveCampaignMode('always')">
+              <div><span class="text-sm font-medium text-slate-200">🟢 Doimiy yoqish</span><br><span class="text-xs text-slate-400">Bemorlar bir-birini taklif qilib, 3% keshbek oladi</span></div>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-slate-700 cursor-pointer hover:border-slate-500 transition" onclick="document.getElementById('modeScheduled').checked=true;saveCampaignMode('scheduled')">
+              <input type="radio" name="campaignMode" id="modeScheduled" value="scheduled" class="accent-yellow-500 w-5 h-5" onchange="saveCampaignMode('scheduled')">
+              <div><span class="text-sm font-medium text-slate-200">🟡 Ma'lum muddatli aksiya</span><br><span class="text-xs text-slate-400">Faqat belgilangan davr mobaynida ishlaydi</span></div>
+            </label>
+            <div id="campaignSaveStatus" class="text-xs text-green-400 hidden"></div>
+          </div>
+        </div>
+        <!-- Shifokorlarni boshqarish -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">👨‍⚕️ Shifokorlarni boshqarish</h3>
+          <details class="mb-3">
+            <summary class="text-sm font-medium text-blue-400 cursor-pointer">+ Yangi shifokor qo'shish</summary>
+            <form id="doctorCreateForm" class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+              <input type="text" id="docName" class="input-field" placeholder="Ism familiya" required>
+              <input type="text" id="docUsername" class="input-field" placeholder="Login" required>
+              <input type="password" id="docPassword" class="input-field" placeholder="Parol" required minlength="4">
+              <select id="docSpecialization" class="input-field" required>
+                <option value="">— Ixtisoslikni tanlang —</option>
+                <option value="uzi">🔬 UZI</option>
+                <option value="laborant">🧪 Laboratoriya</option>
+                <option value="terapevt">🩺 Terapevt</option>
+                <option value="ginekolog">🤰 Ginekolog</option>
+                <option value="kardiolog">🫀 Kardiolog</option>
+                <option value="stomatolog">🦷 Stomatolog</option>
+                <option value="nevrolog">🧠 Nevrolog</option>
+                <option value="pediatr">👶 Pediatr</option>
+                <option value="oftalmolog">👁️ Oftalmolog</option>
+                <option value="endokrinolog">🏥 Endokrinolog</option>
+              </select>
+              <button type="submit" class="btn-primary">Qo'shish</button>
+            </form>
+            <div id="doctorCreateResult" class="mt-2 text-sm"></div>
+          </details>
+          <div class="overflow-x-auto max-h-64 overflow-y-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-slate-400 border-b border-slate-700">
+                <th class="text-left py-2 px-2">Shifokor</th>
+                <th class="text-left py-2 px-2">Login</th>
+                <th class="text-left py-2 px-2">Ixtisoslik</th>
+                <th class="text-center py-2 px-2">Bonusi (%)</th>
+                <th class="text-right py-2 px-2">Balans (UZS)</th>
+                <th class="text-center py-2 px-2">Holat</th>
+                <th class="text-center py-2 px-2">Amal</th>
+              </tr></thead>
+              <tbody id="doctorsManageBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Xodimlar davomati panellari -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🕐 Xodimlar davomati (Bugun)</h3>
+          <div class="overflow-x-auto max-h-48 overflow-y-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-slate-400 border-b border-slate-700">
+                <th class="text-left py-2 px-2">Xodim</th>
+                <th class="text-left py-2 px-2">Kelish vaqti</th>
+                <th class="text-left py-2 px-2">Holat</th>
+              </tr></thead>
+              <tbody id="attendanceBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Bemor Face ID Check-ins -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🧑‍🤝‍🧑 Face ID orqali kelgan bemorlar (Bugun)</h3>
+          <div class="overflow-x-auto max-h-48 overflow-y-auto" id="checkinsBody">
+            <p class="text-sm text-slate-400 py-4 text-center">Yuklanmoqda...</p>
+          </div>
+        </div>
+        <!-- Referal boshqaruv panellari -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🔗 Referal boshqaruvi</h3>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <div class="stat-card p-3"><p class="text-slate-400 text-xs">Hamkorlar</p><p id="refTotalPartners" class="text-xl font-bold mt-1">0</p></div>
+            <div class="stat-card p-3"><p class="text-slate-400 text-xs">Jami balans</p><p id="refTotalBalance" class="text-xl font-bold mt-1">0 so'm</p></div>
+            <div class="stat-card p-3"><p class="text-slate-400 text-xs">Referallar</p><p id="refTotalReferrals" class="text-xl font-bold mt-1">0</p></div>
+            <div class="stat-card p-3"><p class="text-slate-400 text-xs">Bugun check-in</p><p id="refTodayCheckins" class="text-xl font-bold mt-1">0</p></div>
+          </div>
+          <!-- Hamkor yaratish -->
+          <details class="mb-3">
+            <summary class="text-sm font-medium text-blue-400 cursor-pointer">+ Yangi hamkor qo'shish</summary>
+            <form id="partnerForm" class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+              <input type="text" id="partnerName" class="input-field" placeholder="Hamkor ismi" required>
+              <input type="text" id="partnerPhone" class="input-field" placeholder="Telefon">
+              <input type="text" id="partnerNotes" class="input-field" placeholder="Izoh">
+              <button type="submit" class="btn-primary">Yaratish</button>
+            </form>
+            <div id="partnerResult" class="mt-2 text-sm"></div>
+          </details>
+          <!-- Hamkorlar jadvali -->
+          <div class="overflow-x-auto max-h-48 overflow-y-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="text-slate-400 border-b border-slate-700">
+                <th class="text-left py-2 px-2">Hamkor</th>
+                <th class="text-left py-2 px-2">Kod</th>
+                <th class="text-right py-2 px-2">Balans</th>
+                <th class="text-center py-2 px-2">Amal</th>
+              </tr></thead>
+              <tbody id="partnersBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Balans boshqarish modal -->
+        <div id="balanceModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeBalanceModal()">
+          <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold mb-4" id="balanceModalTitle">💰 Balansni boshqarish</h3>
+            <p class="text-sm text-slate-400 mb-2" id="balanceModalPartner"></p>
+            <p class="text-sm text-slate-400 mb-4">Joriy balans: <span id="balanceModalCurrent" class="text-xl font-bold text-green-400">0</span> so'm</p>
+            <form id="balanceForm" class="space-y-3">
+              <select id="balanceType" class="input-field">
+                <option value="topup">➕ Top-up (to'ldirish)</option>
+                <option value="payout">➖ Payout (yechish)</option>
+              </select>
+              <input type="number" id="balanceAmount" class="input-field" placeholder="Summa" min="1000" step="1000" required>
+              <textarea id="balanceNote" class="input-field" placeholder="Izoh (majburiy)" rows="2" required></textarea>
+              <div class="flex gap-2">
+                <button type="submit" class="btn-primary flex-1">Saqlash</button>
+                <button type="button" onclick="closeBalanceModal()" class="btn-danger flex-1">Bekor qilish</button>
+              </div>
+            </form>
+            <div id="balanceResult" class="mt-2 text-sm"></div>
+          </div>
+        </div>
+
+        <!-- Doktor balansini to'ldirish modal -->
+        <div id="topupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick="if(event.target===this)closeTopupModal()">
+          <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold mb-4">💰 Balansni to'ldirish</h3>
+            <p class="text-sm text-slate-400 mb-2" id="topupModalDoctor"></p>
+            <p class="text-sm text-slate-400 mb-4">Joriy balans: <span id="topupModalCurrent" class="text-xl font-bold text-green-400">0</span> so'm</p>
+            <form id="topupForm" class="space-y-3">
+              <input type="number" id="topupAmount" class="input-field" placeholder="Summa (so'm)" min="1000" step="1000" required>
+              <div class="flex gap-2">
+                <button type="submit" class="btn-primary flex-1">✅ To'ldirish</button>
+                <button type="button" onclick="closeTopupModal()" class="btn-danger flex-1">Bekor qilish</button>
+              </div>
+            </form>
+            <div id="topupResult" class="mt-2 text-sm"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================= -->
+      <!-- RECEPTIONIST VIEW -->
+      <!-- ============================================= -->
+      <div data-role="receptionist" class="hidden-role space-y-6 fade-in">
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="stat-card"><p class="text-slate-400 text-sm">Bugungi navbat</p><p id="recQueueCount" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Bugungi qabullar</p><p id="recAppointments" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Navbatdagi</p><p id="recWaiting" class="stat-value mt-1">0</p></div>
+        </div>
+        <!-- Voice Registration -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">🎙 Front-Desk AI Scribe</h3>
+          <div class="flex items-center gap-4 mb-4">
+            <button id="recMicBtn" onclick="toggleRecording()" class="w-16 h-16 rounded-full text-3xl flex items-center justify-center transition-all" style="background:linear-gradient(135deg,#3b82f6,#a855f7)">🎤</button>
+            <div><p id="recStatus" class="text-slate-400 text-sm">Mikrofonga bosing va bemor ma'lumotlarini ayting</p><p id="recTranscription" class="text-sm mt-1 text-slate-300"></p></div>
+          </div>
+          <form id="receptionForm" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input type="text" id="recName" class="input-field" placeholder="Bemor ismi" required>
+            <input type="text" id="recPhone" class="input-field" placeholder="Telefon">
+            <input type="text" id="recDoctor" class="input-field" placeholder="Shifokor">
+            <button type="submit" class="btn-primary">Navbatga yozish</button>
+          </form>
+          <div id="recResult" class="mt-2 text-sm"></div>
+        </div>
+        <!-- Queue -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">📋 Bugungi navbat</h3>
+          <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">#</th><th class="text-left py-2 px-2">Bemor</th><th class="text-left py-2 px-2">Shifokor</th><th class="text-left py-2 px-2">Status</th></tr></thead><tbody id="queueBody"></tbody></table></div>
+        </div>
+        <!-- Bemorlarni ro'yxatdan o'tkazish (Face ID bilan) -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4">😀 Bemorlarni Face ID orqali ro'yxatdan o'tkazish</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <form id="patientRegForm" class="space-y-3">
+                <input type="text" id="patFirstName" class="input-field" placeholder="Ism" required>
+                <input type="text" id="patLastName" class="input-field" placeholder="Familiya">
+                <input type="text" id="patPhone" class="input-field" placeholder="Telefon raqam">
+                <input type="date" id="patBirthDate" class="input-field">
+                <div id="patDescriptorData" class="hidden"></div>
+                <button type="submit" class="btn-primary w-full">Ro'yxatdan o'tkazish</button>
+              </form>
+              <div id="patRegResult" class="mt-2 text-sm"></div>
+            </div>
+            <div>
+              <div class="video-container mx-auto" style="max-width:320px">
+                <video id="patVideo" autoplay muted playsinline class="rounded-xl w-full bg-slate-900"></video>
+                <canvas id="patOverlay" class="hidden"></canvas>
+              </div>
+              <button id="patCaptureBtn" onclick="capturePatientFace()" class="btn-primary w-full mt-2 text-sm">
+                📸 Yuzni skanerlash
+              </button>
+              <p id="patCameraStatus" class="text-xs text-slate-400 mt-1 text-center">Kamerani yoqish uchun bosing</p>
+            </div>
+          </div>
+          <!-- So'nggi ro'yxatdan o'tgan bemorlar -->
+          <div class="mt-4">
+            <h4 class="text-sm font-semibold text-slate-300 mb-2">So'nggi ro'yxatdan o'tganlar</h4>
+            <div class="overflow-x-auto max-h-40 overflow-y-auto">
+              <table class="w-full text-sm">
+                <thead><tr class="text-slate-400 border-b border-slate-700">
+                  <th class="text-left py-1 px-2">Ism</th>
+                  <th class="text-left py-1 px-2">Telefon</th>
+                  <th class="text-left py-1 px-2">Vaqt</th>
+                </tr></thead>
+                <tbody id="recentPatientsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================= -->
+      <!-- DOCTOR VIEW -->
+      <!-- ============================================= -->
+      <div data-role="doctor" class="hidden-role space-y-6 fade-in">
+        <div class="flex items-center gap-3 mb-2">
+          <span id="specBadge" class="badge bg-cyan-600 text-white text-xs px-3 py-1"></span>
+          <span class="text-slate-400 text-sm" id="specNameDisplay"></span>
+        </div>
+        <!-- Bugungi navbat (Queue) -->
+        <div class="card" id="docQueueCard">
+          <h3 class="text-lg font-semibold mb-3">📋 Bugungi navbat</h3>
+          <div id="docQueueContent">
+            <p class="text-slate-400 text-sm">Yuklanmoqda...</p>
+          </div>
+        </div>
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="stat-card"><p class="text-slate-400 text-sm">Bugun qabul qilingan</p><p id="docTodayPatients" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Jami bemorlar</p><p id="docTotalPatients" class="stat-value mt-1">0</p></div>
+          <div class="stat-card"><p class="text-slate-400 text-sm">Daromad</p><p id="docRevenue" class="stat-value mt-1">0</p></div>
+        </div>
+        <!-- AI Scribe -->
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-4" id="scribeTitle">🩺 AI Scribe — Ovozli diktant</h3>
+          <div class="flex items-center gap-4 mb-4">
+            <button id="docMicBtn" onclick="toggleDocRecording()" class="w-16 h-16 rounded-full text-3xl flex items-center justify-center transition-all" style="background:linear-gradient(135deg,#22c55e,#16a34a)">🎤</button>
+            <div><p id="docMicStatus" class="text-slate-400 text-sm">Mikrofonga bosing va bemor ma'lumotlarini ayting</p></div>
+          </div>
+          <div id="docScribeResult" class="hidden bg-slate-800/50 rounded-xl p-4 mb-4">
+            <h4 class="font-semibold text-blue-400 mb-2">📋 AI tahlil natijasi</h4>
+            <div id="docScribeContent" class="space-y-2 text-sm"></div>
+          </div>
+          <!-- Specialization maxsus — dinamik jadval -->
+          <div id="specSection" class="hidden mb-4">
+            <div id="specSectionContent" class="rounded-xl p-4 border overflow-x-auto"></div>
+          </div>
+          <!-- Referral Section -->
+          <div id="docReferralSection" class="hidden bg-green-900/20 border border-green-500/30 rounded-xl p-4 mb-4">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="font-semibold text-green-400">🔗 Yo'llanma imkoni aniqlandi</h4>
+              <span class="badge bg-green-600 text-white">Avtomatik</span>
+            </div>
+            <div class="text-sm text-slate-300 mb-3">
+              Bemor: <span id="docRefPatient" class="font-medium"></span> → 
+              <span id="docRefClinic" class="font-medium text-blue-400"></span> klinikasiga
+            </div>
+            <div class="text-sm text-slate-300 mb-4">
+              Xizmat: <span id="docRefService" class="font-medium"></span>
+            </div>
+            <button onclick="confirmDoctorReferral()" id="docBtnConfirmReferral" class="btn-primary w-full sm:w-auto" style="background:linear-gradient(135deg,#059669,#047857)">✅ Muolajani tasdiqlash va Yo'llanma yaratish</button>
+            <div id="docRefResult" class="mt-2 text-sm"></div>
+          </div>
+          <div class="overflow-x-auto max-h-60 overflow-y-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">Bemor</th><th class="text-left py-2 px-2">Tashxis/Tahlil</th><th class="text-left py-2 px-2">Vaqt</th></tr></thead><tbody id="docPatientsBody"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const API = window.location.origin;
+  let token = localStorage.getItem('falcon_token');
+  let user = JSON.parse(localStorage.getItem('falcon_user') || 'null');
+  let mediaRecorder = null, audioChunks = [], recording = false;
+  let docRecorder = null, docChunks = [], docRecording = false;
+  let revenueChart = null;
+
+  // ---- LOGIN ----
+  document.getElementById('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value.trim();
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+    btn.disabled = true; btn.textContent = 'Kutilmoqda...';
+    errEl.classList.add('hidden');
+    try {
+      const res = await fetch(API + '/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password}) });
+      const data = await res.json();
+      if (!data.success) { errEl.textContent = data.error; errEl.classList.remove('hidden'); btn.disabled=false; btn.textContent='Kirish'; return; }
+      token = data.token; user = data.user;
+      localStorage.setItem('falcon_token', token);
+      localStorage.setItem('falcon_user', JSON.stringify(user));
+      showDashboard();
+    } catch(e) { errEl.textContent = 'Server bilan bog\'lanishda xatolik'; errEl.classList.remove('hidden'); }
+    btn.disabled = false; btn.textContent = 'Kirish';
+  };
+
+  function getSpecializationLabel(spec) {
+    const labels = { uzi: '🔬 UZI', laborant: '🧪 Laboratoriya', doctor: '🩺 Shifokor' };
+    return labels[spec] || '🩺 Shifokor';
+  }
+
+  function showDashboard() {
+    if (!user || !token) { document.getElementById('loginScreen').classList.remove('hidden'); document.getElementById('dashboardMain').classList.add('hidden'); return; }
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('dashboardMain').classList.remove('hidden');
+    document.getElementById('userNameDisplay').textContent = user.name;
+    const badge = document.getElementById('roleBadge');
+    const roleColors = { ceo:'bg-purple-600', admin:'bg-blue-600', receptionist:'bg-green-600', doctor:'bg-cyan-600' };
+    badge.textContent = user.role.toUpperCase();
+    badge.className = 'badge ' + (roleColors[user.role] || 'bg-slate-600') + ' text-white';
+    // Hide all role views, show only current
+    document.querySelectorAll('[data-role]').forEach(el => el.classList.add('hidden-role'));
+    document.querySelectorAll('[data-role="' + user.role + '"]').forEach(el => el.classList.remove('hidden-role'));
+    // Specialization-based sections
+    if (user.role === 'doctor' && user.specialization) {
+      const specLabel = getSpecializationLabel(user.specialization);
+      document.getElementById('specBadge').textContent = specLabel;
+      document.getElementById('specNameDisplay').textContent = user.name + ' — ' + (user.specialty || user.specialization);
+      // Scribe sarlavhasini o'zgartirish
+      const titles = { uzi: '🔬 UZI AI Scribe — Ovozli diktant', laborant: '🧪 Laboratoriya AI Scribe — Tahlil diktanti', doctor: '🩺 AI Scribe — Ovozli diktant' };
+      document.getElementById('scribeTitle').textContent = titles[user.specialization] || titles.doctor;
+      document.getElementById('docMicStatus').textContent = user.specialization === 'uzi'
+        ? 'Mikrofonga bosing va UZI tekshiruv ma\'lumotlarini ayting'
+        : user.specialization === 'laborant'
+          ? 'Mikrofonga bosing va tahlil natijalarini ayting'
+          : 'Mikrofonga bosing va bemor tashxisini ayting';
+    }
+    loadRoleData();
+  }
+
+  function logout() {
+    fetch(API + '/api/auth/logout', { method:'POST', headers:{ 'Content-Type':'application/json', ...(token ? { 'Authorization':'Bearer '+token } : {}) } }).catch(()=>{});
+    localStorage.removeItem('falcon_token');
+    localStorage.removeItem('falcon_user');
+    token = null; user = null;
+    document.getElementById('dashboardMain').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+  }
+  function authHeaders() { return { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }; }
+
+  async function refreshToken() {
+    try {
+      const r = await fetch(API + '/api/auth/refresh', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ token }) });
+      const d = await r.json();
+      if (d.success && d.token) {
+        token = d.token;
+        localStorage.setItem('falcon_token', token);
+        if (d.user) { user = d.user; localStorage.setItem('falcon_user', JSON.stringify(user)); }
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+
+  async function apiGet(url) { const r=await fetch(API+url,{headers:authHeaders()}); if (r.status===401 && await refreshToken()) { const r2=await fetch(API+url,{headers:authHeaders()}); return r2.json(); } return r.json(); }
+
+  async function apiPost(url,body) { const r=await fetch(API+url,{method:'POST',headers:authHeaders(),body:JSON.stringify(body)}); if (r.status===401 && await refreshToken()) { const r2=await fetch(API+url,{method:'POST',headers:authHeaders(),body:JSON.stringify(body)}); return r2.json(); } return r.json(); }
+
+  // ---- CEO ----
+  async function loadCeoData() {
+    try {
+      const fin = await apiGet('/api/analytics/finance-kpi');
+      document.getElementById('ceoRevenue').textContent = (fin.total_revenue||0).toLocaleString();
+      document.getElementById('ceoProfit').textContent = (fin.net_profit||0).toLocaleString();
+      document.getElementById('ceoPatients').textContent = fin.total_patients||0;
+      document.getElementById('ceoInventory').textContent = (fin.inventory_value||0).toLocaleString() + ' so\'m';
+      // Leaderboard
+      const lb = await apiGet('/api/analytics/doctor-leaderboard');
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = (lb.data||[]).map((d,i) => '<tr class="border-b border-slate-700/50"><td class="py-2 px-2">'+(i+1)+'</td><td class="py-2 px-2 font-medium">'+d.doctor_name+'</td><td class="py-2 px-2 text-right">'+d.patients_count+'</td><td class="py-2 px-2 text-right text-green-400">'+(d.total_revenue||0).toLocaleString()+'</td><td class="py-2 px-2 text-right"><span class="badge '+(d.efficiency>70?'bg-green-600':d.efficiency>40?'bg-yellow-600':'bg-red-600')+' text-white">'+d.efficiency+'%</span></td></tr>').join('');
+      // Inventory waste
+      loadWasteData();
+      // Chart
+      const ctx = document.getElementById('revenueChart').getContext('2d');
+      if(revenueChart) revenueChart.destroy();
+      const trend = fin.weekly_trend || [];
+      revenueChart = new Chart(ctx, {
+        type:'bar', data:{ labels:trend.map(d=>new Date(d.date).toLocaleDateString('uz-UZ',{weekday:'short'})), datasets:[{label:'Tushum',data:trend.map(d=>d.revenue),backgroundColor:'rgba(59,130,246,0.5)',borderColor:'#3b82f6',borderWidth:1},{label:'Xarajat',data:trend.map(d=>d.costs),backgroundColor:'rgba(239,68,68,0.5)',borderColor:'#ef4444',borderWidth:1}] },
+        options:{ responsive:true, plugins:{legend:{labels:{color:'#94a3b8'}}}, scales:{y:{beginAtZero:true,grid:{color:'rgba(148,163,184,0.1)'}},x:{grid:{display:false}}} }
+      });
+      loadReferralStats();
+    } catch(e){ console.error('CEO load error:',e); }
+  }
+
+  async function loadWasteData() {
+    try {
+      const w = await apiGet('/api/reports/inventory-waste');
+      const totalSum = w.total_waste_sum || 0;
+      const alertEl = document.getElementById('wasteAlert');
+      const noDataEl = document.getElementById('wasteNoData');
+      const tableWrap = document.getElementById('wasteTableWrap');
+      const doctorBody = document.getElementById('wasteDoctorBody');
+      const wasteSum = document.getElementById('wasteSum');
+
+      if (totalSum > 0) {
+        wasteSum.textContent = totalSum.toLocaleString();
+        alertEl.classList.remove('hidden');
+        noDataEl.classList.add('hidden');
+        doctorBody.innerHTML = (w.doctor_waste_ranking||[]).map(d =>
+          '<tr class="border-b border-slate-700/50">' +
+          '<td class="py-2 px-2 font-medium">' + (d.doctor_name||'noma\'lum') + '</td>' +
+          '<td class="py-2 px-2 text-right text-yellow-400">' + (d.total_overuse_qty||0).toLocaleString() + '</td>' +
+          '<td class="py-2 px-2 text-right text-red-400">' + (d.total_waste_cost||0).toLocaleString() + '</td>' +
+          '<td class="py-2 px-2 text-right text-slate-400">' + (d.overuse_events||0) + '</td>' +
+          '</tr>'
+        ).join('');
+        tableWrap.classList.remove('hidden');
+      } else {
+        alertEl.classList.add('hidden');
+        noDataEl.classList.remove('hidden');
+        tableWrap.classList.add('hidden');
+      }
+    } catch(e){ console.error('Waste load error:',e); }
+  }
+
+  // ---- ADMIN ----
+  async function loadAdminData() {
+    try {
+      const inv = await apiGet('/api/inventory/status');
+      document.getElementById('adminItemCount').textContent = (inv.items||[]).length;
+      document.getElementById('adminLowStock').textContent = inv.low_count||0;
+      // Doctors
+      const docs = await apiGet('/api/face/doctors');
+      document.getElementById('adminDoctorCount').textContent = (docs.doctors||[]).length;
+      // Inventory table
+      const tbody = document.getElementById('inventoryBody');
+      tbody.innerHTML = (inv.items||[]).map(i => '<tr class="border-b border-slate-700/50"><td class="py-2 px-2">'+i.name+'</td><td class="py-2 px-2 text-slate-400">'+i.sku+'</td><td class="py-2 px-2 text-right'+(i.current_stock<=i.min_stock?' text-red-400 font-bold':'')+'">'+i.current_stock+' '+i.unit+'</td><td class="py-2 px-2 text-right text-slate-400">'+i.min_stock||'-'+'</td></tr>').join('');
+      loadAttendance();
+      loadCheckins();
+      loadReferralStats();
+      loadPartners();
+      loadManageDoctors();
+      loadCampaignSettings();
+      loadNorms();
+    } catch(e){ console.error('Admin load error:',e); }
+  }
+
+  // ---- Material Norms CRUD ----
+  async function loadNorms() {
+    try {
+      const res = await apiGet('/api/inventory/norms');
+      const container = document.getElementById('normsList');
+      if (!res.success || !res.norms || res.norms.length === 0) {
+        container.innerHTML = '<p class="text-sm text-slate-400">Hech qanday norma qo\'shilmagan</p>';
+        return;
+      }
+      container.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">Muolaja</th><th class="text-left py-2 px-2">Material</th><th class="text-right py-2 px-2">Norma</th><th class="text-center py-2 px-2">Amal</th></tr></thead><tbody>' +
+        res.norms.map(n => `<tr class="border-b border-slate-700/50">
+          <td class="py-2 px-2">${n.procedure_name}</td>
+          <td class="py-2 px-2 text-slate-400">${n.item_name || '-'}</td>
+          <td class="py-2 px-2 text-right">${n.standard_quantity}</td>
+          <td class="py-2 px-2 text-center">
+            <button class="text-xs text-red-400 hover:text-red-300" onclick="deleteNorm(${n.id})">O\'chirish</button>
+          </td>
+        </tr>`).join('') + '</tbody></table>';
+    } catch(e) { console.error('Norms load error:', e); }
+  }
+
+  async function deleteNorm(id) {
+    if (!confirm('Bu normani o\'chirishni tasdiqlaysizmi?')) return;
+    const res = await fetch('/api/inventory/norms/' + id, { method:'DELETE', headers: { 'Authorization':'Bearer '+token } });
+    const data = await res.json();
+    if (data.success) { loadNorms(); document.getElementById('normsResult').textContent = '✅ O\'chirildi'; }
+    else document.getElementById('normsResult').textContent = '❌ ' + (data.error || 'Xatolik');
+  }
+
+  document.getElementById('normsForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const procedure_name = document.getElementById('normProcedure').value.trim();
+    const item_id = parseInt(document.getElementById('normItemId').value);
+    const standard_quantity = parseFloat(document.getElementById('normQty').value);
+    const res = await apiPost('/api/inventory/norms', { procedure_name, item_id, standard_quantity });
+    const el = document.getElementById('normsResult');
+    if (res.success) {
+      el.textContent = '✅ Norma qo\'shildi';
+      el.className = 'mt-2 text-sm text-green-400';
+      document.getElementById('normsForm').reset();
+      loadNorms();
+    } else {
+      el.textContent = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 4000);
+  };
+
+  // ---- Campaign Settings ----
+  async function loadCampaignSettings() {
+    try {
+      const res = await apiGet('/api/campaign/settings');
+      if (res.success) {
+        const mode = res.campaign_mode || 'always';
+        const radio = document.getElementById('mode' + mode.charAt(0).toUpperCase() + mode.slice(1));
+        if (radio) radio.checked = true;
+      }
+    } catch(e) { console.error('Campaign settings load error:', e); }
+  }
+
+  async function saveCampaignMode(mode) {
+    try {
+      const res = await apiPost('/api/campaign/settings', { campaign_mode: mode });
+      const statusEl = document.getElementById('campaignSaveStatus');
+      if (res.success) {
+        statusEl.textContent = '✅ Aksiya rejimi yangilandi: ' + (mode === 'off' ? 'O\'chirilgan' : mode === 'always' ? 'Doimiy yoqilgan' : 'Muddatli aksiya');
+        statusEl.className = 'text-xs text-green-400';
+      } else {
+        statusEl.textContent = '❌ Xatolik: ' + (res.error || 'Noma\'lum');
+        statusEl.className = 'text-xs text-red-400';
+      }
+      statusEl.classList.remove('hidden');
+      setTimeout(() => statusEl.classList.add('hidden'), 4000);
+    } catch(e) {
+      console.error('Campaign save error:', e);
+    }
+  }
+
+  document.getElementById('inventoryForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await apiPost('/api/inventory/add', { name:document.getElementById('invName').value, sku:document.getElementById('invSku').value, quantity:parseFloat(document.getElementById('invQty').value), unit:document.getElementById('invUnit').value, cost_price:parseFloat(document.getElementById('invCost').value)||0 });
+    document.getElementById('inventoryForm').reset();
+    loadAdminData();
+  };
+
+  async function registerFace() {
+    const doctorId = document.getElementById('faceDoctorId').value.trim();
+    const descriptor = document.getElementById('faceDescriptor').value.trim();
+    if(!doctorId||!descriptor) { document.getElementById('faceResult').textContent='❌ Ikkala maydonni to\'ldiring'; return; }
+    const res = await apiPost('/api/face/register', { doctor_id:doctorId, face_descriptor:JSON.parse(descriptor) });
+    document.getElementById('faceResult').textContent = res.success ? '✅ Yuz modeli saqlandi' : '❌ Xatolik: '+(res.error||'');
+  }
+
+  // ---- SHIFOKORLARNI BOSHQARISH ----
+  document.getElementById('doctorCreateForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'Kutilmoqda...';
+    const res = await apiPost('/api/auth/register-doctor', {
+      name: document.getElementById('docName').value.trim(),
+      username: document.getElementById('docUsername').value.trim(),
+      password: document.getElementById('docPassword').value,
+      specialization: document.getElementById('docSpecialization').value
+    });
+    const el = document.getElementById('doctorCreateResult');
+    if (res.success) {
+      el.innerHTML = `✅ ${res.doctor.first_name} ${res.doctor.last_name} qo'shildi (${res.doctor.specialization})`;
+      el.className = 'mt-2 text-sm text-green-400';
+      document.getElementById('doctorCreateForm').reset();
+      loadManageDoctors();
+    } else {
+      el.innerHTML = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+    btn.disabled = false; btn.textContent = 'Qo\'shish';
+  };
+
+  async function loadManageDoctors() {
+    try {
+      const res = await apiGet('/api/doctors/manage');
+      const tbody = document.getElementById('doctorsManageBody');
+      if (!res.doctors || res.doctors.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-slate-500 py-4 text-sm">Hali shifokor yo\'q</td></tr>';
+        return;
+      }
+      const specLabels = { uzi: '🔬 UZI', laborant: '🧪 Laboratoriya', terapevt: '🩺 Terapevt', ginekolog: '🤰 Ginekolog', kardiolog: '🫀 Kardiolog', stomatolog: '🦷 Stomatolog', nevrolog: '🧠 Nevrolog', pediatr: '👶 Pediatr', oftalmolog: '👁️ Oftalmolog', endokrinolog: '🏥 Endokrinolog' };
+      tbody.innerHTML = res.doctors.map(d => {
+        const isActive = d.status === 'Faol';
+        const bonus = d.referrer_bonus_percent !== null && d.referrer_bonus_percent !== undefined ? d.referrer_bonus_percent : 10.0;
+        return `<tr class="border-b border-slate-700/50">
+          <td class="py-2 px-2 font-medium">${d.first_name} ${d.last_name || ''}</td>
+          <td class="py-2 px-2 text-slate-400 text-xs font-mono">${d.username || '-'}</td>
+          <td class="py-2 px-2 text-xs">${specLabels[d.specialization] || d.specialization}</td>
+          <td class="py-2 px-2 text-center">
+            <div style="display:flex;align-items:center;gap:4px;justify-content:center">
+              <input type="number" id="bonus-${d.id}" value="${bonus}" min="0" max="100" step="0.5" style="width:56px;padding:3px 4px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px;text-align:center">
+              <button onclick="updateBonusPercent('${d.id}')" class="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white" style="font-size:10px">✏️</button>
+            </div>
+          </td>
+          <td class="py-2 px-2 text-right font-mono">
+            <span id="balDisplay-${d.id}">${(d.balance || 0).toLocaleString()}</span>
+            <button onclick="openTopupModal('${d.id}','${(d.first_name + ' ' + (d.last_name || '')).replace(/'/g,"\\'")}')" class="text-xs ml-1 px-1.5 py-0.5 rounded bg-green-600 hover:bg-green-700 text-white" title="Balansni to'ldirish">💰</button>
+          </td>
+          <td class="py-2 px-2 text-center"><span class="badge ${isActive ? 'bg-green-600' : 'bg-red-600'} text-white text-xs">${d.status}</span></td>
+          <td class="py-2 px-2 text-center">
+            <button onclick="toggleDoctorStatus('${d.id}')" class="text-xs px-2 py-1 rounded ${isActive ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white">
+              ${isActive ? '🔒 Bloklash' : '🔓 Faollashtirish'}
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch(e) { console.error('Manage doctors error:', e); }
+  }
+
+  async function toggleDoctorStatus(doctorId) {
+    const res = await apiPost('/api/doctors/toggle-status', { doctor_id: doctorId });
+    if (res.success) {
+      loadManageDoctors();
+    } else {
+      alert('Xatolik: ' + (res.error || ''));
+    }
+  }
+
+  async function updateBonusPercent(doctorId) {
+    const input = document.getElementById('bonus-' + doctorId);
+    if (!input) return;
+    const percent = parseFloat(input.value);
+    if (isNaN(percent) || percent < 0 || percent > 100) {
+      alert('Foiz 0-100 oralig\'ida bo\'lishi kerak');
+      return;
+    }
+    const res = await apiPost('/api/doctors/update-bonus-percent', { doctor_id: doctorId, referrer_bonus_percent: percent });
+    if (res.success) {
+      loadManageDoctors();
+    } else {
+      alert('Xatolik: ' + (res.error || ''));
+    }
+  }
+
+  // ---- RECEPTIONIST ----
+  async function loadReceptionData() {
+    try {
+      const apts = await apiGet('/api/appointments');
+      document.getElementById('recAppointments').textContent = apts.total||0;
+      const queue = await apiGet('/api/voice/queues');
+      document.getElementById('recQueueCount').textContent = (queue.data||[]).length;
+      document.getElementById('recWaiting').textContent = (queue.data||[]).filter(q=>q.status==='waiting').length;
+      const tbody = document.getElementById('queueBody');
+      tbody.innerHTML = (queue.data||[]).map(q => '<tr class="border-b border-slate-700/50"><td class="py-2 px-2 font-bold">'+q.queue_number+'</td><td class="py-2 px-2">'+q.patient_name+'</td><td class="py-2 px-2">'+(q.doctor||'-')+'</td><td class="py-2 px-2"><span class="badge '+(q.status==='waiting'?'bg-yellow-600':'bg-green-600')+' text-white">'+q.status+'</span></td></tr>').join('');
+      loadRecentPatients();
+    } catch(e){ console.error('Reception load error:',e); }
+  }
+
+  // Recording
+  async function toggleRecording() {
+    const btn = document.getElementById('recMicBtn');
+    if(recording) { mediaRecorder.stop(); btn.style.background='linear-gradient(135deg,#3b82f6,#a855f7)'; recording=false; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      mediaRecorder = new MediaRecorder(stream); audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, {type:'audio/webm'});
+        document.getElementById('recStatus').textContent = '⏳ AI tahlil qilmoqda...';
+        const formData = new FormData(); formData.append('audio', blob, 'recording.webm');
+        const res = await fetch(API+'/api/reception/voice-register', { method:'POST', headers:{'Authorization':'Bearer '+token}, body:formData });
+        const data = await res.json();
+        stream.getTracks().forEach(t=>t.stop());
+        if(data.success) {
+          document.getElementById('recTranscription').textContent = '📝 '+data.transcription;
+          if(data.data) {
+            if(data.data.patient_name) document.getElementById('recName').value = data.data.patient_name;
+            if(data.data.phone) document.getElementById('recPhone').value = data.data.phone;
+            if(data.data.doctor) document.getElementById('recDoctor').value = data.data.doctor;
+            if(data.data.time) document.getElementById('recName').dataset.time = data.data.time;
+          }
+          document.getElementById('recStatus').textContent = '✅ Tahlil tayyor. Iltimos tekshiring va tasdiqlang.';
+        } else { document.getElementById('recStatus').textContent = '❌ Xatolik: '+(data.error||''); }
+      };
+      mediaRecorder.start(); btn.style.background='linear-gradient(135deg,#ef4444,#dc2626)'; recording=true;
+      document.getElementById('recStatus').textContent = '🔴 Ovoz yozilmoqda...';
+    } catch(e) { document.getElementById('recStatus').textContent = '❌ Mikrofon ruxsati yo\'q: '+e.message; }
+  }
+
+  document.getElementById('receptionForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const res = await apiPost('/api/reception/confirm', { patient_name:document.getElementById('recName').value, phone:document.getElementById('recPhone').value, doctor_name:document.getElementById('recDoctor').value });
+    const el = document.getElementById('recResult');
+    if(res.success) { el.textContent = '✅ Navbat yaratildi! ID: '+res.appointment.appointment_id; el.className='mt-2 text-sm text-green-400'; document.getElementById('receptionForm').reset(); loadReceptionData(); }
+    else { el.textContent = '❌ '+res.error; el.className='mt-2 text-sm text-red-400'; }
+  };
+
+  // ---- DOCTOR ----
+  async function loadDoctorData() {
+    try {
+      const stats = await apiGet('/api/doctor/my-stats');
+      document.getElementById('docTodayPatients').textContent = stats.today_patients||0;
+      document.getElementById('docTotalPatients').textContent = stats.stats?.patients_count||0;
+      document.getElementById('docRevenue').textContent = (stats.stats?.total_revenue||0).toLocaleString();
+      const pat = await apiGet('/api/doctor/my-patients');
+      const tbody = document.getElementById('docPatientsBody');
+      tbody.innerHTML = (pat.consultations||[]).slice(0,20).map(c => {
+        let data = c.data_json ? JSON.parse(c.data_json) : {};
+        return '<tr class="border-b border-slate-700/50"><td class="py-2 px-2 font-medium">'+(data.patient_name||c.patient_name||'Noma\'lum')+'</td><td class="py-2 px-2 text-slate-300">'+(data.diagnosis||data.procedure||'-')+'</td><td class="py-2 px-2 text-slate-400 text-xs">'+new Date(c.created_at).toLocaleString('uz-UZ')+'</td></tr>';
+      }).join('');
+      // Bugungi navbat (Queue)
+      await loadDoctorQueue();
+    } catch(e){ console.error('Doctor load error:',e); }
+  }
+
+  async function loadDoctorQueue() {
+    try {
+      const queueRes = await fetch(API + '/api/appointments/queue', { headers: authHeaders() });
+      const queueData = await queueRes.json();
+      const container = document.getElementById('docQueueContent');
+      if (!queueData.success || !queueData.bookings || queueData.bookings.length === 0) {
+        container.innerHTML = '<p class="text-slate-400 text-sm">✍️ Bugungi navbat bo\'sh</p>';
+        return;
+      }
+      // Filter by doctor name matching current user
+      const myQueue = queueData.bookings.filter(b => {
+        const doc = bookingDoctorsCache?.find(d => d.id === b.doctor_id);
+        if (!doc) return false;
+        const fullName = (doc.first_name + ' ' + (doc.last_name || '')).trim().toLowerCase();
+        return fullName.includes((user.name || '').toLowerCase());
+      });
+      if (myQueue.length === 0) {
+        container.innerHTML = '<p class="text-slate-400 text-sm">✍️ Bugungi navbat bo\'sh</p>';
+        return;
+      }
+      let qhtml = '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">⏰</th><th class="text-left py-2 px-2">Bemor</th><th class="text-left py-2 px-2">Holat</th><th class="text-center py-2 px-2">Amal</th></tr></thead><tbody>';
+      myQueue.forEach(b => {
+        const statusColor = b.status === 'Kutilmoqda' ? 'bg-yellow-600' : b.status === 'Yakunlangan' ? 'bg-green-600' : 'bg-red-600';
+        let actions = '';
+        if (b.status === 'Kutilmoqda') {
+          actions = '<div class="flex gap-1 justify-center"><button class="text-xs px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white" onclick="completeBooking(\'' + b.id + '\')">Yakunlash</button><button class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white" onclick="cancelBooking(\'' + b.id + '\')">Bekor</button></div>';
+        } else {
+          actions = '<span class="text-xs text-slate-500">—</span>';
+        }
+        qhtml += '<tr class="border-b border-slate-700/50"><td class="py-2 px-2 font-mono text-blue-300">' + b.appointment_time + '</td><td class="py-2 px-2 font-medium">' + b.patient_name + '</td><td class="py-2 px-2"><span class="badge ' + statusColor + ' text-white text-xs">' + b.status + '</span></td><td class="py-2 px-2 text-center">' + actions + '</td></tr>';
+      });
+      qhtml += '</tbody></table></div>';
+      container.innerHTML = qhtml;
+    } catch(e) {
+      document.getElementById('docQueueContent').innerHTML = '<p class="text-slate-400 text-sm text-red-400">❌ Yuklashda xatolik</p>';
+    }
+  }
+
+  async function cancelBooking(bookingId) {
+    if (!confirm('Bu navbatni bekor qilishni tasdiqlaysizmi?')) return;
+    const res = await apiPost('/api/appointments/cancel', { booking_id: bookingId });
+    const el = document.getElementById('docQueueContent');
+    if (res.success) {
+      loadDoctorQueue();
+    } else {
+      alert('❌ ' + (res.error || 'Xatolik'));
+    }
+  }
+
+  async function completeBooking(bookingId) {
+    const price = prompt('To\'lov summasini kiriting (UZS) yoki 0:', '0');
+    if (price === null) return;
+    const total_price = parseInt(price) || 0;
+    if (!confirm('Bu navbatni yakunlashni tasdiqlaysizmi?' + (total_price > 0 ? ' Summa: ' + total_price.toLocaleString() + ' UZS' : ''))) return;
+    const res = await apiPost('/api/appointments/complete-status', {
+      booking_id: bookingId,
+      total_price,
+      idempotency_key: 'complete_' + bookingId + '_' + Date.now()
+    });
+    if (res.success) {
+      loadDoctorQueue();
+    } else {
+      alert('❌ ' + (res.error || 'Xatolik'));
+    }
+  }
+
+  let bookingDoctorsCache = null;
+  // Cache doctors list for queue matching
+  (async function initBookingCache() {
+    if (!token) return;
+    try {
+      const res = await fetch(API + '/api/appointments/doctors', { headers: authHeaders() });
+      const data = await res.json();
+      if (data.success) bookingDoctorsCache = data.doctors;
+    } catch(e) {}
+  })();
+
+  // Doctor recording — specialization ga mos scribe/upload
+  async function toggleDocRecording() {
+    const btn = document.getElementById('docMicBtn');
+    if(docRecording) { docRecorder.stop(); btn.style.background='linear-gradient(135deg,#22c55e,#16a34a)'; docRecording=false; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      docRecorder = new MediaRecorder(stream); docChunks = [];
+      docRecorder.ondataavailable = e => docChunks.push(e.data);
+      docRecorder.onstop = async () => {
+        const blob = new Blob(docChunks, {type:'audio/webm'});
+        document.getElementById('docMicStatus').textContent = '⏳ AI tahlil qilmoqda...';
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+        formData.append('doctor_id', user.id);
+        // Specialization bo'yicha /api/scribe/upload ga yuborish
+        const endpoint = user.specialization ? '/api/scribe/upload' : '/api/scribe/transcribe';
+        const res = await fetch(API + endpoint, { method:'POST', headers:{'Authorization':'Bearer '+token}, body:formData });
+        const data = await res.json();
+        stream.getTracks().forEach(t=>t.stop());
+          if(data.success && data.data) {
+            document.getElementById('docScribeResult').classList.remove('hidden');
+            const d = data.data;
+            let html = '<div class="mb-2"><span class="text-slate-400">Bemor:</span> <span class="font-medium text-white">'+(d.patient_name||'Noma\'lum')+'</span></div>';
+            // Dinamik specialization render — barcha 10 yo'nalish uchun
+            const specSection = document.getElementById('specSection');
+            const specContent = document.getElementById('specSectionContent');
+            let sectionHtml = '', hasPairs = false;
+            for (const [key, val] of Object.entries(d)) {
+              if (key === 'patient_name') continue;
+              const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              if (val === null || val === undefined || val === '') continue;
+              if (Array.isArray(val) && val.length > 0) {
+                // Massiv jadvali
+                html += '<div class="mt-2"><span class="text-slate-400">' + label + ':</span> <span class="text-white">' + val.length + ' ta</span></div>';
+                sectionHtml += '<h4 class="text-sm font-semibold text-emerald-400 mb-2">📊 ' + label + '</h4>';
+                sectionHtml += '<table class="w-full text-sm mb-3"><thead><tr class="text-slate-400 border-b border-slate-700">';
+                const cols = Object.keys(val[0] || {});
+                cols.forEach(c => { sectionHtml += '<th class="text-left py-1 px-2 text-xs">' + c.replace(/_/g, ' ').replace(/\b\w/g, cc => cc.toUpperCase()) + '</th>'; });
+                sectionHtml += '</tr></thead><tbody>';
+                val.forEach(row => {
+                  sectionHtml += '<tr class="border-b border-slate-700/30">';
+                  cols.forEach(c => {
+                    let cell = row[c] || '-';
+                    if (c === 'status' || c === 'holat') {
+                      const statusColor = cell === 'Norma' || cell === 'Normal' ? 'text-green-400' : cell === 'Yuqori' ? 'text-red-400' : cell === 'Past' ? 'text-yellow-400' : 'text-slate-300';
+                      cell = '<span class="text-xs font-mono ' + statusColor + '">' + cell + '</span>';
+                    }
+                    sectionHtml += '<td class="py-1 px-2 text-xs">' + cell + '</td>';
+                  });
+                  sectionHtml += '</tr>';
+                });
+                sectionHtml += '</tbody></table>';
+                hasPairs = true;
+              } else if (typeof val === 'object' && val !== null) {
+                // Object jadvali — kalit: qiymat
+                sectionHtml += '<h4 class="text-sm font-semibold text-blue-400 mb-2">📋 ' + label + '</h4>';
+                sectionHtml += '<div class="space-y-1 mb-3">';
+                for (const [subKey, subVal] of Object.entries(val)) {
+                  const subLabel = subKey.replace(/_/g, ' ').replace(/\b\w/g, cc => cc.toUpperCase());
+                  sectionHtml += '<div class="flex justify-between py-1 border-b border-slate-700/30 text-xs"><span class="text-slate-400">' + subLabel + '</span><span class="text-blue-300 font-mono">' + (subVal || '-') + '</span></div>';
+                }
+                sectionHtml += '</div>';
+                hasPairs = true;
+              } else {
+                // Oddiy matn
+                html += '<div class="mt-1"><span class="text-slate-400">' + label + ':</span> <span class="text-white">' + val + '</span></div>';
+              }
+            }
+            if (hasPairs) {
+              specSection.classList.remove('hidden');
+              specContent.innerHTML = sectionHtml;
+            } else {
+              specSection.classList.add('hidden');
+            }
+            document.getElementById('docScribeContent').innerHTML = html;
+          document.getElementById('docMicStatus').textContent = '✅ Diktant tahlil qilindi';
+          setTimeout(loadDoctorData, 1000);
+        } else { document.getElementById('docMicStatus').textContent = '❌ Xatolik: '+(data.error||''); }
+      };
+      docRecorder.start(); btn.style.background='linear-gradient(135deg,#ef4444,#dc2626)'; docRecording=true;
+      document.getElementById('docMicStatus').textContent = '🔴 Ovoz yozilmoqda...';
+    } catch(e) { document.getElementById('docMicStatus').textContent = '❌ Mikrofon ruxsati yo\'q: '+e.message; }
+  }
+
+  // ---- XODIMLAR DAVOMATI (Attendance) ----
+  async function loadAttendance() {
+    try {
+      const res = await fetch(API + '/api/face/attendance', { headers: authHeaders() });
+      const data = await res.json();
+      const tbody = document.getElementById('attendanceBody');
+      if (!data.logs || data.logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 py-4 text-sm">Bugun hech kim kelmagan</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.logs.map(log => {
+        const isMatch = log.matched === 'yes';
+        return `<tr class="border-b border-slate-700/50">
+          <td class="py-2 px-2 font-medium">${log.doctor_name || 'Noma\'lum'}</td>
+          <td class="py-2 px-2 text-slate-400">${new Date(log.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</td>
+          <td class="py-2 px-2"><span class="badge ${isMatch ? 'bg-green-600' : 'bg-red-600'} text-white text-xs">${isMatch ? '✅ Kelgan' : '❌ Noma\'lum'}</span></td>
+        </tr>`;
+      }).join('');
+    } catch(e) { console.error('Attendance load error:', e); }
+  }
+
+  async function loadCheckins() {
+    try {
+      const res = await fetch(API + '/api/face/patient-checkins', { headers: authHeaders() });
+      const data = await res.json();
+      const container = document.getElementById('checkinsBody');
+      if (!data.logs || data.logs.length === 0) {
+        container.innerHTML = '<p class="text-sm text-slate-400 py-4 text-center">Bugun Face ID orqali kelgan bemor yo\'q</p>';
+        return;
+      }
+      container.innerHTML = data.logs.slice(0, 15).map(log => `
+        <div class="flex items-center gap-3 py-2 border-b border-slate-700/50 last:border-0">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm ${log.spoof_warning ? 'bg-red-900/40' : log.matched === 'yes' ? 'bg-green-900/40' : 'bg-slate-700'}">
+            ${log.spoof_warning ? '⚠️' : log.matched === 'yes' ? '✅' : '❓'}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${log.doctor_name || log.patient_name || 'Noma\'lum'}</p>
+            <p class="text-xs text-slate-500">${log.action === 'checked_in' ? 'Check-in' : log.action === 'patient_register' ? 'Ro\'yxatdan o\'tgan' : log.action}${log.liveness_score ? ' · Liveness: ' + (log.liveness_score * 100).toFixed(0) + '%' : ''}</p>
+          </div>
+          <span class="text-xs text-slate-500">${new Date(log.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</span>
+          ${log.spoof_warning ? '<span class="badge bg-red-600 text-white text-xs">SPOOF</span>' : ''}
+        </div>
+      `).join('');
+    } catch(e) { console.error('Checkins load error:', e); }
+  }
+
+  // ---- REFERAL BOSHQARUV ----
+  async function loadReferralStats() {
+    try {
+      const res = await fetch(API + '/api/referral/stats', { headers: authHeaders() });
+      const data = await res.json();
+      if (!data.success) return;
+      document.getElementById('refTotalPartners').textContent = data.total_partners || 0;
+      document.getElementById('refTotalBalance').textContent = (data.total_balance || 0).toLocaleString() + ' so\'m';
+      document.getElementById('refTotalReferrals').textContent = data.total_referrals || 0;
+      document.getElementById('refTodayCheckins').textContent = data.today_checkins || 0;
+    } catch(e) { console.error('Referral stats error:', e); }
+  }
+
+  async function loadPartners() {
+    try {
+      const res = await fetch(API + '/api/referral/partners', { headers: authHeaders() });
+      const data = await res.json();
+      const tbody = document.getElementById('partnersBody');
+      if (!data.partners || data.partners.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-slate-500 py-4 text-sm">Hali hamkor yo\'q</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.partners.map(p => `<tr class="border-b border-slate-700/50">
+        <td class="py-2 px-2 font-medium">${p.name}</td>
+        <td class="py-2 px-2 text-slate-400 text-xs font-mono">${p.referral_code || '-'}</td>
+        <td class="py-2 px-2 text-right font-mono ${p.balance > 0 ? 'text-green-400' : 'text-slate-400'}">${(p.balance || 0).toLocaleString()}</td>
+        <td class="py-2 px-2 text-center"><button onclick="openBalanceModal('${p.id}','${p.name.replace(/'/g,"\\'")}',${p.balance})" class="text-xs px-2 py-1 rounded bg-blue-600 text-white">💰</button></td>
+      </tr>`).join('');
+    } catch(e) { console.error('Partners load error:', e); }
+  }
+
+  document.getElementById('partnerForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const res = await apiPost('/api/referral/generate', {
+      partner_name: document.getElementById('partnerName').value,
+      partner_phone: document.getElementById('partnerPhone').value,
+      notes: document.getElementById('partnerNotes').value
+    });
+    const el = document.getElementById('partnerResult');
+    if (res.success) {
+      el.innerHTML = `✅ Hamkor yaratildi: ${res.partner.name}<br><small class="text-slate-400">Kod: ${res.partner.referral_code}</small>`;
+      el.className = 'mt-2 text-sm text-green-400';
+      document.getElementById('partnerForm').reset();
+      loadPartners();
+      loadReferralStats();
+    } else {
+      el.innerHTML = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+  };
+
+  let balancePartnerId = null;
+  function openBalanceModal(partnerId, partnerName, currentBalance) {
+    balancePartnerId = partnerId;
+    document.getElementById('balanceModal').classList.remove('hidden');
+    document.getElementById('balanceModalPartner').textContent = 'Hamkor: ' + partnerName;
+    document.getElementById('balanceModalCurrent').textContent = (currentBalance || 0).toLocaleString();
+    document.getElementById('balanceResult').textContent = '';
+    document.getElementById('balanceForm').reset();
+  }
+  function closeBalanceModal() {
+    document.getElementById('balanceModal').classList.add('hidden');
+    balancePartnerId = null;
+  }
+  document.getElementById('balanceForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!balancePartnerId) return;
+    const res = await apiPost('/api/referral/adjust-balance', {
+      partner_id: balancePartnerId,
+      type: document.getElementById('balanceType').value,
+      amount: parseFloat(document.getElementById('balanceAmount').value),
+      note: document.getElementById('balanceNote').value
+    });
+    const el = document.getElementById('balanceResult');
+    if (res.success) {
+      el.innerHTML = `✅ ${res.type === 'topup' ? 'To\'ldirildi' : 'Yechildi'}: ${res.amount.toLocaleString()} so'm<br>
+        <small class="text-slate-400">Eski: ${res.previous_balance.toLocaleString()} → Yangi: ${res.new_balance.toLocaleString()} so'm</small>`;
+      el.className = 'mt-2 text-sm text-green-400';
+      loadPartners();
+      loadReferralStats();
+      setTimeout(closeBalanceModal, 2000);
+    } else {
+      el.innerHTML = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+  };
+
+  // ---- DOKTOR BALANSINI TO'LDIRISH ----
+  let topupDoctorId = null;
+
+  function openTopupModal(doctorId, doctorName) {
+    topupDoctorId = doctorId;
+    document.getElementById('topupModal').classList.remove('hidden');
+    document.getElementById('topupModalDoctor').textContent = 'Shifokor: ' + doctorName;
+    const balSpan = document.getElementById('balDisplay-' + doctorId);
+    document.getElementById('topupModalCurrent').textContent = balSpan ? balSpan.textContent : '0';
+    document.getElementById('topupResult').textContent = '';
+    document.getElementById('topupForm').reset();
+  }
+
+  function closeTopupModal() {
+    document.getElementById('topupModal').classList.add('hidden');
+    topupDoctorId = null;
+  }
+
+  document.getElementById('topupForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!topupDoctorId) return;
+    const amount = parseFloat(document.getElementById('topupAmount').value);
+    if (!amount || amount <= 0) {
+      document.getElementById('topupResult').innerHTML = '<span class="text-red-400">❌ Summa musbat bo\'lishi kerak</span>';
+      return;
+    }
+    const res = await apiPost('/api/doctors/topup-balance', {
+      doctor_id: topupDoctorId,
+      amount: amount
+    });
+    const el = document.getElementById('topupResult');
+    if (res.success) {
+      el.innerHTML = `✅ To'ldirildi: ${res.topped_up.toLocaleString()} so'm<br><small class="text-slate-400">Eski: ${res.previous_balance.toLocaleString()} → Yangi: ${res.new_balance.toLocaleString()} so'm</small>`;
+      el.className = 'mt-2 text-sm text-green-400';
+      loadManageDoctors();
+      setTimeout(closeTopupModal, 2000);
+    } else {
+      el.innerHTML = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+  };
+
+  // ---- BEMORLARNI FACE ID ORQALI RO'YXATDAN O'TKAZISH ----
+  let patStream = null;
+  let patDescriptor = null;
+
+  async function startPatientCamera() {
+    try {
+      if (patStream) { patStream.getTracks().forEach(t => t.stop()); }
+      patStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } });
+      document.getElementById('patVideo').srcObject = patStream;
+      document.getElementById('patCameraStatus').textContent = '✅ Kamera ishlamoqda';
+      return true;
+    } catch(e) {
+      document.getElementById('patCameraStatus').textContent = '❌ Kamera xatosi: ' + e.message;
+      return false;
+    }
+  }
+
+  async function capturePatientFace() {
+    const btn = document.getElementById('patCaptureBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Skanerlanmoqda...';
+
+    if (!patStream) {
+      const ok = await startPatientCamera();
+      if (!ok) { btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash'; return; }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Face-api.js yuklanmagan bo'lsa, oddiy snapshot
+    if (typeof faceapi === 'undefined') {
+      try {
+        await loadFaceApiScript();
+        await new Promise(r => setTimeout(r, 2000));
+      } catch(e) {
+        document.getElementById('patCameraStatus').textContent = '❌ Face-api yuklanmadi, descriptor talab qilinadi';
+        btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
+        return;
+      }
+    }
+
+    try {
+      const video = document.getElementById('patVideo');
+      const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+      if (detections.length === 0) {
+        document.getElementById('patCameraStatus').textContent = '❌ Yuz aniqlanmadi. Kameraga to\'g\'ri qarang.';
+        btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
+        return;
+      }
+      patDescriptor = Array.from(detections[0].descriptor);
+      document.getElementById('patDescriptorData').value = JSON.stringify(patDescriptor);
+      document.getElementById('patCameraStatus').textContent = '✅ Yuz skanerlandi! Ro\'yxatdan o\'tkazishingiz mumkin.';
+
+      // Canvas-ga chizish
+      const canvas = document.getElementById('patOverlay');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.classList.remove('hidden');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      faceapi.matchDimensions(canvas, { width: video.videoWidth, height: video.videoHeight });
+      const resized = faceapi.resizeResults(detections, { width: video.videoWidth, height: video.videoHeight });
+      faceapi.draw.drawDetections(canvas, resized);
+
+      btn.textContent = '✅ Skanerlandi';
+    } catch(e) {
+      document.getElementById('patCameraStatus').textContent = '❌ Xatolik: ' + e.message;
+      btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
+    }
+  }
+
+  function loadFaceApiScript() {
+    return new Promise((resolve, reject) => {
+      if (typeof faceapi !== 'undefined') return resolve();
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+      script.onload = async () => {
+        try {
+          await faceapi.nets.ssdMobilenetv1.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
+          await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
+          await faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
+          resolve();
+        } catch(e) { reject(e); }
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  document.getElementById('patientRegForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const descriptor = document.getElementById('patDescriptorData').value;
+    if (!descriptor) {
+      document.getElementById('patRegResult').innerHTML = '<span class="text-red-400">❌ Avval yuzni skanerlang</span>';
+      return;
+    }
+    const res = await apiPost('/api/face/register-patient', {
+      first_name: document.getElementById('patFirstName').value,
+      last_name: document.getElementById('patLastName').value,
+      phone: document.getElementById('patPhone').value,
+      birth_date: document.getElementById('patBirthDate').value,
+      face_descriptor: JSON.parse(descriptor)
+    });
+    const el = document.getElementById('patRegResult');
+    if (res.success) {
+      el.innerHTML = `✅ Bemor ro'yxatdan o'tdi: ${res.patient.first_name} ${res.patient.last_name || ''}`;
+      el.className = 'mt-2 text-sm text-green-400';
+      document.getElementById('patientRegForm').reset();
+      document.getElementById('patDescriptorData').value = '';
+      patDescriptor = null;
+      loadRecentPatients();
+    } else {
+      el.innerHTML = '❌ ' + (res.error || 'Xatolik');
+      el.className = 'mt-2 text-sm text-red-400';
+    }
+  };
+
+  async function loadRecentPatients() {
+    try {
+      const res = await fetch(API + '/api/face/patients', { headers: authHeaders() });
+      const data = await res.json();
+      const tbody = document.getElementById('recentPatientsBody');
+      if (!data.patients || data.patients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 py-3 text-sm">Hali bemor yo\'q</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.patients.slice(0, 10).map(p =>
+        `<tr class="border-b border-slate-700/50">
+          <td class="py-1 px-2 font-medium">${p.first_name} ${p.last_name || ''}</td>
+          <td class="py-1 px-2 text-slate-400">${p.phone || '-'}</td>
+          <td class="py-1 px-2 text-slate-400 text-xs">${new Date(p.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</td>
+        </tr>`
+      ).join('');
+    } catch(e) { console.error('Recent patients load error:', e); }
+  }
+
+  // ---- LOAD ALL ----
+  async function loadRoleData() {
+    if(!user) return;
+    switch(user.role) {
+      case 'ceo': loadCeoData(); break;
+      case 'admin': loadAdminData(); break;
+      case 'receptionist': loadReceptionData(); break;
+      case 'doctor': loadDoctorData(); break;
+      default:
+        // Specialization-based doktorlar uchun
+        if (user.specialization) loadDoctorData();
+        break;
+    }
+  }
+
+  // Login.html dan kelgan bo'lsa, specialization ni aniqlab doktor panelni ko'rsat
+  if (token && user && user.specialization && user.role !== 'ceo' && user.role !== 'admin' && user.role !== 'receptionist') {
+    user.role = 'doctor';
+  }
+
+  // Auto-login if token exists
+  if(token && user) { showDashboard(); }
+
+  // Periodic refresh
+  setInterval(() => { if(user) loadRoleData(); }, 30000);
+  </script>
+<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
+</html>

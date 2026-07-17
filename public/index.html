@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Google AI Studio Style</title>
+  <link rel="stylesheet" href="/css/index.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <style>
+    /* Google AI Studio Split-Pane Layout */
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-app);
+      overflow: hidden;
+      font-family: var(--font-sans);
+    }
+    
+    /* Top Header */
+    .top-header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .top-header .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+    .top-header .brand .logo { color: var(--primary); font-size: 24px; }
+    
+    .top-header .user-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .user-profile-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px 4px 4px;
+      background: var(--bg-surface-variant);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-full);
+      font-size: 0.875rem;
+    }
+    
+    .user-profile-chip .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--on-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+    
+    /* Main Workspace */
+    .workspace {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      padding: 16px;
+      gap: 16px;
+    }
+    
+    /* Left Navigation Rail (Like AI Studio) */
+    .nav-rail {
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: width 0.2s ease;
+    }
+    
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: var(--radius-full);
+      color: var(--text-main);
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: var(--transition);
+    }
+    
+    .nav-item:hover {
+      background: var(--bg-surface-variant);
+    }
+    
+    .nav-item.active {
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+    }
+    
+    .nav-item .material-symbols-outlined {
+      font-size: 20px;
+    }
+    
+    /* Center Applet Area */
+    .main-applet {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .iframe-container {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: transparent;
+    }
+    
+    /* Right Side Panel (Assistant / Tools) */
+    .side-panel {
+      width: 320px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      transition: var(--transition);
+    }
+    
+    .side-panel-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 500;
+    }
+    
+    .side-panel-content {
+      padding: 16px;
+      flex: 1;
+      overflow-y: auto;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    
+    /* Login Overlay */
+    #loginOverlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-app);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div id="loginOverlay">
+    <div class="card max-w-md w-full fade-in" style="text-align: center;">
+      <div class="material-symbols-outlined text-primary mb-2" style="font-size: 48px;">spa</div>
+      <h1 class="text-2xl font-bold mb-1">Falcon AI OS</h1>
+      <p class="text-muted mb-6 text-sm">Material Design 3 Workspace</p>
+      
+      <form id="loginForm" class="flex flex-col gap-4">
+        <input type="text" id="loginUsername" class="input-field" placeholder="Login (ceo, admin, receptionist, doctor)" required>
+        <input type="password" id="loginPassword" class="input-field" placeholder="Parol" required>
+        <div id="loginError" class="text-danger text-sm hidden"></div>
+        <button type="submit" id="loginBtn" class="btn btn-primary w-full mt-2">Tizimga kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Top Header -->
+  <header class="top-header">
+    <div class="brand">
+      <span class="material-symbols-outlined logo">spa</span>
+      <span>Falcon AI OS</span>
+    </div>
+    <div class="user-controls">
+      <button class="btn btn-secondary" onclick="toggleSidePanel()">
+        <span class="material-symbols-outlined">dock_to_right</span>
+        Asistent
+      </button>
+      <div class="user-profile-chip">
+        <div class="avatar" id="userInitials">U</div>
+        <span id="userNameDisplay">User</span>
+        <button onclick="logout()" style="background:none;border:none;color:inherit;cursor:pointer;margin-left:4px;" title="Chiqish">
+          <span class="material-symbols-outlined" style="font-size: 16px;">logout</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Workspace (Split Pane) -->
+  <div class="workspace">
+    <!-- Left Navigation Rail -->
+    <nav class="nav-rail" id="navRail">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 8px 16px 16px;">Bo'limlar</div>
+      <div id="navMenu">
+        <!-- JS injects items here -->
+      </div>
+    </nav>
+
+    <!-- Center Applet Area -->
+    <main class="main-applet">
+      <iframe id="appFrame" class="iframe-container" src=""></iframe>
+    </main>
+
+    <!-- Right Side Panel -->
+    <aside class="side-panel" id="sidePanel" style="display: none;">
+      <div class="side-panel-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="material-symbols-outlined" style="color: var(--primary);">robot_2</span>
+          AI Asistent
+        </div>
+        <button onclick="toggleSidePanel()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="side-panel-content">
+        <div style="padding: 12px; background: var(--bg-surface-variant); border-radius: var(--radius-sm); margin-bottom: 12px;">
+          <p style="margin-bottom: 8px; color: var(--text-main);">Tizim haqida</p>
+          <p style="font-size: 0.75rem;">Siz hozir MD3 (Google AI Studio) dizaynidasiz. Chapdagi menyudan kerakli bo'limni tanlang. Asosiy oyna markaziy "Applet" da ishga tushadi.</p>
+        </div>
+        
+        <div style="padding: 12px; background: var(--bg-surface-variant); border-radius: var(--radius-sm);">
+          <p style="margin-bottom: 8px; color: var(--text-main);">Tezkor yordam</p>
+          <ul style="padding-left: 20px; font-size: 0.75rem; gap: 8px; display: flex; flex-direction: column;">
+            <li>Scribe audioni tahlil qila olmasa, mikrofon ruxsatlarini tekshiring.</li>
+            <li>Yangi material qo'shish uchun Ombor bo'limiga o'ting.</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let token = localStorage.getItem('falcon_token');
+    let user = JSON.parse(localStorage.getItem('falcon_user') || 'null');
+    
+    const navItems = [
+      { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', url: 'dashboard.html', roles: ['ceo', 'admin', 'receptionist', 'doctor'] },
+      { id: 'reception', name: 'AI Qabulxona', icon: 'support_agent', url: 'reception.html', roles: ['admin', 'receptionist'] },
+      { id: 'scribe', name: 'AI Scribe', icon: 'stethoscope', url: 'scribe.html', roles: ['admin', 'doctor'] },
+      { id: 'inventory', name: 'Ombor', icon: 'inventory_2', url: 'inventory.html', roles: ['ceo', 'admin'] },
+      { id: 'face_id', name: 'Face ID', icon: 'face', url: 'face_id.html', roles: ['admin'] }
+    ];
+
+    function toggleSidePanel() {
+      const panel = document.getElementById('sidePanel');
+      if (panel.style.display === 'none') {
+        panel.style.display = 'flex';
+      } else {
+        panel.style.display = 'none';
+      }
+    }
+
+    // --- Login Logic ---
+    document.getElementById('loginForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value.trim();
+      const btn = document.getElementById('loginBtn');
+      const errEl = document.getElementById('loginError');
+      
+      btn.disabled = true; btn.textContent = 'Kutilmoqda...';
+      errEl.classList.add('hidden');
+      
+      try {
+        const res = await fetch(API + '/api/auth/login', { 
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password}) 
+        });
+        const data = await res.json();
+        
+        if (!data.success) { errEl.textContent = data.error; errEl.classList.remove('hidden'); btn.disabled=false; btn.textContent='Tizimga kirish'; return; }
+        
+        token = data.token; user = data.user;
+        localStorage.setItem('falcon_token', token); localStorage.setItem('falcon_user', JSON.stringify(user));
+        initApp();
+      } catch(e) { errEl.textContent = 'Xatolik yuz berdi'; errEl.classList.remove('hidden'); }
+      btn.disabled = false; btn.textContent = 'Tizimga kirish';
+    };
+
+    function logout() {
+      localStorage.removeItem('falcon_token'); localStorage.removeItem('falcon_user');
+      token = null; user = null;
+      document.getElementById('appFrame').src = '';
+      document.getElementById('loginOverlay').classList.remove('hidden');
+    }
+
+    function loadPage(url, elId) {
+      document.getElementById('appFrame').src = url;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('nav-' + elId).classList.add('active');
+    }
+
+    function initApp() {
+      if (!user || !token) { document.getElementById('loginOverlay').classList.remove('hidden'); return; }
+      
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('userNameDisplay').textContent = user.name.split(' ')[0];
+      document.getElementById('userInitials').textContent = user.name.charAt(0).toUpperCase();
+      
+      const menuContainer = document.getElementById('navMenu');
+      menuContainer.innerHTML = '';
+      let firstUrl = null, firstId = null;
+      
+      navItems.forEach(item => {
+        if (item.roles.includes(user.role)) {
+          if (!firstUrl) { firstUrl = item.url; firstId = item.id; }
+          const div = document.createElement('div');
+          div.className = 'nav-item';
+          div.id = 'nav-' + item.id;
+          div.innerHTML = `<span class="material-symbols-outlined">${item.icon}</span><span>${item.name}</span>`;
+          div.onclick = () => loadPage(item.url, item.id);
+          menuContainer.appendChild(div);
+        }
+      });
+      
+      if (firstUrl) loadPage(firstUrl, firstId);
+    }
+
+    if (token && user) initApp();
+  </script>
+</body>
+</html>

@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Statsionar</title>
+  <link rel="stylesheet" href="/css/index.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    /* Layout */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #1e293b; padding: 20px 0; border-right: 1px solid #334155; display: flex; flex-direction: column; }
+    .sidebar .logo { padding: 10px 20px 20px; font-size: 18px; font-weight: 700; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 8px; }
+    .sidebar .logo span { color: #38bdf8; }
+    .sidebar nav { padding: 10px 0; flex: 1; }
+    .sidebar nav a { display: block; padding: 10px 20px; color: #94a3b8; text-decoration: none; transition: .2s; font-size: 14px; border-left: 3px solid transparent; }
+    .sidebar nav a:hover, .sidebar nav a.active { background: #0f172a; color: #e2e8f0; border-left-color: #38bdf8; }
+    .sidebar nav a .icon { margin-right: 8px; }
+    .sidebar .user-info { padding: 15px 20px; border-top: 1px solid #334155; font-size: 12px; color: #64748b; }
+
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .header { padding: 16px 24px; background: #1e293b; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .header h2 { font-size: 18px; font-weight: 600; }
+    .header .actions { display: flex; gap: 8px; }
+
+    .content { padding: 20px 24px; flex: 1; overflow-y: auto; }
+
+    /* Cards */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .stat-card { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+    .stat-card .label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card .sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+    .stat-card.green .value { color: #4ade80; }
+    .stat-card.blue .value { color: #38bdf8; }
+    .stat-card.yellow .value { color: #fbbf24; }
+    .stat-card.red .value { color: #f87171; }
+
+    /* Wards */
+    .wards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .ward-card { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
+    .ward-card .ward-header { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+    .ward-card .ward-header .ward-name { font-weight: 600; font-size: 15px; }
+    .ward-card .ward-header .ward-floor { font-size: 12px; color: #64748b; }
+    .ward-card .ward-beds { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .ward-card .bed { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; transition: .2s; border: 1px solid transparent; position: relative; }
+    .ward-card .bed.free { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+    .ward-card .bed.occupied { background: #7f1d1d; color: #fca5a5; border-color: #991b1b; }
+    .ward-card .bed.maintenance { background: #422006; color: #fcd34d; border-color: #713f12; }
+    .ward-card .bed.cleaning { background: #1e3a5f; color: #93c5fd; border-color: #1e40af; }
+    .ward-card .bed:hover { transform: scale(1.15); }
+    .ward-card .ward-footer { padding: 8px 16px; border-top: 1px solid #334155; display: flex; justify-content: space-between; font-size: 12px; color: #64748b; }
+
+    /* Buttons */
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: .2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-success { background: #059669; color: white; }
+    .btn-success:hover { background: #047857; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-outline { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+    .btn-outline:hover { background: #1e293b; color: #e2e8f0; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 999; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #1e293b; border-radius: 16px; padding: 24px; width: 520px; max-width: 90vw; max-height: 85vh; overflow-y: auto; border: 1px solid #334155; }
+    .modal h3 { font-size: 18px; margin-bottom: 16px; }
+    .modal .form-group { margin-bottom: 12px; }
+    .modal label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    .modal input, .modal select, .modal textarea { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px; }
+    .modal input:focus, .modal select:focus, .modal textarea:focus { outline: none; border-color: #2563eb; }
+    .modal .form-row { display: flex; gap: 10px; }
+    .modal .form-row .form-group { flex: 1; }
+    .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+    th { color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: #0f172a; }
+    tr:hover { background: #1e293b; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .badge-active { background: #064e3b; color: #6ee7b7; }
+    .badge-discharged { background: #1e3a5f; color: #93c5fd; }
+    .badge-shoshilinch { background: #7f1d1d; color: #fca5a5; }
+
+    .tabs { display: flex; gap: 2px; background: #1e293b; border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+    .tabs button { padding: 8px 18px; border: none; background: transparent; color: #64748b; border-radius: 8px; cursor: pointer; font-size: 13px; transition: .2s; }
+    .tabs button.active { background: #2563eb; color: white; }
+    .tabs button:hover:not(.active) { color: #e2e8f0; }
+
+    .search-box { padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 13px; width: 250px; }
+    .search-box:focus { outline: none; border-color: #2563eb; }
+
+    /* Patient detail */
+    .patient-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .info-card { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+    .info-card h4 { font-size: 14px; margin-bottom: 10px; color: #94a3b8; }
+    .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+    .info-row .lbl { color: #64748b; }
+
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">🦅 <span>Falcon</span> AI OS</div>
+    <nav>
+      <a href="#" class="active" onclick="switchPage('dashboard')"><span class="icon">📊</span> Dashboard</a>
+      <a href="#" onclick="switchPage('round')"><span class="icon">🩺</span> Kunlik aylanma</a>
+      <a href="#" onclick="switchPage('wards')"><span class="icon">🏥</span> Palatalar</a>
+      <a href="#" onclick="switchPage('admissions')"><span class="icon">📋</span> Yotqizilganlar</a>
+      <a href="#" onclick="switchPage('patients')"><span class="icon">👤</span> Bemorlar</a>
+      <a href="#" onclick="switchPage('discharge')"><span class="icon">🚪</span> Chiqarish</a>
+    </nav>
+    <div class="user-info">
+      <div id="userName">Yuklanmoqda...</div>
+      <div style="margin-top:4px;font-size:11px" id="userRole"></div>
+      <button class="btn btn-sm btn-outline" style="width:100%;margin-top:8px" onclick="logout()">Chiqish</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="header">
+      <h2 id="pageTitle">🏥 Statsionar Dashboard</h2>
+      <div class="actions">
+        <input type="text" class="search-box" placeholder="🔍 Bemor qidirish..." id="globalSearch" oninput="searchPatient(this.value)">
+        <button class="btn btn-primary" onclick="openAdmitModal()">➕ Yotqizish</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Dashboard Page -->
+      <div class="page active" id="page-dashboard">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card green"><div class="label">🟢 Bo'sh koykalar</div><div class="value" id="statFreeBeds">-</div><div class="sub" id="statFreeSub">jami koykalardan</div></div>
+          <div class="stat-card red"><div class="label">🔴 Band koykalar</div><div class="value" id="statOccupiedBeds">-</div><div class="sub" id="statOccSub">bandlik foizi</div></div>
+          <div class="stat-card blue"><div class="label">📋 Aktiv yotqizish</div><div class="value" id="statActiveAdmissions">-</div><div class="sub">hozir statsionarda</div></div>
+          <div class="stat-card yellow"><div class="label">📥 Bugun qabul</div><div class="value" id="statTodayAdmissions">-</div><div class="sub">📤 chiqish: <span id="statTodayDischarges">-</span></div></div>
+        </div>
+
+        <div class="wards-grid" id="dashboardWards"></div>
+      </div>
+
+      <!-- Wards Page -->
+      <div class="page" id="page-wards">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <button class="btn btn-primary" onclick="openWardModal()">➕ Yangi palata</button>
+        </div>
+        <div class="wards-grid" id="wardsGrid"></div>
+      </div>
+
+      <!-- Admissions Page -->
+      <div class="page" id="page-admissions">
+        <div class="tabs" id="admissionTabs">
+          <button class="active" onclick="loadAdmissions('active')">🟢 Aktiv</button>
+          <button onclick="loadAdmissions('discharged')">🔵 Chiqarilgan</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Bemor</th><th>Palata / Koyka</th><th>Qabul sanasi</th><th>Tashxis</th><th>Doktor</th><th>Holati</th><th></th></tr></thead>
+            <tbody id="admissionsTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Patients Page -->
+      <div class="page" id="page-patients">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Bemor</th><th>Telefon</th><th>Oxirgi yotqizish</th><th>Umumiy</th><th></th></tr></thead>
+            <tbody id="patientsTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Discharge Page -->
+      <div class="page" id="page-discharge">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Bemor</th><th>Palata</th><th>Kun</th><th>Tashxis</th><th>Doktor</th><th></th></tr></thead>
+            <tbody id="dischargeTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== Daily Round Page ===== -->
+      <div class="page" id="page-round">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm btn-outline" onclick="loadRound()">🔄 Yangilash</button>
+            <span style="color:#64748b;font-size:13px;align-self:center" id="roundDate"></span>
+          </div>
+          <span style="color:#94a3b8;font-size:13px" id="roundCount">Yuklanmoqda...</span>
+        </div>
+        <div id="roundList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Admit Modal -->
+<div class="modal-overlay" id="admitModal">
+  <div class="modal">
+    <h3>➕ Yangi bemorni yotqizish</h3>
+    <div class="form-group">
+      <label>Bemor ismi *</label>
+      <input type="text" id="admitName" placeholder="Familiya Ism Sharif" oninput="toggleAdmitBtn()">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Telefon</label>
+        <input type="text" id="admitPhone" placeholder="+998 XX XXX XX XX">
+      </div>
+      <div class="form-group">
+        <label>Yotqizish turi</label>
+        <select id="admitType"><option value="rejali">Rejali</option><option value="shoshilinch">Shoshilinch</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Palata *</label>
+        <select id="admitWard" onchange="loadWardBeds()"><option value="">— Tanlang —</option></select>
+      </div>
+      <div class="form-group">
+        <label>Koyka *</label>
+        <select id="admitBed"><option value="">Avval palata tanlang</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Dastlabki tashxis</label>
+      <textarea id="admitDiagnosis" rows="2" placeholder="Dastlabki tashxis..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Davolovchi doktor</label>
+        <input type="text" id="admitDoctor" placeholder="Doktor ismi">
+      </div>
+      <div class="form-group">
+        <label>To'lov turi</label>
+        <select id="admitPayment"><option value="kassa">Kassa</option><option value="kafolat">Kafolat</option><option value="pos">POS</option><option value="dms">DMS</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Eslatma</label>
+      <textarea id="admitNotes" rows="2"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('admitModal')">Bekor qilish</button>
+      <button class="btn btn-success" id="admitBtn" onclick="doAdmit()" disabled>✅ Yotqizish</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ward Modal -->
+<div class="modal-overlay" id="wardModal">
+  <div class="modal">
+    <h3>➕ Yangi palata</h3>
+    <div class="form-group">
+      <label>Palata nomi *</label>
+      <input type="text" id="wardName" placeholder="masalan: Kardiologiya">
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Qavat</label><input type="number" id="wardFloor" placeholder="2"></div>
+      <div class="form-group"><label>Xona raqami</label><input type="text" id="wardRoom" placeholder="201"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Koykalar soni *</label><input type="number" id="wardBeds" placeholder="5"></div>
+      <div class="form-group"><label>Bo'lim</label><input type="text" id="wardDept" placeholder="Terapiya"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('wardModal')">Bekor qilish</button>
+      <button class="btn btn-success" onclick="createWard()">✅ Qo'shish</button>
+    </div>
+  </div>
+</div>
+
+<!-- Patient Detail Modal -->
+<div class="modal-overlay" id="patientModal">
+  <div class="modal" style="width:680px">
+    <h3>👤 Bemor ma'lumotlari</h3>
+    <div id="patientDetailContent"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('patientModal')">Yopish</button>
+      <button class="btn btn-danger btn-sm" id="dischargeBtn" onclick="openDischargeModal()" style="display:none">🚪 Chiqarish</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Quick Note Modal ===== -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal">
+    <h3>📝 Kunlik kuzatuv qo'shish</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Sana</label><input type="date" id="noteDate"></div>
+      <div class="form-group"><label>Smena</label>
+        <select id="noteShift"><option value="ertalab">Ertalab</option><option value="kechki">Kechki</option><option value="tungi">Tungi</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>🌡 Tana (°C)</label><input type="number" id="noteTemp" step="0.1" placeholder="36.6"></div>
+      <div class="form-group"><label>🩸 Bosim (mm Hg)</label><input type="text" id="noteBP" placeholder="120/80"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>💓 Puls (bpm)</label><input type="number" id="notePulse" placeholder="72"></div>
+      <div class="form-group"><label>🌬 SatO2 (%)</label><input type="number" id="noteSaturation" placeholder="98"></div>
+    </div>
+    <div class="form-group"><label>🗣 Shikoyatlar</label><textarea id="noteComplaints" rows="2" placeholder="Bemorning shikoyatlari..."></textarea></div>
+    <div class="form-group"><label>📊 Ob'ektiv holat</label><textarea id="noteStatus" rows="2" placeholder="Ausultatsiya, palapatsiya..."></textarea></div>
+    <div class="form-group"><label>💊 Davolash rejasi</label><textarea id="notePlan" rows="2" placeholder="Keyingi davolash rejasi..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('noteModal')">Bekor qilish</button>
+      <button class="btn btn-success" onclick="doAddNote()">💾 Saqlash</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Quick Prescription Modal ===== -->
+<div class="modal-overlay" id="rxModal">
+  <div class="modal">
+    <h3>💊 Dori tayinlash</h3>
+    <div class="form-group"><label>Dori nomi *</label><input type="text" id="rxName" placeholder="Paracetamol" list="rxSuggest"></div>
+    <datalist id="rxSuggest">
+      <option value="Paracetamol 500mg"><option value="Ibuprofen 400mg"><option value="Ceftriaxone 1g">
+      <option value="Amoxicillin 500mg"><option value="Metronidazole 500mg"><option value="Dexamethasone 8mg">
+      <option value="Omeprazole 20mg"><option value="Vitamin B12"><option value="Insulin Aspart"><option value="Enalapril 10mg">
+    </datalist>
+    <div class="form-row">
+      <div class="form-group"><label>Dozaj</label><input type="text" id="rxDosage" placeholder="500mg"></div>
+      <div class="form-group"><label>Yo'l</label>
+        <select id="rxRoute"><option value="ichish">Ichish</option><option value="v/i">Vena ichiga</option><option value="m/i">Mushak ichiga</option><option value="t/i">Teriga</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Chastota</label><input type="text" id="rxFreq" placeholder="3 marta/kun"></div>
+      <div class="form-group"><label>Boshlash sanasi</label><input type="date" id="rxStart"></div>
+    </div>
+    <div class="form-group"><label>Tugash sanasi</label><input type="date" id="rxEnd"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('rxModal')">Bekor qilish</button>
+      <button class="btn btn-success" onclick="doAddPrescription()">💾 Tayinlash</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Quick Service Modal ===== -->
+<div class="modal-overlay" id="svcModal">
+  <div class="modal">
+    <h3>🧾 Xizmat qo'shish</h3>
+    <div class="form-group"><label>Xizmat nomi</label><input type="text" id="svcName" placeholder="Massaj, UZI, EKG..."></div>
+    <div class="form-row">
+      <div class="form-group"><label>Soni</label><input type="number" id="svcQty" value="1" step="0.5"></div>
+      <div class="form-group"><label>Narxi (so'm)</label><input type="number" id="svcPrice" placeholder="50000"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('svcModal')">Bekor qilish</button>
+      <button class="btn btn-success" onclick="doAddService()">💾 Qo'shish</button>
+    </div>
+  </div>
+</div>
+
+<!-- Discharge Modal -->
+<div class="modal-overlay" id="dischargeModal">
+  <div class="modal">
+    <h3>🚪 Bemorni chiqarish</h3>
+    <div class="form-group">
+      <label>Chiqish turi</label>
+      <select id="dischargeType">
+        <option value="tuzalgan">Tuzalgan</option>
+        <option value="yaxshilangan">Yaxshilangan</option>
+        <option value="oz_xohishi">O'z xohishi bilan</option>
+        <option value="kochirilgan">Ko'chirilgan</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Yakuniy tashxis</label>
+      <textarea id="dischargeDiagnosis" rows="2"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>ICD-10 kodi</label><input type="text" id="dischargeICD" placeholder="I10"></div>
+      <div class="form-group"><label>Tavsiya qilingan sana</label><input type="date" id="dischargeFollowup"></div>
+    </div>
+    <div class="form-group">
+      <label>Tavsiyalar</label>
+      <textarea id="dischargeRecs" rows="2" placeholder="Davolovchi shifokor tavsiyalari..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('dischargeModal')">Bekor qilish</button>
+      <button class="btn btn-danger" onclick="doDischarge()">🚪 Chiqarish</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+let token = localStorage.getItem('falcon_token') || localStorage.getItem('token');
+let user = JSON.parse(localStorage.getItem('falcon_user') || localStorage.getItem('user') || '{}');
+let currentPatient = null;
+let currentDischargeId = null;
+
+if (!token) { window.location.href = '/dashboard.html'; }
+
+document.getElementById('userName').textContent = user.name || 'User';
+document.getElementById('userRole').textContent = user.role || '';
+
+// ===== API =====
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (res.status === 401) {
+    localStorage.removeItem('falcon_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('falcon_user');
+    localStorage.removeItem('user');
+    window.location.href = '/dashboard.html';
+    return { success: false, error: 'Unauthorized' };
+  }
+  return res.json();
+}
+
+// ===== PAGES =====
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById(`page-${name}`).classList.add('active');
+  document.querySelector(`.sidebar nav a[onclick*="${name}"]`)?.classList.add('active');
+  const titles = { dashboard: '📊 Statsionar Dashboard', round: '🩺 Kunlik aylanma', wards: '🏥 Palatalar', admissions: '📋 Yotqizilgan bemorlar', patients: '👤 Bemorlar', discharge: '🚪 Chiqarish' };
+  document.getElementById('pageTitle').textContent = titles[name] || name;
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'round') loadRound();
+  if (name === 'wards') loadWards();
+  if (name === 'admissions') loadAdmissions('active');
+  if (name === 'patients') loadPatients();
+  if (name === 'discharge') loadDischargeList();
+}
+
+// ===== DASHBOARD =====
+async function loadDashboard() {
+  try {
+    const res = await api('GET', '/api/inpatient/stats');
+    if (!res.success) return;
+    const d = res.data;
+    document.getElementById('statFreeBeds').textContent = d.free_beds;
+    document.getElementById('statFreeSub').textContent = `jami ${d.total_beds} koykadan`;
+    document.getElementById('statOccupiedBeds').textContent = d.occupied_beds;
+    document.getElementById('statOccSub').textContent = `${d.occupancy_rate}% bandlik`;
+    document.getElementById('statActiveAdmissions').textContent = d.active_admissions;
+    document.getElementById('statTodayAdmissions').textContent = d.today_admissions;
+    document.getElementById('statTodayDischarges').textContent = d.today_discharges;
+
+    const container = document.getElementById('dashboardWards');
+    container.innerHTML = '';
+    if (!d.wards || d.wards.length === 0) {
+      container.innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">Hozircha palatalar yo\'q. <br><button class="btn btn-primary" onclick="switchPage(\'wards\')">Palata qo\'shish</button></div>';
+      return;
+    }
+    d.wards.forEach(w => {
+      const pct = w.total_beds > 0 ? Math.round(w.occupied_beds / w.total_beds * 100) : 0;
+      container.innerHTML += `
+        <div class="ward-card">
+          <div class="ward-header">
+            <div>
+              <div class="ward-name">🏥 ${w.name}</div>
+              <div class="ward-floor">${w.floor ? w.floor+'-qavat' : ''} ${w.room_number ? '· Xona '+w.room_number : ''}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:20px;font-weight:700">${pct}%</div>
+              <div style="font-size:11px;color:#64748b">bandlik</div>
+            </div>
+          </div>
+          <div style="padding:0 16px 8px">
+            <div style="height:6px;background:#0f172a;border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${pct > 80 ? '#f87171' : pct > 50 ? '#fbbf24' : '#4ade80'};border-radius:3px;transition:.5s"></div>
+            </div>
+          </div>
+          <div class="ward-footer">
+            <span>🟢 ${w.free_beds} bo'sh</span>
+            <span>🔴 ${w.occupied_beds} band</span>
+            <span>📊 ${w.total_beds} ta</span>
+          </div>
+        </div>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+// ===== WARDS =====
+async function loadWards() {
+  try {
+    const res = await api('GET', '/api/inpatient/wards');
+    if (!res.success) return;
+    const container = document.getElementById('wardsGrid');
+    container.innerHTML = '';
+    if (!res.data || res.data.length === 0) {
+      container.innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">Hozircha palatalar yo\'q</div>';
+      return;
+    }
+    for (const w of res.data) {
+      const bedsRes = await api('GET', `/api/inpatient/wards/${w.id}/beds`);
+      const beds = bedsRes.data || [];
+      container.innerHTML += `
+        <div class="ward-card">
+          <div class="ward-header">
+            <div>
+              <div class="ward-name">🏥 ${w.name}</div>
+              <div class="ward-floor">${w.floor ? w.floor+'-qavat' : ''} ${w.room_number ? '· Xona '+w.room_number : ''}</div>
+            </div>
+            <div style="font-size:12px;color:#64748b">${w.free_beds}/${w.total_beds} bo'sh</div>
+          </div>
+          <div class="ward-beds">
+            ${beds.map(b => {
+              const patientName = b.patient_name ? b.patient_name.substring(0,8)+'..' : '';
+              return `<div class="bed ${b.status}" title="${b.bed_number}-koyka: ${b.status}${patientName ? ' - '+b.patient_name : ''}" onclick="showBedInfo('${b.id}','${b.bed_number}','${b.status}','${b.patient_name||''}','${b.admission_id||''}')">${b.bed_number}${b.status==='occupied'?'●':''}</div>`;
+            }).join('')}
+          </div>
+          <div class="ward-footer">
+            <span>🟢 ${w.free_beds} · 🔴 ${w.occupied_beds}</span>
+            <span>${w.department || ''}</span>
+          </div>
+        </div>`;
+    }
+  } catch(e) { console.error(e); }
+}
+
+function showBedInfo(bedId, num, status, patient, admissionId) {
+  if (status === 'occupied') {
+    viewPatient(admissionId);
+  }
+}
+
+// ===== ADMISSIONS =====
+async function loadAdmissions(status, e = null) {
+  document.querySelectorAll('#admissionTabs button').forEach(b => b.classList.remove('active'));
+  if (e) {
+    e.target.classList.add('active');
+  } else {
+    // Select the button that matches the status if no event passed
+    const btn = document.querySelector(`#admissionTabs button[onclick*="'${status}'"]`);
+    if (btn) btn.classList.add('active');
+  }
+  try {
+    const res = await api('GET', `/api/inpatient/admissions?status=${status}`);
+    if (!res.success) return;
+    const tbody = document.getElementById('admissionsTable');
+    if (!res.data || res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:30px">Bemorlar yo\'q</td></tr>';
+      return;
+    }
+    tbody.innerHTML = res.data.map(a => `
+      <tr onclick="viewPatient('${a.id}')" style="cursor:pointer">
+        <td><strong>${a.patient_name}</strong><br><span style="font-size:11px;color:#64748b">${a.patient_phone||''}</span></td>
+        <td>${a.ward_name||''} ${a.room_number||''} / ${a.bed_number||''}</td>
+        <td>${a.admission_date}</td>
+        <td>${a.diagnosis_initial||''}</td>
+        <td>${a.attending_doctor_name||''}</td>
+        <td><span class="badge ${a.status==='active'?'badge-active':'badge-discharged'}">${a.status === 'active' ? 'Aktiv' : 'Chiqarilgan'}</span></td>
+        <td>👁️</td>
+      </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ===== PATIENT DETAIL =====
+async function viewPatient(admissionId) {
+  try {
+    const res = await api('GET', `/api/inpatient/admissions/${admissionId}`);
+    if (!res.success) return;
+    const a = res.data;
+    currentPatient = a;
+
+    const content = document.getElementById('patientDetailContent');
+    content.innerHTML = `
+      <div class="patient-detail">
+        <div class="info-card">
+          <h4>👤 Bemor</h4>
+          <div class="info-row"><span class="lbl">Ism</span><span>${a.patient_name}</span></div>
+          <div class="info-row"><span class="lbl">Telefon</span><span>${a.patient_phone || '-'}</span></div>
+          <div class="info-row"><span class="lbl">Palata</span><span>${a.ward_name||'-'} / ${a.bed_number||'-'}-koyka</span></div>
+          <div class="info-row"><span class="lbl">Yotqizilgan</span><span>${a.admission_date}</span></div>
+          <div class="info-row"><span class="lbl">Holati</span><span class="badge ${a.status==='active'?'badge-active':'badge-discharged'}">${a.status}</span></div>
+        </div>
+        <div class="info-card">
+          <h4>🩺 Tibbiy</h4>
+          <div class="info-row"><span class="lbl">Dastlabki tashxis</span><span>${a.diagnosis_initial||'-'}</span></div>
+          <div class="info-row"><span class="lbl">Yakuniy tashxis</span><span>${a.diagnosis_final||'-'}</span></div>
+          <div class="info-row"><span class="lbl">Davolovchi doktor</span><span>${a.attending_doctor_name||'-'}</span></div>
+          <div class="info-row"><span class="lbl">To'lov turi</span><span>${a.payment_type||'-'}</span></div>
+          <div class="info-row"><span class="lbl">Yotqizish turi</span><span class="badge ${a.admission_type==='shoshilinch'?'badge-shoshilinch':'badge-active'}">${a.admission_type}</span></div>
+        </div>
+      </div>
+      ${a.notes ? `<div class="info-card" style="margin-top:10px"><h4>📝 Eslatma</h4><p style="font-size:13px;color:#94a3b8">${a.notes}</p></div>` : ''}
+      ${a.notes && a.notes.length > 0 ? `
+      <div class="info-card" style="margin-top:10px">
+        <h4>📋 Kunlik kuzatuvlar (${a.notes.length})</h4>
+        ${a.notes.slice(0,5).map(n => `
+          <div style="padding:6px 0;border-bottom:1px solid #334155;font-size:12px">
+            <div style="display:flex;justify-content:space-between">
+              <span>${n.date} · ${n.shift}</span>
+              <span>🌡${n.temperature||'-'} · 💓${n.pulse||'-'} · 🩸${n.blood_pressure||'-'}</span>
+            </div>
+            ${n.complaints ? `<div style="color:#94a3b8;margin-top:2px">${n.complaints}</div>` : ''}
+          </div>`).join('')}
+      </div>` : ''}
+      ${a.prescriptions && a.prescriptions.length > 0 ? `
+      <div class="info-card" style="margin-top:10px">
+        <h4>💊 Dorilar (${a.prescriptions.length})</h4>
+        ${a.prescriptions.map(p => `
+          <div style="padding:4px 0;font-size:12px;display:flex;justify-content:space-between">
+            <span>${p.medicine_name} ${p.dosage||''}</span>
+            <span style="color:#64748b">${p.frequency||''} · <span class="badge ${p.status==='active'?'badge-active':'badge-discharged'}">${p.status}</span></span>
+          </div>`).join('')}
+      </div>` : ''}
+    `;
+
+    // Add action buttons for active patients
+    if (a.status === 'active') {
+      content.innerHTML += `
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" onclick="openAddNote('${a.id}')">📝 Kuzatuv</button>
+        <button class="btn btn-sm btn-success" onclick="openAddRx('${a.id}')">💊 Dori</button>
+        <button class="btn btn-sm btn-outline" onclick="openAddSvc('${a.id}')">🧾 Xizmat</button>
+      </div>`;
+    }
+
+    const dischargeBtn = document.getElementById('dischargeBtn');
+    dischargeBtn.style.display = a.status === 'active' ? 'inline-flex' : 'none';
+    if (a.status === 'active') currentDischargeId = a.id;
+
+    openModal('patientModal');
+  } catch(e) { console.error(e); }
+}
+
+// ===== ADMIT =====
+async function openAdmitModal() {
+  document.getElementById('admitName').value = '';
+  document.getElementById('admitPhone').value = '';
+  document.getElementById('admitDiagnosis').value = '';
+  document.getElementById('admitDoctor').value = '';
+  document.getElementById('admitNotes').value = '';
+  document.getElementById('admitBtn').disabled = true;
+
+  const res = await api('GET', '/api/inpatient/wards');
+  const wards = res.data || [];
+  const sel = document.getElementById('admitWard');
+  sel.innerHTML = '<option value="">— Tanlang —</option>' + wards.filter(w => w.free_beds > 0).map(w => `<option value="${w.id}">${w.name} (${w.free_beds} ta bo'sh)</option>`).join('');
+
+  openModal('admitModal');
+}
+
+function toggleAdmitBtn() {
+  const name = document.getElementById('admitName').value.trim();
+  const ward = document.getElementById('admitWard').value;
+  const bed = document.getElementById('admitBed').value;
+  document.getElementById('admitBtn').disabled = !(name && ward && bed);
+}
+
+async function loadWardBeds() {
+  const wardId = document.getElementById('admitWard').value;
+  const sel = document.getElementById('admitBed');
+  if (!wardId) { sel.innerHTML = '<option value="">Avval palata tanlang</option>'; toggleAdmitBtn(); return; }
+  const res = await api('GET', `/api/inpatient/wards/${wardId}/beds`);
+  const beds = (res.data || []).filter(b => b.status === 'free');
+  sel.innerHTML = beds.map(b => `<option value="${b.id}">${b.bed_number}-koyka</option>`).join('');
+  toggleAdmitBtn();
+}
+
+async function doAdmit() {
+  const payload = {
+    patient_name: document.getElementById('admitName').value.trim(),
+    patient_phone: document.getElementById('admitPhone').value.trim(),
+    ward_id: document.getElementById('admitWard').value,
+    bed_id: document.getElementById('admitBed').value,
+    admission_type: document.getElementById('admitType').value,
+    diagnosis_initial: document.getElementById('admitDiagnosis').value.trim(),
+    attending_doctor_name: document.getElementById('admitDoctor').value.trim(),
+    payment_type: document.getElementById('admitPayment').value,
+    notes: document.getElementById('admitNotes').value.trim()
+  };
+  if (!payload.patient_name || !payload.ward_id || !payload.bed_id) return alert('Bemor ismi, palata va koyka majburiy!');
+
+  try {
+    const res = await api('POST', '/api/inpatient/admissions', payload);
+    if (res.success) {
+      closeModal('admitModal');
+      loadDashboard();
+      alert('✅ Bemor yotqizildi!');
+    } else {
+      alert('❌ Xatolik: ' + (res.error || 'Noma\'lum'));
+    }
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== DISCHARGE =====
+function openDischargeModal() {
+  if (!currentPatient) return;
+  document.getElementById('dischargeDiagnosis').value = currentPatient.diagnosis_initial || '';
+  document.getElementById('dischargeICD').value = '';
+  document.getElementById('dischargeRecs').value = '';
+  document.getElementById('dischargeFollowup').value = '';
+  openModal('dischargeModal');
+}
+
+async function doDischarge() {
+  if (!currentPatient) return;
+  const payload = {
+    admission_id: currentDischargeId,
+    discharge_type: document.getElementById('dischargeType').value,
+    diagnosis_final: document.getElementById('dischargeDiagnosis').value.trim(),
+    icd10_code: document.getElementById('dischargeICD').value.trim(),
+    recommendations: document.getElementById('dischargeRecs').value.trim(),
+    follow_up_date: document.getElementById('dischargeFollowup').value
+  };
+  try {
+    const res = await api('POST', '/api/inpatient/discharge', payload);
+    if (res.success) {
+      closeModal('dischargeModal');
+      closeModal('patientModal');
+      loadDashboard();
+      alert('✅ Bemor chiqarildi!');
+    } else {
+      alert('❌ Xatolik: ' + (res.error || 'Noma\'lum'));
+    }
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== DAILY ROUND =====
+async function loadRound() {
+  // Set current date
+  const now = new Date();
+  document.getElementById('roundDate').textContent = now.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long', year: 'numeric' });
+  try {
+    const res = await api('GET', '/api/inpatient/admissions?status=active');
+    if (!res.success) return;
+    const admissions = res.data || [];
+    document.getElementById('roundCount').textContent = `👤 ${admissions.length} bemor`;
+
+    const container = document.getElementById('roundList');
+    if (admissions.length === 0) {
+      container.innerHTML = '<div style="color:#64748b;padding:40px;text-align:center">Aktiv yotqizilgan bemorlar yo\'q</div>';
+      return;
+    }
+
+    container.innerHTML = admissions.map(a => {
+      const days = a.admission_date ? Math.floor((new Date() - new Date(a.admission_date)) / (1000*60*60*24)) + 1 : '-';
+      return `
+      <div class="ward-card" style="margin-bottom:10px">
+        <div class="ward-header">
+          <div>
+            <div class="ward-name">👤 ${a.patient_name}</div>
+            <div class="ward-floor">${a.ward_name||'-'} / ${a.bed_number||'-'}-koyka · ${days} kun</div>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm btn-primary" onclick="openAddNote('${a.id}')">📝</button>
+            <button class="btn btn-sm btn-success" onclick="openAddRx('${a.id}')">💊</button>
+            <button class="btn btn-sm btn-outline" onclick="openAddSvc('${a.id}')">🧾</button>
+            <button class="btn btn-sm btn-outline" onclick="viewPatient('${a.id}')">👁️</button>
+          </div>
+        </div>
+        <div style="padding:10px 16px;font-size:13px;display:flex;justify-content:space-between;color:#94a3b8">
+          <span>🏥 ${a.diagnosis_initial||'-'}</span>
+          <span>👨‍⚕️ ${a.attending_doctor_name||'-'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ===== ADD DAILY NOTE =====
+let currentNoteAdmissionId = null;
+
+function openAddNote(admissionId) {
+  currentNoteAdmissionId = admissionId;
+  // Set today's date
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('noteDate').value = today;
+  document.getElementById('noteShift').value = 'ertalab';
+  document.getElementById('noteTemp').value = '';
+  document.getElementById('noteBP').value = '';
+  document.getElementById('notePulse').value = '';
+  document.getElementById('noteSaturation').value = '';
+  document.getElementById('noteComplaints').value = '';
+  document.getElementById('noteStatus').value = '';
+  document.getElementById('notePlan').value = '';
+  openModal('noteModal');
+}
+
+async function doAddNote() {
+  if (!currentNoteAdmissionId) return alert('Admission ID topilmadi');
+  const payload = {
+    admission_id: currentNoteAdmissionId,
+    date: document.getElementById('noteDate').value,
+    shift: document.getElementById('noteShift').value,
+    temperature: parseFloat(document.getElementById('noteTemp').value) || null,
+    blood_pressure: document.getElementById('noteBP').value || null,
+    pulse: parseInt(document.getElementById('notePulse').value) || null,
+    saturation: parseFloat(document.getElementById('noteSaturation').value) || null,
+    complaints: document.getElementById('noteComplaints').value.trim(),
+    objective_status: document.getElementById('noteStatus').value.trim(),
+    treatment_plan: document.getElementById('notePlan').value.trim()
+  };
+  try {
+    const res = await api('POST', '/api/inpatient/daily-notes', payload);
+    if (res.success) {
+      closeModal('noteModal');
+      if (document.getElementById('page-round').classList.contains('active')) loadRound();
+      else if (currentPatient?.id === currentNoteAdmissionId) viewPatient(currentNoteAdmissionId);
+      alert('✅ Kuzatuv qo\'shildi');
+    } else alert('❌ Xatolik: ' + (res.error || ''));
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== ADD PRESCRIPTION =====
+let currentRxAdmissionId = null;
+
+function openAddRx(admissionId) {
+  currentRxAdmissionId = admissionId;
+  document.getElementById('rxName').value = '';
+  document.getElementById('rxDosage').value = '';
+  document.getElementById('rxRoute').value = 'ichish';
+  document.getElementById('rxFreq').value = '';
+  document.getElementById('rxStart').value = new Date().toISOString().split('T')[0];
+  document.getElementById('rxEnd').value = '';
+  openModal('rxModal');
+}
+
+async function doAddPrescription() {
+  if (!currentRxAdmissionId) return alert('Admission ID topilmadi');
+  const name = document.getElementById('rxName').value.trim();
+  if (!name) return alert('Dori nomi majburiy');
+  const payload = {
+    admission_id: currentRxAdmissionId,
+    medicine_name: name,
+    dosage: document.getElementById('rxDosage').value.trim() || null,
+    route: document.getElementById('rxRoute').value,
+    frequency: document.getElementById('rxFreq').value.trim() || null,
+    start_date: document.getElementById('rxStart').value || null,
+    end_date: document.getElementById('rxEnd').value || null
+  };
+  try {
+    const res = await api('POST', '/api/inpatient/prescriptions', payload);
+    if (res.success) {
+      closeModal('rxModal');
+      if (currentPatient?.id === currentRxAdmissionId) viewPatient(currentRxAdmissionId);
+      alert('✅ Dori tayinlandi');
+    } else alert('❌ Xatolik: ' + (res.error || ''));
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== ADD SERVICE =====
+let currentSvcAdmissionId = null;
+
+function openAddSvc(admissionId) {
+  currentSvcAdmissionId = admissionId;
+  document.getElementById('svcName').value = '';
+  document.getElementById('svcQty').value = '1';
+  document.getElementById('svcPrice').value = '';
+  openModal('svcModal');
+}
+
+async function doAddService() {
+  if (!currentSvcAdmissionId) return alert('Admission ID topilmadi');
+  const name = document.getElementById('svcName').value.trim();
+  const price = parseFloat(document.getElementById('svcPrice').value);
+  if (!name || !price) return alert('Xizmat nomi va narx majburiy');
+  const payload = {
+    admission_id: currentSvcAdmissionId,
+    service_name: name,
+    quantity: parseFloat(document.getElementById('svcQty').value) || 1,
+    price: price
+  };
+  try {
+    const res = await api('POST', '/api/inpatient/services', payload);
+    if (res.success) {
+      closeModal('svcModal');
+      alert('✅ Xizmat qo\'shildi');
+    } else alert('❌ Xatolik: ' + (res.error || ''));
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== PATIENTS =====
+async function loadPatients(query) {
+  try {
+    const url = query ? `/api/inpatient/patients?q=${encodeURIComponent(query)}` : '/api/inpatient/patients';
+    const res = await api('GET', url);
+    if (!res.success) return;
+    const tbody = document.getElementById('patientsTable');
+    if (!res.data || res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#64748b;padding:30px">Bemorlar yo\'q</td></tr>';
+      return;
+    }
+    tbody.innerHTML = res.data.map(p => `
+      <tr>
+        <td><strong>${p.patient_name}</strong></td>
+        <td>${p.patient_phone||'-'}</td>
+        <td>${p.last_admission||'-'}</td>
+        <td>${p.total_admissions} marta</td>
+        <td><button class="btn btn-sm btn-outline" onclick="switchPage('admissions')">📋 Tarix</button></td>
+      </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function searchPatient(q) {
+  if (q.length > 2) loadPatients(q);
+  else if (q.length === 0) loadPatients();
+}
+
+// ===== DISCHARGE LIST =====
+async function loadDischargeList() {
+  try {
+    const res = await api('GET', '/api/inpatient/admissions?status=discharged');
+    if (!res.success) return;
+    const tbody = document.getElementById('dischargeTable');
+    if (!res.data || res.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:30px">Chiqarilgan bemorlar yo\'q</td></tr>';
+      return;
+    }
+    tbody.innerHTML = res.data.map(a => {
+      const days = a.admission_date ? Math.floor((new Date() - new Date(a.admission_date)) / (1000*60*60*24)) : '-';
+      return `<tr onclick="viewPatient('${a.id}')" style="cursor:pointer">
+        <td><strong>${a.patient_name}</strong></td><td>${a.ward_name||''}</td>
+        <td>${days} kun</td><td>${a.diagnosis_initial||''}</td>
+        <td>${a.attending_doctor_name||''}</td>
+        <td>👁️</td></tr>`;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ===== WARD CREATE =====
+function openWardModal() {
+  document.getElementById('wardName').value = '';
+  document.getElementById('wardFloor').value = '';
+  document.getElementById('wardRoom').value = '';
+  document.getElementById('wardBeds').value = '';
+  document.getElementById('wardDept').value = '';
+  openModal('wardModal');
+}
+
+async function createWard() {
+  const name = document.getElementById('wardName').value.trim();
+  const bedCount = parseInt(document.getElementById('wardBeds').value);
+  if (!name || !bedCount || bedCount < 1) return alert('Palata nomi va koykalar soni majburiy!');
+
+  try {
+    const res = await api('POST', '/api/inpatient/wards', {
+      name, floor: document.getElementById('wardFloor').value ? parseInt(document.getElementById('wardFloor').value) : null,
+      room_number: document.getElementById('wardRoom').value.trim() || null,
+      bed_count: bedCount, department: document.getElementById('wardDept').value.trim() || null
+    });
+    if (res.success) {
+      closeModal('wardModal');
+      loadWards();
+      loadDashboard();
+    } else alert('❌ Xatolik: ' + (res.error || ''));
+  } catch(e) { alert('❌ Xatolik: '+e.message); }
+}
+
+// ===== MODALS =====
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ===== LOGOUT =====
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = '/dashboard.html';
+}
+
+// ===== INIT =====
+loadDashboard();
+</script>
+</body>
+</html>

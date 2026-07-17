@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Scribe — Klinika Hayot</title>
+
+  <!-- Google Material Symbols + Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+
+  <!-- ===== APP BAR ===== -->
+  <header class="app-bar">
+    <div class="logo"><span class="material-symbols-outlined">stethoscope</span></div>
+    <div>
+      <h1>AI Scribe <span class="subtitle">— Ovozli Tibbiy Yordamchi</span></h1>
+    </div>
+    <div class="status-badge">
+      <span class="dot" id="apiStatusDot"></span>
+      <span id="apiStatusText">Tekshirilmoqda...</span>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="main-layout">
+
+    <!-- ===== LEFT: Diktant paneli ===== -->
+    <div class="md3-card" style="align-self: start;">
+      <h2><span class="material-symbols-outlined">mic</span> Diktant maydoni</h2>
+
+      <!-- Patient name -->
+      <div class="md3-field">
+        <label for="patientName">Bemor ismi</label>
+        <input type="text" id="patientName" placeholder="Masalan: Ali Valiyev" autocomplete="off" />
+      </div>
+
+      <!-- Specialty selector -->
+      <div class="md3-field">
+        <label for="specialtySelect">Shifokor yo'nalishi</label>
+        <div class="specialty-select-wrapper">
+          <select id="specialtySelect" class="specialty-select">
+            <option value="therapy">🩺 Terapevt ko'rigi</option>
+            <option value="ultrasound">📷 UZI tekshiruvi</option>
+          </select>
+          <span class="material-symbols-outlined dropdown-arrow">expand_more</span>
+        </div>
+        <div class="field-hint" id="specialtyHint">AI diktantni aynan shu yo'nalishga mos shablonda tahlil qiladi</div>
+      </div>
+
+      <!-- Voice controls -->
+      <div class="btn-group">
+        <button class="btn btn-secondary" id="btnRecord" onclick="toggleRecording()">
+          <span class="material-symbols-outlined">mic</span>
+          <span id="btnRecordText">Ovozni yozish</span>
+        </button>
+        <button class="btn btn-outline" onclick="clearDictation()">
+          <span class="material-symbols-outlined">delete</span>
+          Tozalash
+        </button>
+      </div>
+
+      <!-- Whisper STT panel -->
+      <div class="whisper-panel">
+        <div class="whisper-header">
+          <span class="material-symbols-outlined" style="font-size:18px;color:var(--md-sys-color-tertiary);">auto_awesome</span>
+          <span style="font-weight:500;font-size:13px;color:var(--md-sys-color-on-surface-variant);">Whisper AI STT — Server tomonida audio tahlil</span>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-whisper" id="btnWhisperRecord" onclick="toggleWhisperRecording()">
+            <span class="material-symbols-outlined" id="whisperIcon">mic</span>
+            <span id="btnWhisperText">Whisper STT</span>
+          </button>
+          <span class="recording-timer" id="whisperTimer" style="display:none;">00:00</span>
+        </div>
+        <div class="recording-indicator" id="whisperIndicator" style="display:none;">
+          <div class="wave">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <span id="whisperStatus">Whisper: audio yozilmoqda...</span>
+        </div>
+      </div>
+
+      <!-- Recording indicator -->
+      <div class="recording-indicator" id="recordingIndicator">
+        <div class="wave">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <span id="recordingStatus">Yozilmoqda... Gapiring</span>
+      </div>
+
+      <!-- Textarea -->
+      <div class="md3-field" style="margin-top: 8px;">
+        <label for="dictationText">Diktant matni</label>
+        <textarea id="dictationText" placeholder="Shifokor diktantini kiriting yoki ovozli yozishni boshlang..."></textarea>
+        <div class="char-count"><span id="charCount">0</span> belgi</div>
+      </div>
+
+      <!-- Transcript display (Whisper STT natijasi) -->
+      <div class="transcript-display" id="transcriptDisplay">
+        <div class="label">🎤 Whisper STT transkripsiyasi</div>
+        <div class="text" id="transcriptText"></div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="btn-group" style="justify-content: space-between; align-items: center;">
+        <button class="btn btn-primary" id="btnAnalyze" onclick="analyzeDictation()">
+          <span class="material-symbols-outlined">psychology</span>
+          <span id="btnAnalyzeText">AI tahlil qilish</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== RIGHT: AI natija paneli ===== -->
+    <div class="md3-card" style="align-self: start;">
+      <h2><span class="material-symbols-outlined">assignment</span> AI tahlil natijasi</h2>
+
+      <!-- Result area -->
+      <div id="resultArea">
+        <div class="result-empty" id="emptyState">
+          <span class="material-symbols-outlined">neurology</span>
+          <h3>Natijalar bu yerda ko'rinadi</h3>
+          <p>Diktant matnini kiriting va "AI tahlil qilish" tugmasini bosing</p>
+        </div>
+
+        <div id="resultCards" style="display:none;">
+          <div class="result-panel" id="resultPanel"></div>
+          <div class="meta-bar" id="metaBar"></div>
+
+          <!-- ===== REFERRAL SECTION (ko'rinadi agar AI klinika + xizmat aniqlasa) ===== -->
+          <div class="referral-section" id="referralSection">
+            <div class="referral-info" id="referralInfo">
+              <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;color:#2e7d32;">local_hospital</span>
+              <strong id="referralDetectedTarget">—</strong> klinikasiga yo'llanma tayyor
+            </div>
+            <button class="btn-confirm-referral" id="btnConfirmReferral" onclick="confirmReferral()">
+              <span class="material-symbols-outlined">check_circle</span>
+              <span id="btnConfirmText">Muolajani tasdiqlash va Yo'llanma yaratish</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="loadingState" style="display:none;">
+          <div class="result-empty">
+            <div class="spinner dark" style="width:40px;height:40px;border-width:4px;margin-bottom:12px;"></div>
+            <h3>AI tahlil qilmoqda...</h3>
+            <p>Iltimos, kuting. Shifokor diktanti tahlil qilinmoqda</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ===== QR MODAL POPUP ===== -->
+  <div class="modal-overlay" id="qrModal">
+    <div class="modal-card">
+      <div class="modal-icon">
+        <span class="material-symbols-outlined">qr_code_scanner</span>
+      </div>
+      <h2>✅ Yo'llanma muvaffaqiyatli yaratildi!</h2>
+      <div class="modal-subtitle">Hamkorlik komissiyasi hisoblandi. Bemor shu QR-kodni skanerlab, yo'llanmani ochadi.</div>
+      <div class="qr-container" id="qrContainer">
+        <img id="qrImage" src="" alt="QR kod" />
+      </div>
+      <div class="qr-label">📱 Bemor smartfoniga QR-kodni ko'rsating</div>
+      <div class="modal-details" id="modalDetails">
+        <div><span class="label">Referal ID</span><span class="value" id="modalReferralId">—</span></div>
+        <div><span class="label">Bemor</span><span class="value" id="modalPatientName">—</span></div>
+        <div><span class="label">Klinika</span><span class="value" id="modalClinicName">—</span></div>
+        <div><span class="label">Xizmat</span><span class="value" id="modalService">—</span></div>
+      </div>
+      <div class="modal-commission">
+        <span class="material-symbols-outlined" style="font-size:18px;">handshake</span>
+        Hamkorlik komissiyasi hisoblandi
+      </div>
+      <button class="btn-close-modal" onclick="closeQrModal()">
+        <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+        Yopish
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // AI SCRIBE — Frontend Controller
+    // ============================================================
+
+    // ---- DOM refs ----
+    const patientNameInput = document.getElementById('patientName');
+    const dictationText = document.getElementById('dictationText');
+    const charCount = document.getElementById('charCount');
+    const btnRecord = document.getElementById('btnRecord');
+    const btnRecordText = document.getElementById('btnRecordText');
+    const recordingIndicator = document.getElementById('recordingIndicator');
+    const recordingStatus = document.getElementById('recordingStatus');
+    const btnAnalyze = document.getElementById('btnAnalyze');
+    const btnAnalyzeText = document.getElementById('btnAnalyzeText');
+    const emptyState = document.getElementById('emptyState');
+    const resultCards = document.getElementById('resultCards');
+    const resultPanel = document.getElementById('resultPanel');
+    const metaBar = document.getElementById('metaBar');
+    const loadingState = document.getElementById('loadingState');
+    const loadingStateOriginalHTML = loadingState.innerHTML;
+    const apiStatusDot = document.getElementById('apiStatusDot');
+    const apiStatusText = document.getElementById('apiStatusText');
+    const specialtySelect = document.getElementById('specialtySelect');
+    const specialtyHint = document.getElementById('specialtyHint');
+
+    // ---- Referral & Modal DOM refs ----
+    const referralSection = document.getElementById('referralSection');
+    const referralInfo = document.getElementById('referralInfo');
+    const referralDetectedTarget = document.getElementById('referralDetectedTarget');
+    const btnConfirmReferral = document.getElementById('btnConfirmReferral');
+    const btnConfirmText = document.getElementById('btnConfirmText');
+    const qrModal = document.getElementById('qrModal');
+    const qrImage = document.getElementById('qrImage');
+    const modalReferralId = document.getElementById('modalReferralId');
+    const modalPatientName = document.getElementById('modalPatientName');
+    const modalClinicName = document.getElementById('modalClinicName');
+    const modalService = document.getElementById('modalService');
+
+    // ---- Referral state ----
+    let clinicsList = [];           // cached from /api/b2b/clinics
+    let detectedClinic = null;     // { name, id } of detected clinic
+    let detectedService = null;    // detected service name
+    let lastAnalysisText = '';     // raw text used for the last analysis
+    let lastPatientName = '';      // patient name from last analysis
+    let detectedProcedure = null;  // detected procedure name for inventory consumption
+
+    // ---- Speech Recognition globals ----
+    const isSecureContext = window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isRecording = false;
+    let finalTranscript = '';
+    let micStream = null;
+    let recognitionFatal = false;
+
+    // ---- Mikrofon ruxsatini tekshirish ----
+    async function requestMicPermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Track ni saqlaymiz, to'xtatmaymiz — Chrome ba'zan stream yopilsa recognition ishlamaydi
+        micStream = stream;
+        return true;
+      } catch (err) {
+        console.error('Mic permission error:', err.name);
+        return false;
+      }
+    }
+
+    // ---- Voice UI state ----
+    function setRecordingState(state) {
+      const states = {
+        idle: {
+          text: 'Ovozni yozish',
+          icon: 'mic',
+          btnClass: '',
+          indicator: false,
+          indicatorText: '',
+          dot: null
+        },
+        requesting: {
+          text: 'Mikrofon so\'ralmoqda...',
+          icon: 'settings_mic',
+          btnClass: '',
+          indicator: true,
+          indicatorText: 'Mikrofonga ruxsat so\'ralmoqda...',
+          dot: 'waiting'
+        },
+        recording: {
+          text: 'To\'xtatish',
+          icon: 'stop',
+          btnClass: 'recording',
+          indicator: true,
+          indicatorText: 'Yozilmoqda... Gapiring',
+          dot: 'active'
+        },
+        denied: {
+          text: 'Mikrofon bloklangan',
+          icon: 'mic_off',
+          btnClass: '',
+          indicator: false,
+          indicatorText: '',
+          dot: 'denied'
+        },
+        unsupported: {
+          text: 'Brauzer qo\'llamaydi',
+          icon: 'mic_off',
+          btnClass: '',
+          indicator: false,
+          indicatorText: '',
+          dot: null
+        }
+      };
+
+      const s = states[state] || states.idle;
+      btnRecord.innerHTML = `<span class="material-symbols-outlined">${s.icon}</span><span>${s.text}</span>`;
+      btnRecord.className = 'btn btn-secondary' + (s.btnClass ? ' ' + s.btnClass : '');
+      
+      if (s.indicator) {
+        recordingIndicator.classList.add('active');
+        recordingStatus.textContent = s.indicatorText;
+      } else {
+        recordingIndicator.classList.remove('active');
+      }
+    }
+
+    // ---- Ovozli yozishni boshlash ----
+    async function startRecording() {
+      if (!patientNameInput.value.trim()) {
+        showToast('Iltimos, avval bemor ismini kiriting', 'error');
+        patientNameInput.focus();
+        return;
+      }
+
+      // 1. Secure context tekshiruvi
+      if (!isSecureContext) {
+        showToast(
+          '⚠️ Mikrofon ishlashi uchun HTTPS kerak.\n\n' +
+          'Ishlatish uchun:\n' +
+          '• localhost:3000/public/scribe.html orqali oching (tavsiya)\n' +
+          '• Yoki HTTPS ni sozlang',
+          'error', 6000
+        );
+        setRecordingState('denied');
+        return;
+      }
+
+      // 2. Brauzer dastagi
+      if (!SpeechRecognitionAPI) {
+        showToast('Bu brauzer ovozli yozishni qo\'llab-quvvatlamaydi. Chrome yoki Edge dan foydalaning.', 'error');
+        setRecordingState('unsupported');
+        return;
+      }
+
+      // 3. Mikrofon ruxsatini so'rash
+      setRecordingState('requesting');
+      const hasMic = await requestMicPermission();
+      if (!hasMic) {
+        showToast(
+          '❌ Mikrofonga ruxsat berilmagan.\n\n' +
+          'Chrome: URL chap tomonidagi qulf/kamera ikonkasidan "Mikrofon"ga ruxsat bering.',
+          'error', 6000
+        );
+        setRecordingState('denied');
+        return;
+      }
+
+      // 4. Speech Recognition ni ishga tushirish
+      try {
+        recognition = new SpeechRecognitionAPI();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        recognition.lang = 'uz-UZ';  // O'zbek tili
+
+        recognitionFatal = false;
+
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const text = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += text + ' ';
+            } else {
+              interim = text;
+            }
+          }
+          const fullText = finalTranscript + (interim ? ' ' + interim : '');
+          dictationText.value = fullText;
+          charCount.textContent = fullText.length;
+          dictationText.scrollTop = dictationText.scrollHeight;
+        };
+
+        recognition.onerror = (event) => {
+          console.error('[Speech] Xato:', event.error, event.message);
+
+          // Fatal xatolar — qayta urinmaymiz
+          const fatalErrors = ['not-allowed', 'service-not-allowed', 'aborted'];
+          if (fatalErrors.includes(event.error)) {
+            recognitionFatal = true;
+          }
+
+          switch (event.error) {
+            case 'no-speech':
+              showToast('Ovoz eshitilmadi. Mikrofonni tekshiring va gapiring.', 'error');
+              break;
+            case 'aborted':
+              // Foydalanuvchi to'xtatgan, xabar ko'rsatmaymiz
+              break;
+            case 'audio-capture':
+              showToast('Mikrofon topilmadi. Mikrofon ulanganligini tekshiring.', 'error');
+              recognitionFatal = true;
+              break;
+            case 'not-allowed':
+              showToast(
+                'Mikrofonga ruxsat yo\'q.\n' +
+                'Chrome: sahifa URL chap burchagidagi 🔒 yoki 🛈 ni bosing → Mikrofon → Ruxsat berish.',
+                'error', 5000
+              );
+              break;
+            case 'language-not-supported':
+              console.log('[Speech] uz-UZ dastaklanmadi, ru-RU ga o\'tamiz');
+              recognition.lang = 'ru-RU';
+              try { recognition.start(); } catch (e) {}
+              return; // qayta ishga tushamiz, stopRecording chaqirmaymiz
+            case 'network':
+              showToast('Tarmoq xatosi. Internet aloqani tekshiring.', 'error');
+              break;
+            default:
+              showToast(`Ovoz xatosi: ${event.error}`, 'error');
+          }
+
+          if (recognitionFatal) {
+            stopRecording();
+          }
+        };
+
+        recognition.onend = () => {
+          if (isRecording && !recognitionFatal) {
+            // Oddiy tugash — qayta ishga tushirish (continuous + interimResults bilan Chrome ba'zan to'xtab qoladi)
+            try {
+              recognition.start();
+            } catch (e) {
+              console.warn('[Speech] Restart failed:', e.message);
+              stopRecording();
+            }
+          }
+        };
+
+        // Avvalgi matnni saqlab qolamiz
+        finalTranscript = dictationText.value.trim();
+        if (finalTranscript && !finalTranscript.endsWith(' ')) {
+          finalTranscript += ' ';
+        }
+
+        recognition.start();
+        isRecording = true;
+        setRecordingState('recording');
+        showToast('🎤 Ovoz yozish boshlandi. Gapiring...', 'success');
+
+      } catch (e) {
+        console.error('[Speech] Init error:', e);
+        showToast('Ovozli yozishni ishga tushirib bo\'lmadi', 'error');
+        setRecordingState('idle');
+      }
+    }
+
+    // ---- Ovozli yozishni to'xtatish ----
+    function stopRecording() {
+      isRecording = false;
+      recognitionFatal = false;
+
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {}
+        recognition.onend = null;  // qayta ishga tushmasligi uchun
+        recognition = null;
+      }
+
+      // Mikrofon stream ni tozalash
+      if (micStream) {
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+      }
+
+      // Interim markerlarni tozalash
+      dictationText.value = dictationText.value.trim();
+      charCount.textContent = dictationText.value.length;
+
+      setRecordingState('idle');
+      showToast('✅ Ovoz yozish to\'xtatildi', 'success');
+    }
+
+    // ---- Ovozli yozishni boshlash/to'xtatish ----
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+
+    // ============================================================
+    // Whisper STT — MediaRecorder Audio Recording
+    // ============================================================
+    const btnWhisperRecord = document.getElementById('btnWhisperRecord');
+    const btnWhisperText = document.getElementById('btnWhisperText');
+    const whisperIcon = document.getElementById('whisperIcon');
+    const whisperTimer = document.getElementById('whisperTimer');
+    const whisperIndicator = document.getElementById('whisperIndicator');
+    const whisperStatus = document.getElementById('whisperStatus');
+    const transcriptDisplay = document.getElementById('transcriptDisplay');
+    const transcriptText = document.getElementById('transcriptText');
+
+    let whisperMediaRecorder = null;
+    let whisperAudioChunks = [];
+    let whisperRecording = false;
+    let whisperTimerInterval = null;
+    let whisperSeconds = 0;
+
+    function toggleWhisperRecording() {
+      if (whisperRecording) {
+        stopWhisperRecording();
+      } else {
+        startWhisperRecording();
+      }
+    }
+
+    async function startWhisperRecording() {
+      if (!patientNameInput.value.trim()) {
+        showToast('Iltimos, avval bemor ismini kiriting', 'error');
+        patientNameInput.focus();
+        return;
+      }
+
+      // Secure context check
+      const secure = window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (!secure) {
+        showToast('Mikrofon uchun localhost yoki HTTPS kerak', 'error');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        whisperAudioChunks = [];
+        whisperSeconds = 0;
+
+        // Try supported mime types
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : '';
+
+        whisperMediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+        whisperMediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            whisperAudioChunks.push(event.data);
+          }
+        };
+
+        whisperMediaRecorder.onstop = () => {
+          // Stop all tracks
+          stream.getTracks().forEach(t => t.stop());
+
+          // Build audio blob
+          const blob = new Blob(whisperAudioChunks, { type: mimeType || 'audio/webm' });
+          if (blob.size < 100) {
+            showToast('Audio juda qisqa. Iltimos, gapirib ko\'ring.', 'error');
+            return;
+          }
+          // Send to server
+          sendWhisperAudio(blob);
+        };
+
+        whisperMediaRecorder.onerror = (event) => {
+          console.error('[Whisper] MediaRecorder xatosi:', event.error);
+          stream.getTracks().forEach(t => t.stop());
+          showToast('Audio yozish xatosi: ' + event.error.name, 'error');
+          setWhisperIdle();
+        };
+
+        whisperMediaRecorder.start(250); // slice every 250ms
+        whisperRecording = true;
+        setWhisperRecording();
+
+        // Start timer
+        whisperTimerInterval = setInterval(() => {
+          whisperSeconds++;
+          const min = String(Math.floor(whisperSeconds / 60)).padStart(2, '0');
+          const sec = String(whisperSeconds % 60).padStart(2, '0');
+          whisperTimer.textContent = `${min}:${sec}`;
+        }, 1000);
+
+        showToast('🎤 Whisper STT: audio yozilmoqda. To\'xtatish tugmasini bosing.', 'success');
+      } catch (e) {
+        console.error('[Whisper] Mikrofon xatosi:', e);
+        if (e.name === 'NotAllowedError') {
+          showToast('Mikrofonga ruxsat berilmagan. Brauzer sozlamalaridan ruxsat bering.', 'error');
+        } else if (e.name === 'NotFoundError') {
+          showToast('Mikrofon topilmadi. Qurilmani tekshiring.', 'error');
+        } else {
+          showToast(`Mikrofon xatosi: ${e.message}`, 'error');
+        }
+        setWhisperIdle();
+      }
+    }
+
+    function stopWhisperRecording() {
+      if (whisperMediaRecorder && whisperMediaRecorder.state === 'recording') {
+        whisperMediaRecorder.stop();
+      } else {
+        // Agar rekorder boshlanmagan bo'lsa
+        setWhisperIdle();
+      }
+      whisperRecording = false;
+      clearInterval(whisperTimerInterval);
+      setWhisperProcessing();
+    }
+
+    async function sendWhisperAudio(blob) {
+      const patientName = patientNameInput.value.trim();
+
+      // Show loading in result area
+      emptyState.style.display = 'none';
+      resultCards.style.display = 'none';
+      loadingState.style.display = 'block';
+      showWhisperLoading('audio');
+
+      // Hide previous referral section
+      referralSection.classList.remove('visible');
+
+      // Hide old transcript
+      transcriptDisplay.classList.remove('visible');
+
+      // Show processing status
+      whisperStatus.textContent = 'Whisper: serverga yuborilmoqda...';
+      whisperIndicator.style.display = 'flex';
+
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+        formData.append('patient_name', patientName);
+        formData.append('language', 'uz');
+        formData.append('specialty', specialtySelect.value);
+
+        const res = await fetch('/api/scribe/transcribe', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Server ${res.status}: ${errText.substring(0, 200)}`);
+        }
+
+        const data = await res.json();
+
+        // Hide whisper indicator
+        whisperIndicator.style.display = 'none';
+        setWhisperIdle();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Server xatosi');
+        }
+
+        // Show transcript if available
+        if (data.transcript) {
+          transcriptText.textContent = data.transcript;
+          transcriptDisplay.classList.add('visible');
+          // Also put in textarea for editing
+          dictationText.value = data.transcript;
+          charCount.textContent = data.transcript.length;
+        }
+
+        // Show whisper status in transcript display
+        if (data.meta) {
+          let metaInfo = '';
+          if (data.meta.whisper_used) metaInfo += '✓ Whisper STT';
+          else if (data.meta.whisper_error) metaInfo += `⚠ ${data.meta.whisper_error}`;
+          if (data.meta.used_fallback) metaInfo += ' · Fallback (LLM regex)';
+          if (data.meta.llm_error && data.meta.used_fallback) metaInfo += ' · LLM: ' + data.meta.llm_error;
+          if (metaInfo) {
+            transcriptDisplay.querySelector('.label').textContent = '🎤 Whisper STT · ' + metaInfo;
+          }
+        }
+
+        // Save for referral flow
+        lastAnalysisText = data.transcript || dictationText.value.trim();
+        lastPatientName = patientName;
+
+        // Render structured result
+        renderResult(data);
+
+        // Check for referral opportunity
+        checkForReferral(lastAnalysisText);
+
+        showToast('✅ Whisper STT muvaffaqiyatli yakunlandi', 'success');
+
+      } catch (e) {
+        console.error('[Whisper] Upload error:', e);
+        whisperIndicator.style.display = 'none';
+        setWhisperIdle();
+        loadingState.style.display = 'none';
+        emptyState.style.display = 'flex';
+        showToast(`Whisper xatosi: ${e.message}`, 'error');
+      }
+    }
+
+    function showWhisperLoading(step) {
+      const steps = {
+        audio: { done: false, text: 'Audio yozib olinmoqda...' },
+        whisper: { done: false, text: 'Whisper STT: matn tanib olinmoqda...' },
+        llm: { done: false, text: 'AI tahlil: tibbiy ma\'lumotlar ajratilmoqda...' },
+        done: { done: true, text: '✅ Tahlil yakunlandi' }
+      };
+      // Progress: audio → whisper → llm
+      const stepOrder = ['audio', 'whisper', 'llm', 'done'];
+      let html = '<div class="whisper-loading">';
+      let passed = false;
+      for (const s of stepOrder) {
+        const active = s === step;
+        if (active) passed = true;
+        if (!passed && !active) {
+          html += `<div class="step done"><div class="step-icon" style="background:var(--md-sys-color-primary-container);">✓</div><span>${steps[s].text}</span></div>`;
+        } else if (active) {
+          const spinners = ['🔴', '🟡', '🟢', '🔵', '🟣'];
+          const emoji = spinners[Math.floor(Math.random() * spinners.length)];
+          html += `<div class="step active"><div class="step-icon" style="background:var(--md-sys-color-secondary-container);">${emoji}</div><span>${steps[s].text}</span></div>`;
+        } else {
+          html += `<div class="step"><div class="step-icon" style="background:var(--md-sys-color-surface-variant);">○</div><span>${steps[s].text}</span></div>`;
+        }
+      }
+      html += '</div>';
+      loadingState.innerHTML = html;
+      loadingState.style.display = 'block';
+
+      // Progress simulation: audio → whisper → llm
+      const stepsList = ['whisper', 'llm', 'done'];
+      let delay = 1500;
+      stepsList.forEach((nextStep, i) => {
+        setTimeout(() => {
+          if (!whisperRecording) showWhisperLoading(nextStep);
+        }, delay);
+        delay += 1500;
+      });
+    }
+
+    function setWhisperRecording() {
+      btnWhisperRecord.classList.add('recording');
+      btnWhisperText.textContent = 'To\'xtatish';
+      whisperIcon.textContent = 'stop';
+      whisperTimer.style.display = 'inline';
+      whisperTimer.classList.add('active');
+      whisperIndicator.style.display = 'flex';
+      whisperStatus.textContent = 'Whisper: audio yozilmoqda...';
+    }
+
+    function setWhisperProcessing() {
+      btnWhisperRecord.disabled = true;
+      btnWhisperText.textContent = 'Yuborilmoqda...';
+      whisperIcon.textContent = 'cloud_upload';
+      whisperTimer.classList.remove('active');
+      whisperStatus.textContent = 'Whisper: serverga yuborilmoqda...';
+    }
+
+    function setWhisperIdle() {
+      btnWhisperRecord.classList.remove('recording');
+      btnWhisperRecord.disabled = false;
+      btnWhisperText.textContent = 'Whisper STT';
+      whisperIcon.textContent = 'mic';
+      whisperTimer.style.display = 'none';
+      whisperTimer.classList.remove('active');
+      whisperIndicator.style.display = 'none';
+      whisperSeconds = 0;
+      whisperTimer.textContent = '00:00';
+    }
+
+    // ---- Sahifa yopilganda Whisper tozalash ----
+    window.addEventListener('beforeunload', () => {
+      if (whisperRecording && whisperMediaRecorder) {
+        try {
+          if (whisperMediaRecorder.state === 'recording') whisperMediaRecorder.stop();
+        } catch (e) {}
+      }
+    });
+
+    // ---- API health check ----
+    async function checkHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        if (data.status === 'ok') {
+          apiStatusDot.className = 'dot';
+          apiStatusText.textContent = data.apiKeySet ? 'AI Tayyor' : 'API kalit yo\'q (fallback)';
+          if (!data.apiKeySet) apiStatusDot.style.background = '#ff9800';
+        } else {
+          throw new Error('No health');
+        }
+      } catch (e) {
+        apiStatusDot.className = 'dot off';
+        apiStatusText.textContent = 'Server ulanmadi';
+      }
+    }
+
+    // ---- Sahifa yopilganda tozalash ----
+    window.addEventListener('beforeunload', () => {
+      if (isRecording) stopRecording();
+    });
+
+    // ---- Speech mavjudligini tekshirish ----
+    function checkSpeechSupport() {
+      if (!SpeechRecognitionAPI) {
+        btnRecord.disabled = true;
+        btnRecord.innerHTML = '<span class="material-symbols-outlined">mic_off</span><span>Brauzer qo\'llamaydi</span>';
+        btnRecord.title = 'Chrome yoki Edge da oching';
+        showToast(
+          '⚠️ Bu brauzer ovozli yozishni qo\'llamaydi.\n' +
+          'Matnni qo\'lda kiriting yoki Chrome/Edge da oching.',
+          'error', 5000
+        );
+        return false;
+      }
+      if (!isSecureContext) {
+        btnRecord.title = 'Mikrofon uchun HTTPS yoki localhost kerak';
+      }
+      return true;
+    }
+
+    function clearDictation() {
+      if (isRecording) stopRecording();
+      dictationText.value = '';
+      finalTranscript = '';
+      charCount.textContent = '0';
+      dictationText.focus();
+      // Hide referral section
+      referralSection.classList.remove('visible');
+      detectedClinic = null;
+      detectedService = null;
+    }
+
+    // ---- AI Analyze ----
+    async function analyzeDictation() {
+      const patientName = patientNameInput.value.trim();
+      const rawText = dictationText.value.trim();
+      const specialty = specialtySelect.value;
+
+      if (!patientName) {
+        showToast('Iltimos, bemor ismini kiriting', 'error');
+        patientNameInput.focus();
+        return;
+      }
+      if (!rawText) {
+        showToast('Iltimos, diktant matnini kiriting yoki ovozli yozishni boshlang', 'error');
+        dictationText.focus();
+        return;
+      }
+
+      // Save for referral flow
+      lastAnalysisText = rawText;
+      lastPatientName = patientName;
+
+      // Hide previous referral section
+      referralSection.classList.remove('visible');
+
+      // UI: loading
+      emptyState.style.display = 'none';
+      resultCards.style.display = 'none';
+      loadingState.innerHTML = loadingStateOriginalHTML;
+      loadingState.style.display = 'block';
+      btnAnalyze.disabled = true;
+      btnAnalyzeText.textContent = 'Tahlil qilinmoqda...';
+
+      try {
+        const res = await fetch('/api/scribe/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patient_name: patientName, raw_text: rawText, specialty })
+        });
+
+        const data = await res.json();
+
+        if (!data.success && !data.structured) {
+          throw new Error(data.error || 'Server xatosi');
+        }
+
+        renderResult(data);
+
+        // Check for referral opportunity in the text
+        checkForReferral(rawText);
+
+      } catch (e) {
+        console.error('Analyze error:', e);
+        showToast(`Xatolik: ${e.message}`, 'error');
+        loadingState.style.display = 'none';
+        emptyState.style.display = 'flex';
+      } finally {
+        btnAnalyze.disabled = false;
+        btnAnalyzeText.textContent = 'AI tahlil qilish';
+      }
+    }
+
+    // ---- Render structured result (dinamik — barcha shablonlar) ----
+    function renderResult(data) {
+      const s = data.structured || {};
+      loadingState.style.display = 'none';
+      emptyState.style.display = 'none';
+      resultCards.style.display = 'block';
+
+      // Maydon ta'riflari: key → { label, icon, render }
+      const fieldDefs = {
+        // === Umumiy / generic ===
+        diagnosis:        { label: 'Tashxis',                    icon: 'stethoscope',          type: 'text' },
+        symptoms:         { label: 'Alomatlar',                 icon: 'cruelty_free',         type: 'list' },
+        recommendations:  { label: 'Tavsiyalar',                icon: 'medication',           type: 'list' },
+        referred_services:{ label: 'Tavsiya qilingan xizmatlar',icon: 'local_hospital',       type: 'list' },
+        vitals:           { label: "Hayotiy ko'rsatkichlar",     icon: 'monitor_heart',        type: 'vitals' },
+
+        // === Terapiya ===
+        bemor_shikoyatlari:{ label: "Bemor shikoyatlari",        icon: 'cruelty_free',         type: 'list' },
+        kasallik_tarixi:  { label: "Kasallik tarixi",           icon: 'history',              type: 'text' },
+        obyektiv_korik:   { label: "Ob'yektiv ko'rik",          icon: 'monitor_heart',        type: 'vitals' },
+        dastlabki_tashxis:{ label: "Dastlabki tashxis",         icon: 'stethoscope',          type: 'text' },
+        davolash_rejasi:  { label: "Davolash rejasi",           icon: 'medication',           type: 'list' },
+
+        // === UZI ===
+        tekshirilgan_organ:{ label: "Tekshirilgan organ",         icon: 'scan',                 type: 'text' },
+        olchamlari:        { label: "O'lchamlari",                icon: 'straighten',           type: 'dims' },
+        konturlari:        { label: "Konturlari",                 icon: 'blur_on',              type: 'text' },
+        exogenligi:        { label: "Exogenligi (ekogenlik)",     icon: 'opacity',              type: 'text' },
+        ekstruktura:       { label: "Eko-struktura",              icon: 'grid_view',            type: 'text' },
+        patologiya:        { label: "Patologik o'zgarishlar",     icon: 'warning',              type: 'text' },
+        qon_aylanishi:     { label: "Qon aylanishi (Doppler)",    icon: 'water_drop',           type: 'doppler' },
+        xulosa:            { label: "Xulosa",                     icon: 'summarize',            type: 'text' },
+      };
+
+      // Vital labels (terapiya uchun)
+      const vitalLabelsMap = {
+        qon_bosimi: 'Qon bosimi',
+        puls: 'Puls',
+        harorat: 'Harorat',
+        auskultatsiya: 'Auskultatsiya',
+        blood_pressure: 'Qon bosimi',
+        pulse: 'Puls',
+        temperature: 'Harorat',
+        weight: 'Vazn',
+        oxygen_saturation: 'SpO2',
+        respiration: 'Nafas',
+      };
+
+      let html = '';
+
+      // Render maydonlari
+      for (const [key, def] of Object.entries(fieldDefs)) {
+        const val = s[key];
+        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) continue;
+
+        if (def.type === 'list') {
+          html += `
+            <div class="result-card ${key}">
+              <div class="header">
+                <span class="material-symbols-outlined">${def.icon}</span>
+                <h3>${def.label} (${val.length})</h3>
+              </div>
+              <div class="body"><ul>${val.map(v => `<li>${escapeHtml(v)}</li>`).join('')}</ul></div>
+            </div>`;
+        } else if (def.type === 'vitals') {
+          const entries = Object.entries(val).filter(([k, v]) => v !== null && v !== '' && v !== undefined);
+          if (entries.length === 0) continue;
+          html += `
+            <div class="result-card vitals">
+              <div class="header">
+                <span class="material-symbols-outlined">${def.icon}</span>
+                <h3>${def.label}</h3>
+              </div>
+              <div class="body">
+                <div class="vitals-grid">
+                  ${entries.map(([k, v]) => {
+                    const label = vitalLabelsMap[k] || k.replace(/_/g, ' ');
+                    return `<div class="vital-item">
+                      <div class="label">${label}</div>
+                      <div class="value">${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : v)}</div>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>
+            </div>`;
+        } else if (def.type === 'dims') {
+          const entries = Object.entries(val).filter(([k, v]) => v !== null && v !== '' && v !== undefined);
+          if (entries.length === 0) continue;
+          const dimLabels = { uzunligi: 'Uzunligi', kengligi: 'Kengligi', qalinligi: 'Qalinligi', hajmi: 'Hajmi' };
+          html += `
+            <div class="result-card measurements">
+              <div class="header">
+                <span class="material-symbols-outlined">${def.icon}</span>
+                <h3>${def.label}</h3>
+              </div>
+              <div class="body">
+                <div class="vitals-grid">
+                  ${entries.map(([k, v]) => `
+                    <div class="vital-item">
+                      <div class="label">${dimLabels[k] || k.replace(/_/g, ' ')}</div>
+                      <div class="value">${escapeHtml(v)}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>`;
+        } else if (def.type === 'doppler') {
+          const entries = Object.entries(val).filter(([k, v]) => v !== null && v !== '' && v !== undefined);
+          if (entries.length === 0) continue;
+          const dplLabels = { doppler: 'Doppler', spektr: 'Spektr', ri: 'RI', ps: 'PS', ed: 'ED' };
+          html += `
+            <div class="result-card doppler">
+              <div class="header">
+                <span class="material-symbols-outlined">${def.icon}</span>
+                <h3>${def.label}</h3>
+              </div>
+              <div class="body">
+                <div class="vitals-grid">
+                  ${entries.map(([k, v]) => `
+                    <div class="vital-item">
+                      <div class="label">${dplLabels[k] || k.replace(/_/g, ' ')}</div>
+                      <div class="value">${escapeHtml(v)}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>`;
+        } else {
+          // text — oddiy matnli maydon
+          html += `
+            <div class="result-card ${key}">
+              <div class="header">
+                <span class="material-symbols-outlined">${def.icon}</span>
+                <h3>${def.label}</h3>
+              </div>
+              <div class="body">${escapeHtml(val)}</div>
+            </div>`;
+        }
+      }
+
+      // Error from AI
+      if (s.error) {
+        html += `
+          <div class="result-card" style="border-color: var(--md-sys-color-error);">
+            <div class="header">
+              <span class="material-symbols-outlined" style="color: var(--md-sys-color-error);">warning</span>
+              <h3 style="color: var(--md-sys-color-error);">Eslatma</h3>
+            </div>
+            <div class="body">${escapeHtml(s.error)}</div>
+          </div>`;
+      }
+
+      // Empty
+      if (!html) {
+        html = `<div class="result-empty"><span class="material-symbols-outlined">search_off</span><h3>Hech qanday ma'lumot ajratilmadi</h3><p>Diktant matnini tekshirib qayta urinib ko'ring</p></div>`;
+      }
+
+      resultPanel.innerHTML = html;
+
+      // Meta bar
+      const meta = data.meta || {};
+      let metaBadges = '';
+      if (meta.whisper_used) metaBadges += '<span class="fallback-badge" style="background:#e0f2e9;color:#006a58;">Whisper</span> ';
+      if (meta.used_fallback) metaBadges += '<span class="fallback-badge">Fallback</span> ';
+      if (meta.whisper_error && !meta.whisper_used) metaBadges += '<span class="fallback-badge" style="background:#ffede0;color:#c41e00;">No STT</span> ';
+      // Specialty badge
+      if (s.specialty) {
+        const spBadge = s.specialty === 'ultrasound'
+          ? '<span class="fallback-badge" style="background:#e8e0f0;color:#4a148c;">UZI</span>'
+          : '<span class="fallback-badge" style="background:#e0f2f1;color:#004d40;">Terapiya</span>';
+        metaBadges += spBadge + ' ';
+      }
+      metaBar.innerHTML = `
+        <span>${data.patient_name ? 'Bemor: ' + escapeHtml(data.patient_name) : ''}</span>
+        <span style="display:flex;align-items:center;gap:8px;">${metaBadges}
+          <span>${meta.processed_at ? new Date(meta.processed_at).toLocaleTimeString('uz-UZ') : ''}</span>
+        </span>`;
+
+      // Scroll to results on mobile
+      resultCards.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    // ---- Clinic name detection helpers (for referral detection) ----
+    const CLINIC_SERVICE_KEYWORDS = [
+      // Diagnostika (instrumental)
+      { pattern: /(mrt|mri|магнитно-резонанс)/i, name: 'MRT' },
+      { pattern: /(utt|uzi|узд|узи|ультразвук|ultrasound)/i, name: 'UTT (UZI)' },
+      { pattern: /(^|\s)(kt|кт|компьютерная томография)/i, name: 'KT' },
+      { pattern: /(рентген|rentgen|x-?ray)/i, name: 'Rentgen' },
+      { pattern: /(ekg|экг|электрокардиограм)/i, name: 'EKG' },
+      { pattern: /(exo-?kg|exokg|эхо-?кг|эхокг)/i, name: 'ExoKG' },
+      { pattern: /(holter|холтер)/i, name: 'Holter' },
+      { pattern: /(qon tahlili|общий анализ крови|oak)/i, name: 'Qon tahlili' },
+      { pattern: /(biokimyoviy tahlil|биохимия)/i, name: 'Biokimyoviy tahlil' },
+      { pattern: /(konsultatsiya|консультация|maslahat)/i, name: 'Konsultatsiya' },
+      { pattern: /(gormon|гормон)/i, name: 'Gormonlar' },
+      { pattern: /(pcr|пцр)/i, name: 'PCR' },
+      // Yo'nalishlar
+      { pattern: /(kardiolog|кардиолог)/i, name: 'Kardiolog' },
+      { pattern: /(nevrolog|невролог)/i, name: 'Nevrolog' },
+      { pattern: /(pediatr|педиатр)/i, name: 'Pediatr' },
+      { pattern: /(ginekolog|гинеколог)/i, name: 'Ginekolog' },
+      { pattern: /(urolog|уролог)/i, name: 'Urolog' },
+      { pattern: /(onkolog|онколог)/i, name: 'Onkolog' },
+      { pattern: /(jarrohlik|хирург)/i, name: 'Jarrohlik' },
+      { pattern: /(oftalmolog|офтальмолог)/i, name: 'Oftalmolog' },
+      { pattern: /(lor|лор|оториноларинголог)/i, name: 'LOR' },
+      { pattern: /(stomatolog|стоматолог)/i, name: 'Stomatolog' },
+    ];
+
+    // ---- Procedure detection for Smart Inventory (AI Omborchi) ----
+    // Maps text patterns to procedure names in procedure_material_norms table
+    const PROCEDURE_DETECT_KEYWORDS = [
+      // Stomatologiya
+      { pattern: /(plomba|svetovoy plomba|kompozit plomba|tish plombasi)/i, name: "Svetovoy plomba qo'yish" },
+      // Jarrohlik
+      { pattern: /(jarrohlik|operatsiya|хирургия|операция)/i, name: 'Kichik jarrohlik muolajasi' },
+      // Gips
+      { pattern: /(gips|gips qo'yish|singan|sinish|гипс)/i, name: "Gips qo'yish" },
+      // Antibiotik
+      { pattern: /(antibiotik|антибиотик|infeksiya|инфекция|yiringli)/i, name: 'Antibiotik terapiyasi' },
+      // Umumiy konsultatsiya (default fallback)
+      { pattern: /(konsultatsiya|qabul|tekshiruv|muolaja)/i, name: 'Konsultatsiya qabuli' },
+    ];
+
+    // Known clinic name keywords for quick detection
+    const CLINIC_DETECT_KEYWORDS = [
+      { names: ['grand-sino', 'grand sino', 'grandsino', 'гранд сино', 'sino klinikasi'], id: 'CLN-019', label: 'Grand-Sino klinikasi' },
+      { names: ['viloyat ko\'p tarmoqli', 'ko\'p tarmoqli tibbiyot markazi'], id: 'CLN-002', label: 'Viloyat KT markazi' },
+      { names: ['viloyat bolalar klinik shifoxonasi', 'bolalar klinik shifoxonasi'], id: 'CLN-003', label: 'Viloyat bolalar shifoxonasi' },
+      { names: ['perinatal markaz'], id: 'CLN-004', label: 'Perinatal markaz' },
+      { names: ['kardiologiya dispanseri'], id: 'CLN-005', label: 'Kardiologiya dispanseri' },
+      { names: ['onkologiya dispanseri'], id: 'CLN-006', label: 'Onkologiya dispanseri' },
+      { names: ['teri-tanosil dispanseri'], id: 'CLN-007', label: 'Teri-tanosil dispanseri' },
+      { names: ['narkologiya dispanseri'], id: 'CLN-008', label: 'Narkologiya dispanseri' },
+      { names: ['silga qarshi dispanser', 'sil dispanseri'], id: 'CLN-009', label: 'Sil dispanseri' },
+      { names: ['oits markazi', 'oitsga qarshi'], id: 'CLN-010', label: 'OITS markazi' },
+      { names: ['yuqumli kasalliklar shifoxonasi'], id: 'CLN-011', label: 'Yuqumli kasalliklar shifoxonasi' },
+      { names: ['ruhiy salomatlik markazi'], id: 'CLN-012', label: 'Ruhiy salomatlik markazi' },
+      { names: ['tez tibbiy yordam markazi', 'tez yordam'], id: 'CLN-013', label: 'Tez yordam markazi' },
+      { names: ['termiz shahar tibbiyot birlashmasi', 'termiz ttb'], id: 'CLN-014', label: 'Termiz TTB' },
+      { names: ['1-sonli poliklinika', 'termiz 1 poliklinika'], id: 'CLN-015', label: '1-sonli poliklinika' },
+      { names: ['2-sonli poliklinika', 'termiz 2 poliklinika'], id: 'CLN-016', label: '2-sonli poliklinika' },
+      { names: ['3-sonli poliklinika', 'termiz 3 poliklinika'], id: 'CLN-017', label: '3-sonli poliklinika' },
+      { names: ['qon quyish stansiyasi', 'qon markazi'], id: 'CLN-018', label: 'Qon quyish stansiyasi' },
+      { names: ['hayot klinikasi', 'klinika hayot'], id: 'CLN-001', label: 'Hayot Klinikasi' },
+    ];
+
+    // ---- Fetch clinics list (for up-to-date detection) ----
+    async function fetchClinics() {
+      try {
+        const res = await fetch('/api/b2b/clinics');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.data)) {
+            clinicsList = data.data;
+          }
+        }
+      } catch (e) {
+        console.warn('[Referral] Clinics fetch failed, using static keywords:', e.message);
+      }
+    }
+
+    // ---- Check if text contains a clinic name + service (referral opportunity) ----
+    function checkForReferral(text) {
+      // Hide by default
+      referralSection.classList.remove('visible');
+      detectedClinic = null;
+      detectedService = null;
+
+      if (!text || text.length < 10) return;
+
+      const lower = text.toLowerCase();
+
+      // 1) Detect clinic
+      for (const entry of CLINIC_DETECT_KEYWORDS) {
+        for (const kw of entry.names) {
+          if (lower.includes(kw)) {
+            detectedClinic = { id: entry.id, label: entry.label };
+            break;
+          }
+        }
+        if (detectedClinic) break;
+      }
+
+      // Also check server-fetched clinics for more precision
+      if (!detectedClinic && clinicsList.length > 0) {
+        for (const clinic of clinicsList) {
+          const kwList = clinic.keywords || [];
+          for (const kw of kwList) {
+            if (lower.includes(kw.toLowerCase())) {
+              detectedClinic = { id: clinic.id, label: clinic.name };
+              break;
+            }
+          }
+          if (detectedClinic) break;
+        }
+      }
+
+      // 2) Detect service
+      for (const entry of CLINIC_SERVICE_KEYWORDS) {
+        if (entry.pattern.test(text)) {
+          detectedService = entry.name;
+          break;
+        }
+      }
+
+      // 2b) Detect procedure for inventory consumption
+      detectedProcedure = null;
+      for (const entry of PROCEDURE_DETECT_KEYWORDS) {
+        if (entry.pattern.test(text)) {
+          detectedProcedure = entry.name;
+          break;
+        }
+      }
+      // Always fallback to Konsultatsiya qabuli if nothing specific matched
+      if (!detectedProcedure) {
+        detectedProcedure = 'Konsultatsiya qabuli';
+      }
+
+      // 3) If both found — show referral section
+      if (detectedClinic && detectedService) {
+        referralDetectedTarget.textContent = detectedClinic.label;
+        referralSection.classList.add('visible');
+        // Scroll to referral button
+        setTimeout(() => {
+          referralSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 200);
+      }
+    }
+
+    // ---- Confirm referral: POST /api/b2b/referral ----
+    async function confirmReferral() {
+      const text = lastAnalysisText || dictationText.value.trim();
+      const patientName = lastPatientName || patientNameInput.value.trim();
+
+      if (!text) {
+        showToast('Yo\'llanma yaratish uchun diktant matni kerak', 'error');
+        return;
+      }
+
+      // Loading state
+      btnConfirmReferral.disabled = true;
+      btnConfirmText.innerHTML = '<span class="spinner-sm"></span> Yo\'llanma yaratilmoqda...';
+
+      try {
+        const res = await fetch('/api/b2b/referral', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            note: text,
+            transcript: text,
+            source: 'scribe',
+            referring_doctor: null,
+            sender_clinic_id: null,
+            total_amount: null
+          })
+        });
+
+        const data = await res.json();
+
+        if (!data || data.status === 'error') {
+          throw new Error(data.error || 'Server xatosi');
+        }
+
+        // Success — show QR modal
+        showQrModal({
+          referral_id: data.referral_id,
+          qr_code: data.qr_code,
+          patient_name: patientName,
+          clinic_name: detectedClinic ? detectedClinic.label : 'Noma\'lum',
+          service: detectedService || 'Noma\'lum'
+        });
+
+        // ---- Smart Inventory: tranzaksion material sarflash ----
+        if (detectedProcedure) {
+          const procedureName = detectedProcedure;
+          try {
+            const consumeResp = await fetch('/api/inventory/consume', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                procedure_name: procedureName,
+                consultation_id: null,
+                performed_by: null
+              })
+            });
+            const consumeData = await consumeResp.json();
+            if (consumeData.success) {
+              console.log('[INVENTORY] Material sarflandi:', procedureName, consumeData.materials_used || 0, 'ta material');
+              showToast('📦 Ombordan material chegirildi: ' + procedureName, 'success');
+            } else if (consumeData.error) {
+              console.warn('[INVENTORY] Sarflash xatosi:', consumeData.error);
+              if (consumeData.insufficient && consumeData.insufficient.length > 0) {
+                const names = consumeData.insufficient.map(i => i.item_name || i.item).join(', ');
+                showToast('⚠️ Diqqat: Muolaja aniqlandi, lekin omborda yetarli material (' + names + ') topilmadi! Iltimos inventarni tekshiring', 'error');
+              } else {
+                showToast('⚠️ Omborda material yetarli emas: ' + (consumeData.error || ''), 'error');
+              }
+            }
+          } catch (fetchErr) {
+            console.warn('[INVENTORY] Sarflash so\'rov xatosi:', fetchErr.message);
+          }
+        }
+
+        showToast('✅ Yo\'llanma muvaffaqiyatli yaratildi!', 'success');
+
+      } catch (e) {
+        console.error('[Referral] Xato:', e.message);
+        showToast('Yo\'llanma xatosi: ' + e.message, 'error');
+      } finally {
+        btnConfirmReferral.disabled = false;
+        btnConfirmText.innerHTML = '<span class="material-symbols-outlined">check_circle</span><span>Muolajani tasdiqlash va Yo\'llanma yaratish</span>';
+      }
+    }
+
+    // ---- Show QR modal ----
+    function showQrModal(data) {
+      qrImage.src = data.qr_code || '';
+      modalReferralId.textContent = data.referral_id || '—';
+      modalPatientName.textContent = data.patient_name || '—';
+      modalClinicName.textContent = data.clinic_name || '—';
+      modalService.textContent = data.service || '—';
+      qrModal.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    // ---- Close QR modal ----
+    function closeQrModal() {
+      qrModal.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    // Close modal on overlay click
+    qrModal.addEventListener('click', (e) => {
+      if (e.target === qrModal) closeQrModal();
+    });
+
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && qrModal.classList.contains('active')) {
+        closeQrModal();
+      }
+    });
+
+    // ---- Helpers ----
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text || '';
+      return div.innerHTML;
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `
+        <span class="material-symbols-outlined" style="font-size:18px;">${type === 'error' ? 'error' : type === 'success' ? 'check_circle' : 'info'}</span>
+        <span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // ---- Keyboard shortcut: Enter to analyze ----
+    dictationText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        analyzeDictation();
+      }
+    });
+
+    // ---- Handle page unload ----
+    window.addEventListener('beforeunload', () => {
+      if (isRecording && recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+    });
+
+    // ---- INIT: sahifa yuklanganda ----
+    document.addEventListener('DOMContentLoaded', () => {
+      // Char counter
+      dictationText.addEventListener('input', () => {
+        charCount.textContent = dictationText.value.length;
+      });
+      // Health check
+      checkHealth();
+      // Speech support check
+      checkSpeechSupport();
+      // Fetch clinics for referral detection
+      fetchClinics();
+    });
+  </script>
+<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
+</html>

@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falcon AI OS — Tijorat Taklifi</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a2e;
+    line-height: 1.6;
+  }
+
+  .proposal {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  /* ─── COVER PAGE ─── */
+  .cover {
+    background: linear-gradient(135deg, #0f0c29, #302b63 50%, #24243e);
+    color: #fff;
+    padding: 120px 80px 80px;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 800px;
+    height: 800px;
+    background: radial-gradient(circle, rgba(99,102,241,.15) 0%, transparent 70%);
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1);
+  }
+  .cover .badge {
+    display: inline-block;
+    background: rgba(99,102,241,.2);
+    border: 1px solid rgba(99,102,241,.4);
+    color: #a5b4fc;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .cover h1 span { color: #a5b4fc; }
+  .cover .subtitle {
+    font-size: 22px;
+    font-weight: 400;
+    color: rgba(255,255,255,.7);
+    margin-bottom: 40px;
+    max-width: 600px;
+  }
+  .cover .meta {
+    display: flex;
+    gap: 48px;
+    margin-top: 60px;
+    position: relative;
+  }
+  .cover .meta-item { }
+  .cover .meta-item .label {
+    font-size: 12px;
+    color: rgba(255,255,255,.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .cover .meta-item .value {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  /* ─── CONTENT ─── */
+  .content { padding: 60px 80px; background: #fff; }
+
+  /* ─── SECTION ─── */
+  .section {
+    margin-bottom: 56px;
+    page-break-inside: avoid;
+  }
+  .section:last-child { margin-bottom: 0; }
+
+  .section-number {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6366f1;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  .section h2 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #0f0c29;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 3px solid #6366f1;
+    display: inline-block;
+  }
+  .section h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin: 24px 0 12px;
+  }
+  .section p {
+    font-size: 15px;
+    color: #374151;
+    margin-bottom: 12px;
+    max-width: 720px;
+  }
+
+  /* ─── BENTO GRID ─── */
+  .bento {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .bento-item {
+    background: #f8f9ff;
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid #e8eaff;
+    transition: .2s;
+  }
+  .bento-item:hover { border-color: #6366f1; }
+  .bento-item .icon { font-size: 28px; margin-bottom: 8px; }
+  .bento-item h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .bento-item p { font-size: 13px; color: #6b7280; margin: 0; }
+
+  /* ─── TABLE ─── */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 20px 0;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  thead th {
+    background: #f8f9ff;
+    text-align: left;
+    padding: 14px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+  }
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #374151;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafbff; }
+
+  /* Price highlight */
+  .price-cell { font-weight: 700; color: #059669; }
+  .price-total { font-weight: 700; color: #6366f1; }
+
+  /* ─── COMPARISON ─── */
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .comp-col {
+    background: #f8f9ff;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #e8eaff;
+  }
+  .comp-col.featured {
+    background: linear-gradient(135deg, #0f0c29, #302b63);
+    color: #fff;
+    border-color: transparent;
+    position: relative;
+  }
+  .comp-col.featured &amp;::before {
+    content: '★ TAVSIYA';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #6366f1;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 16px;
+    border-radius: 12px;
+    letter-spacing: .5px;
+  }
+  .comp-col h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .comp-col.featured h4 { color: #a5b4fc; }
+  .comp-col .check { color: #059669; }
+  .comp-col .cross { color: #ef4444; }
+
+  /* ─── HIGHLIGHT BOX ─── */
+  .highlight {
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+    border-left: 4px solid #6366f1;
+    border-radius: 0 12px 12px 0;
+    padding: 24px 28px;
+    margin: 24px 0;
+  }
+  .highlight p { margin: 0; font-weight: 500; }
+
+  /* ─── TIMELINE ─── */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+    margin: 20px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: #e5e7eb;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #6366f1;
+  }
+  .timeline-item .time {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6366f1;
+    margin-bottom: 4px;
+  }
+  .timeline-item .desc {
+    font-size: 14px;
+    color: #374151;
+  }
+
+  /* ─── PRICING CARDS ─── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .pricing-card {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 28px 24px;
+    position: relative;
+    transition: .2s;
+  }
+  .pricing-card:hover { border-color: #6366f1; }
+  .pricing-card.featured {
+    border-color: #6366f1;
+    box-shadow: 0 4px 24px rgba(99,102,241,.15);
+    transform: scale(1.02);
+  }
+  .pricing-card .tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6366f1;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .pricing-card h4 {
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+  .pricing-card .desc {
+    font-size: 13px;
+    color: #6b7280;
+    margin-bottom: 20px;
+  }
+  .pricing-card .price {
+    font-size: 36px;
+    font-weight: 800;
+    color: #0f0c29;
+    margin-bottom: 4px;
+  }
+  .pricing-card .price span { font-size: 16px; font-weight: 400; color: #6b7280; }
+  .pricing-card .total {
+    font-size: 14px;
+    color: #059669;
+    font-weight: 600;
+    margin-bottom: 20px;
+  }
+  .pricing-card ul {
+    list-style: none;
+    margin-bottom: 20px;
+  }
+  .pricing-card ul li {
+    font-size: 13px;
+    color: #374151;
+    padding: 6px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .pricing-card ul li::before { content: '✓ '; color: #059669; font-weight: 700; }
+  .pricing-card .annual {
+    font-size: 13px;
+    color: #6b7280;
+    padding: 12px 0 0;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 12px;
+  }
+
+  /* ─── CONTACT ─── */
+  .contact-bar {
+    background: linear-gradient(135deg, #0f0c29, #302b63);
+    color: #fff;
+    padding: 40px 80px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 24px;
+  }
+  .contact-bar .item { }
+  .contact-bar .item .label {
+    font-size: 11px;
+    color: rgba(255,255,255,.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .contact-bar .item .val { font-size: 15px; font-weight: 500; }
+
+  .footer {
+    background: #0f0c29;
+    color: rgba(255,255,255,.5);
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+  }
+
+  /* ─── NUMBERED LIST ─── */
+  .num-list {
+    list-style: none;
+    counter-reset: item;
+    margin: 16px 0;
+  }
+  .num-list li {
+    counter-increment: item;
+    padding: 8px 0 8px 36px;
+    position: relative;
+    font-size: 14px;
+    color: #374151;
+  }
+  .num-list li::before {
+    content: counter(item);
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 24px;
+    height: 24px;
+    background: #eef2ff;
+    color: #6366f1;
+    border-radius: 50%;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 24px;
+  }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: #fff; }
+    .cover { padding: 60px 40px; }
+    .content { padding: 40px; }
+    .contact-bar { padding: 30px 40px; }
+    .pricing-card.featured { transform: none; }
+    .bento-item:hover { border-color: #e8eaff; }
+    .section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="proposal">
+
+<!-- ═══════════ COVER ═══════════ -->
+<div class="cover">
+  <div class="badge">✦ TIJORAT TAKLIFI v1.0</div>
+  <h1><span>Falcon AI OS</span></h1>
+  <h1>Klinikalar uchun<br>sun'iy intellekt ekotizimi</h1>
+  <p class="subtitle">Face ID · AI Scribe · Smart Inventory · AI Receptionist · B2B Referral &bull; 100% lokal</p>
+  
+  <div class="meta">
+    <div class="meta-item">
+      <div class="label">Sana</div>
+      <div class="value">2026-yil iyun</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Amal qilish muddati</div>
+      <div class="value">30 kun</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Tayyorladi</div>
+      <div class="value">Falcon AI Team</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CONTENT ═══════════ -->
+<div class="content">
+
+<!-- ─── 1 ─── -->
+<div class="section">
+  <div class="section-number">01</div>
+  <h2>Qisqacha mazmun</h2>
+  <p><strong>Falcon AI OS</strong> — bu klinikalar uchun mo'ljallangan, to'liq lokal ishlaydigan sun'iy intellekt ekotizimi. Tizim 9 ta AI agent, Face ID biometriya, aqlli ombor boshqaruvi va B2B yo'llanma tizimini o'z ichiga oladi.</p>
+  <p>Barcha AI modellar <strong>klinikaning o'z serverida</strong> ishlaydi. Internet talab qilmaydi. Bemor ma'lumotlari hech qachon tashqariga chiqmaydi. Oylik cloud to'lovlari yo'q.</p>
+
+  <div class="bento" style="margin-top: 20px;">
+    <div class="bento-item">
+      <div class="icon">🤖</div>
+      <h4>9 ta AI agent</h4>
+      <p>Scribe, receptionist, inventory, analytics va boshqa</p>
+    </div>
+    <div class="bento-item">
+      <div class="icon">⚡</div>
+      <h4>80–150 ms javob</h4>
+      <p>RTX 5070 bilan LLM tezligi</p>
+    </div>
+    <div class="bento-item">
+      <div class="icon">🫵</div>
+      <h4>99.2% Face ID</h4>
+      <p>Yuz orqali identifikatsiya aniqligi</p>
+    </div>
+    <div class="bento-item">
+      <div class="icon">🔒</div>
+      <h4>100% lokal</h4>
+      <p>Internet talab qilmaydi, ma'lumotlar klinikada qoladi</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 2 ─── -->
+<div class="section">
+  <div class="section-number">02</div>
+  <h2>Muammo va yechim</h2>
+  <p>Klinikalarda eng ko'p uchraydigan 6 ta muammo va ularning Falcon AI OS yechimi:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 40px;">#</th>
+          <th>Muammo</th>
+          <th>Kunlik yo'qotish</th>
+          <th>Falcon AI OS yechimi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">1</td>
+          <td>Bemorlarni qo'lda ro'yxatga olish, navbat</td>
+          <td>30–60 daqiqa</td>
+          <td>Face ID kiosk, 0.5 soniya</td>
+        </tr>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">2</td>
+          <td>Shifokor diktantini qo'lda yozish</td>
+          <td>15–20 daqiqa/bemor</td>
+          <td>AI Scribe, 3–5 soniya</td>
+        </tr>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">3</td>
+          <td>Dori-darmon hisobi, muddati o'tgan batch</td>
+          <td>20–40 daqiqa/kun</td>
+          <td>Smart Inventory, avtomatik</td>
+        </tr>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">4</td>
+          <td>Bemorlarni telefon orqali band qilish</td>
+          <td>40+ daqiqa/kun</td>
+          <td>AI Receptionist, 24/7</td>
+        </tr>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">5</td>
+          <td>Klinikalararo yo'llanma (qog'ozda)</td>
+          <td>2–3 kun yetkazish</td>
+          <td>B2B Referral, online</td>
+        </tr>
+        <tr>
+          <td style="color:#6366f1;font-weight:700;">6</td>
+          <td>Statistika va hisobot (Excel)</td>
+          <td>1–2 soat/hafta</td>
+          <td>Analytics, 1 tugma</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── 3 ─── -->
+<div class="section">
+  <div class="section-number">03</div>
+  <h2>Imkoniyatlar</h2>
+
+  <h3>🫵 Face ID — Yuz orqali identifikatsiya</h3>
+  <p>Bemor va xodimlarni yuz orqali aniqlash. Liveness detection (odam ekanligini tekshirish). Ma'lumotlar AES-256-GCM bilan shifrlangan.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Imkoniyat</th><th>Tavsif</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Ro'yxatga olish</td><td>1 marta kameraga qarash, 0.5 soniya</td></tr>
+        <tr><td>Tekshirish</td><td>0.3 soniya, 99.2% aniqlik</td></tr>
+        <tr><td>Liveness</td><td>Kamera orqali odam ekanligini tekshiradi</td></tr>
+        <tr><td>Davomat</td><td>Kirish/chiqish vaqtini avtomatik qayd etadi</td></tr>
+        <tr><td>GDPR</td><td>Bemor roziligi, ma'lumotlarni o'chirish huquqi</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>🎙️ AI Scribe — Shifokor yordamchisi</h3>
+  <p>Shifokor diktantini avtomatik ICD-10 kodlari, dori nomlari va vital signallar bilan to'ldirilgan tibbiy qaydga aylantiradi.</p>
+  <div class="highlight">
+    <p><strong>Misol:</strong> "Bemor 45 yosh, 2-tip diabet, gemoglobin A1C 8.2, Metformin 850 mg kuniga 2 mahal"<br>
+    → <strong>Diagnoz:</strong> E11.9 &bull; <strong>ICD-10:</strong> E11 &bull; <strong>Dori:</strong> Metformin 850mg, 2 m/kun &bull; <strong>HbA1C:</strong> 8.2% &bull; <strong>Keyingi qabul:</strong> 3 oy</p>
+  </div>
+  <p><strong>Tillar:</strong> O'zbek, Rus, Ingliz — aralash holatda ham ishlaydi.</p>
+
+  <h3>🤖 AI Receptionist — 24/7 Ovozli operator</h3>
+  <p>Bemor telefonga qo'ng'iroq qiladi yoki Telegram orqali yozadi. AI operator shifokor grafigini tekshiradi, bo'sh vaqtlarni aytadi va band qiladi.</p>
+
+  <h3>📦 Smart Inventory — Aqlli ombor</h3>
+  <div class="bento">
+    <div class="bento-item"><h4>FEFO boshqaruvi</h4><p>First Expiry First Out — avval muddati yaqinini chiqarish</p></div>
+    <div class="bento-item"><h4>Normativlar</h4><p>Minimal qoldiq avtomatik hisoblanadi, buyurtma kerakligi bildiriladi</p></div>
+    <div class="bento-item"><h4>Ovozli boshqaruv</h4><p>"5 ampuladan foydalandim" — mikrofonga gapirsangiz, tizim yozadi</p></div>
+    <div class="bento-item"><h4>Muddati yaqin</h4><p>7 kundan kam qolgan mahsulotlar haqida ogohlantirish</p></div>
+  </div>
+
+  <h3>📊 Analytics — Hisobot va tahlil</h3>
+  <p>Shifokor KPI, bemor statistikasi, moliyaviy hisobot, kam qoldiq bashorati. Bir tugma bilan PDF/Excel eksport.</p>
+
+  <h3>🔄 B2B Referral — Klinikalararo yo'llanma</h3>
+  <p>Bir klinikadan ikkinchisiga yo'llanma berish, split-to'lov (40% birinchi klinikaga, 20% ikkinchisiga, 2000 so'm tizimga).</p>
+</div>
+
+<!-- ─── 4 ─── -->
+<div class="section">
+  <div class="section-number">04</div>
+  <h2>Nega aynan Falcon AI OS?</h2>
+
+  <div class="comparison">
+    <div class="comp-col">
+      <h4>An'anaviy CRM</h4>
+      <p style="color:#6b7280;font-size:12px;">Cloud, oylik to'lov</p>
+      <div style="margin-top:12px;text-align:left;font-size:13px;">
+        <div style="padding:4px 0"><span class="cross">✗</span> Cloud, internet kerak</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> Oylik $50–500</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> Face ID yo'q</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> AI Scribe yo'q</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> O'zbek tili yo'q</div>
+      </div>
+    </div>
+    <div class="comp-col featured">
+      <h4>⭐ Falcon AI OS</h4>
+      <p style="color:rgba(255,255,255,.6);font-size:12px;">100% lokal, bir marta to'lov</p>
+      <div style="margin-top:12px;text-align:left;font-size:13px;color:rgba(255,255,255,.9)">
+        <div style="padding:4px 0"><span class="check">✓</span> 100% lokal, offline</div>
+        <div style="padding:4px 0"><span class="check">✓</span> $0 oylik to'lov</div>
+        <div style="padding:4px 0"><span class="check">✓</span> Face ID + Liveness</div>
+        <div style="padding:4px 0"><span class="check">✓</span> AI Scribe (ovozli)</div>
+        <div style="padding:4px 0"><span class="check">✓</span> O'zbek, Rus, English</div>
+      </div>
+    </div>
+    <div class="comp-col">
+      <h4>Qo'lda ish</h4>
+      <p style="color:#6b7280;font-size:12px;">Qog'oz, Excel</p>
+      <div style="margin-top:12px;text-align:left;font-size:13px;">
+        <div style="padding:4px 0"><span class="cross">✗</span> Sekin, xatolik ko'p</div>
+        <div style="padding:4px 0"><span class="check">✓</span> Oylik to'lov yo'q</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> Ma'lumot yo'qotish</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> Qo'shimcha odam kerak</div>
+        <div style="padding:4px 0"><span class="cross">✗</span> Nazorat qiyin</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="highlight">
+    <p><strong>Yillik tejam: ~$9,600</strong> — bir klinika uchun. Oylik $1,000 (qo'lda ish) → $200 (Falcon AI OS bilan).</p>
+  </div>
+</div>
+
+<!-- ─── 5 ─── -->
+<div class="section">
+  <div class="section-number">05</div>
+  <h2>Texnik talablar</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Komponent</th><th>Minimal</th><th>Tavsiya qilingan</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>GPU</strong></td><td>8 GB VRAM</td><td>12 GB VRAM (RTX 5070)</td></tr>
+        <tr><td><strong>RAM</strong></td><td>16 GB</td><td>32 GB DDR5</td></tr>
+        <tr><td><strong>CPU</strong></td><td>4 yadro</td><td>6+ yadro</td></tr>
+        <tr><td><strong>Disk</strong></td><td>256 GB SSD</td><td>512 GB NVMe SSD</td></tr>
+        <tr><td><strong>OS</strong></td><td>Windows 11 / Ubuntu 22</td><td>Windows 11 Pro</td></tr>
+        <tr><td><strong>Kameralar</strong></td><td>2 dona (kiosk+qabul)</td><td>3 dona (kiosk+qabul+shifokor)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tarmoq</h3>
+  <div class="bento">
+    <div class="bento-item"><h4>LAN</h4><p>100 Mbps+ (1 Gb tavsiya)</p></div>
+    <div class="bento-item"><h4>Wi-Fi</h4><p>Majburiy emas, simli tavsiya</p></div>
+    <div class="bento-item"><h4>Internet</h4><p>Faqat Telegram bot uchun (ixtiyoriy)</p></div>
+    <div class="bento-item"><h4>Kameralar</h4><p>USB 3.0 portlar</p></div>
+  </div>
+</div>
+
+<!-- ─── 6 ─── -->
+<div class="section">
+  <div class="section-number">06</div>
+  <h2>O'rnatish va ishga tushirish rejasi</h2>
+
+  <h3>1-kun: O'rnatish</h3>
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="time">09:00</div>
+      <div class="desc">Server o'rnatish (GPU drayverlar, CUDA)</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">10:00</div>
+      <div class="desc">Falcon AI OS sozlash</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">10:15</div>
+      <div class="desc">Lokal AI modellarni yuklash (20 daqiqa)</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">11:00</div>
+      <div class="desc">Face ID da xodimlarni ro'yxatga olish</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">11:30</div>
+      <div class="desc">Ombor ma'lumotlarini kiritish</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">13:30</div>
+      <div class="desc">Xodimlarni o'qitish (2 soat)</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">15:30</div>
+      <div class="desc">Sinov rejimi (real bemorlar bilan)</div>
+    </div>
+    <div class="timeline-item">
+      <div class="time">17:00</div>
+      <div class="desc">To'liq ishga tushirish</div>
+    </div>
+  </div>
+
+  <h3>2–14 kun: Kuzatuv va optimizatsiya</h3>
+  <p>Masofaviy monitoring, xatoliklarni tuzatish, qo'shimcha sozlamalar.</p>
+
+  <h3>15-kun: Topshirish</h3>
+  <p>Hisobot, foydalanuvchi qo'llanmasi, texnik hujjatlar.</p>
+</div>
+
+<!-- ─── 7 ─── -->
+<div class="section">
+  <div class="section-number">07</div>
+  <h2>Narxlar va to'lov shartlari</h2>
+
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <div class="tag">🏥 Boshlang'ich</div>
+      <h4>Kichik klinika</h4>
+      <p class="desc">5–15 xodim</p>
+      <div class="price">$2,500</div>
+      <p class="total">1-yil: $3,900 · Keyin: $600/yil</p>
+      <ul>
+        <li>Falcon AI OS litsenziya (cheksiz)</li>
+        <li>O'rnatish va sozlash</li>
+        <li>1 kun o'qitish</li>
+        <li>12 oy texnik qo'llab-quvvatlash</li>
+        <li>Bepul yangilanishlar</li>
+      </ul>
+    </div>
+
+    <div class="pricing-card featured">
+      <div class="tag">⭐ TAVSIYA</div>
+      <h4>🏥🏥 Standart</h4>
+      <p class="desc">15–50 xodim</p>
+      <div class="price">$4,500</div>
+      <p class="total">1-yil: $6,700 · Keyin: $1,000/yil</p>
+      <ul>
+        <li>Falcon AI OS litsenziya (cheksiz)</li>
+        <li>O'rnatish va sozlash</li>
+        <li>2 kun o'qitish</li>
+        <li>24/7 texnik qo'llab-quvvatlash</li>
+        <li>Bepul yangilanishlar</li>
+      </ul>
+    </div>
+
+    <div class="pricing-card">
+      <div class="tag">🏢 Korporativ</div>
+      <h4>Klinikalar tarmog'i</h4>
+      <p class="desc">50+ xodim, ko'p filial</p>
+      <div class="price">$9,000</div>
+      <p class="total">1-yil: $12,000+ · Keyin: $2,000/yil</p>
+      <ul>
+        <li>Falcon AI OS litsenziya (cheksiz)</li>
+        <li>Har bir filialga o'rnatish</li>
+        <li>O'qitish (bir guruh)</li>
+        <li>24/7 priortet support</li>
+        <li>Shaxsiy kabinet + hisobot</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="font-size: 13px; color: #6b7280; text-align: center; margin-top: 8px;">Server bilan birga: S-01 ($2,500) · S-02 ($3,800) · S-03 (maxsus)</p>
+
+  <h3>To'lov shartlari</h3>
+  <div class="table-wrap" style="max-width: 500px;">
+    <table>
+      <thead>
+        <tr><th>Bo'lim</th><th>Foiz</th><th>Muddat</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Oldindan to'lov</td><td>30%</td><td>Shartnoma imzolanganda</td></tr>
+        <tr><td>O'rnatish tugagach</td><td>50%</td><td>1-kun</td></tr>
+        <tr><td>Qabul qilinganda</td><td>20%</td><td>15-kun</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:13px; color:#6b7280; margin-top:8px;">So'm ekvivalentida to'lash mumkin (USD kursi bo'yicha).</p>
+</div>
+
+<!-- ─── 8 ─── -->
+<div class="section">
+  <div class="section-number">08</div>
+  <h2>Kafolat va qo'llab-quvvatlash</h2>
+
+  <div class="bento">
+    <div class="bento-item">
+      <h4>🛡️ Dasturiy ta'minot</h4>
+      <p>12 oy kafolat, bepul yangilanishlar</p>
+    </div>
+    <div class="bento-item">
+      <h4>🖥️ Server (biz yetkazgan bo'lsak)</h4>
+      <p>24 oy kafolat</p>
+    </div>
+    <div class="bento-item">
+      <h4>📹 Kameralar</h4>
+      <p>12 oy kafolat</p>
+    </div>
+    <div class="bento-item">
+      <h4>🆘 Favqulodda support</h4>
+      <p>10 daqiqa javob, 24/7</p>
+    </div>
+  </div>
+
+  <h3>Texnik qo'llab-quvvatlash kanallari</h3>
+  <div class="table-wrap" style="max-width: 500px;">
+    <table>
+      <thead>
+        <tr><th>Kanal</th><th>Javob vaqti</th><th>Vaqt</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>📞 Telefon</td><td>30 daqiqa</td><td>09:00–18:00</td></tr>
+        <tr><td>📱 Telegram</td><td>15 daqiqa</td><td>09:00–22:00</td></tr>
+        <tr><td>📧 Email</td><td>2 soat</td><td>Ish vaqti</td></tr>
+        <tr><td>🆘 Favqulodda</td><td>10 daqiqa</td><td>24/7</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Yangilanishlar</h3>
+  <ul class="num-list">
+    <li><strong>Kritik xavfsizlik patch'lari</strong> — 24 soat ichida</li>
+    <li><strong>Kichik yangilanishlar</strong> (bug fix) — har 2 hafta</li>
+    <li><strong>Katta yangilanishlar</strong> (yangi funksiya) — har 3 oy</li>
+    <li><strong>Backup</strong> — avtomatik, kunlik</li>
+  </ul>
+</div>
+
+<!-- ─── 9 ─── -->
+<div class="section">
+  <div class="section-number">09</div>
+  <h2>Tizim arxitekturasi</h2>
+  <p style="margin-bottom: 0;">Falcon AI OS to'liq klinika serverida ishlaydi. Quyida tizimning umumiy ko'rinishi:</p>
+
+  <pre style="background:#f8f9ff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;font-size:13px;line-height:1.7;overflow-x:auto;margin-top:16px;">
+┌─────────────────────────────────────────────────────────┐
+│                    KLINIKA INTERIORI                     │
+│                                                          │
+│  ┌──────────────┐       ┌───────────────────────────┐   │
+│  │  🫵 Face ID   │       │   🖥️  SERVER (RTX 5070)   │   │
+│  │   Kiosk      │◄──────│   Falcon AI OS             │   │
+│  │  (browser)   │  USB  │   ┌───┐ ┌────┐ ┌─────┐   │   │
+│  └──────────────┘       │   │Face│ │AI  │ │SQLit│   │   │
+│                          │   │ID  │ │Scribe│ │e DB│   │   │
+│  ┌──────────────┐       │   └───┘ └────┘ └─────┘   │   │
+│  │  👨‍⚕️ Shifokor  │◄──────│   ┌────┐ ┌────┐ ┌─────┐   │   │
+│  │   Kabinet     │  LAN  │   │Inve│ │Anal│ │Rece │   │   │
+│  └──────────────┘       │   │ntor│ │ytcs│ │ptnst│   │   │
+│                          │   └────┘ └────┘ └─────┘   │   │
+│  ┌──────────────┐       │                            │   │
+│  │  📋 Reception│◄──────│   🔋 Lokal AI Modellar     │   │
+│  │   (browser)  │  WiFi │   Ollama · whisper.cpp     │   │
+│  └──────────────┘       │   Edge-TTS · face-api.js   │   │
+│                          └───────────────────────────┘   │
+│  ┌──────────────┐                                        │
+│  │  📱 Bemorlar  │◄───── Telegram                        │
+│  │   (Telegram)  │                                        │
+│  └──────────────┘                                        │
+└─────────────────────────────────────────────────────────┘</pre>
+</div>
+
+</div><!-- /content -->
+
+<!-- ═══════════ CONTACT ═══════════ -->
+<div class="contact-bar">
+  <div class="item">
+    <div class="label">Telegram</div>
+    <div class="val">@falconai_uz</div>
+  </div>
+  <div class="item">
+    <div class="label">Telefon</div>
+    <div class="val">+998 XX XXX XX XX</div>
+  </div>
+  <div class="item">
+    <div class="label">Email</div>
+    <div class="val">falcon@ai-clinic.uz</div>
+  </div>
+  <div class="item">
+    <div class="label">Veb-sayt</div>
+    <div class="val" style="color: rgba(255,255,255,.5);">tayyorlanmoqda</div>
+  </div>
+</div>
+
+<div class="footer">
+  Falcon AI OS v2.0 &bull; 100% lokal, maxfiy, tez &bull; Ushbu taklif 30 kun amal qiladi
+</div>
+
+</div><!-- /proposal -->
+
+<script>
+  // Adjust cover height to viewport
+  document.querySelectorAll('.cover')[0]?.style.setProperty('min-height', window.innerHeight + 'px');
+</script>
+</body>
+</html>

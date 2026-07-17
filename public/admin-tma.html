@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Falcon AI OS — Admin panel</title>
+<link rel="stylesheet" href="face-capture.css">
+<style>
+:root{--bg:#0d1117;--card:#161b22;--text:#e6edf3;--text-muted:#8b949e;--border:#30363d;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:0 0 80px 0}
+.header{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;padding:20px 16px 16px;position:sticky;top:0;z-index:10}
+.header h1{font-size:20px;font-weight:700;margin-bottom:2px}
+.header .role-badge{display:inline-block;background:rgba(255,255,255,.15);border-radius:20px;padding:2px 12px;font-size:12px;font-weight:600;margin-top:4px}
+.header p{font-size:13px;opacity:.85;margin-top:4px}
+.tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:64px;z-index:9;overflow-x:auto}
+.tab{flex:1;text-align:center;padding:12px 4px;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;cursor:pointer;transition:all .2s;white-space:nowrap;min-width:70px}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none;padding:12px}
+.tab-content.active{display:block}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)}
+.card-title{font-size:14px;font-weight:700;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.alert-red{padding:12px;border-radius:10px;font-size:13px;font-weight:600;margin-bottom:12px;background:rgba(248,81,81,.12);border:1px solid rgba(248,81,81,.3);color:var(--red)}
+.alert-green{padding:12px;border-radius:10px;font-size:13px;font-weight:600;margin-bottom:12px;background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.3);color:var(--green)}
+table{width:100%;font-size:13px;border-collapse:collapse}
+th{text-align:left;padding:8px 6px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border)}
+td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.5)}
+.text-right{text-align:right}
+.text-red{color:var(--red)}
+.text-green{color:var(--green)}
+.text-yellow{color:var(--yellow)}
+.text-muted{color:var(--text-muted)}
+.font-bold{font-weight:700}
+.mb-4{margin-bottom:16px}
+.mt-2{margin-top:8px}
+.hidden{display:none}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s;width:100%;justify-content:center}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-red{background:var(--red);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-outline{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.loading{text-align:center;padding:40px 20px;color:var(--text-muted)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.field-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.3);font-size:13px}
+.field-row:last-child{border-bottom:none}
+.field-label{color:var(--text-muted)}
+.field-value{font-weight:500;text-align:right}
+.mic-btn{width:64px;height:64px;border-radius:50%;border:none;font-size:28px;cursor:pointer;margin:0 auto;display:flex;align-items:center;justify-content:center;transition:all .3s}
+.mic-btn.idle{background:rgba(88,166,255,.15);color:var(--accent)}
+.mic-btn.recording{background:rgba(248,81,81,.2);color:var(--red);animation:pulse 1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,81,81,.4)}50%{box-shadow:0 0 0 12px rgba(248,81,81,0)}100%{box-shadow:0 0 0 0 rgba(248,81,81,0)}}
+.text-center{text-align:center}
+.w-full{width:100%}
+.p-4{padding:16px}
+/* Face ID management */
+.face-subtab{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text-muted);transition:all .2s}
+.face-subtab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.face-panel{display:none}
+.face-panel.active{display:block}
+.face-panel table{width:100%;font-size:12px;border-collapse:collapse}
+.face-panel th{text-align:left;padding:6px 4px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.face-panel td{padding:6px 4px;border-bottom:1px solid rgba(48,54,61,.3)}
+.face-action-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--text);transition:all .2s}
+.face-action-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.input{background:var(--card);color:var(--text);border:1px solid var(--border);width:100%}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚙️ Admin panel</h1>
+  <div><span class="role-badge" id="roleBadge">—</span></div>
+  <p id="userNameDisplay">Klinika Hayot boshqaruv tizimi</p>
+</div>
+
+<div class="tabs" id="tabBar"></div>
+
+<!-- CEO Panel -->
+<div id="tab-ceo" class="tab-content">
+  <div id="ceoLoading" class="loading"><div class="spinner"></div>Yuklanmoqda...</div>
+  <div id="ceoContent" class="hidden">
+    <div class="alert-red" id="wasteAlert">
+      🚨 Diqqat: Normalardan tashqari <strong id="wasteSum">0</strong> UZS lik material ortiqcha sarflandi
+    </div>
+    <div class="alert-green hidden" id="wasteClean">✅ Hozircha isrof qayd etilmagan</div>
+    <div class="card">
+      <div class="card-title">📊 Jami isrof tahlili</div>
+      <div class="field-row"><span class="field-label">Jami isrof (UZS)</span><span class="field-value text-red" id="totalWasteSum">0</span></div>
+      <div class="field-row"><span class="field-label">Ishlatilgan materiallar</span><span class="field-value" id="totalItemsUsed">0</span></div>
+      <div class="field-row"><span class="field-label">Normadan oshgan holatlar</span><span class="field-value" id="overuseCount">0</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 Eng ko'p isrof qilgan shifokorlar</div>
+      <table><thead><tr><th>Shifokor</th><th class="text-right">Ortiqcha sarf (UZS)</th><th class="text-right">Holatlar</th></tr></thead><tbody id="doctorWasteBody"></tbody></table>
+    </div>
+    <div class="card">
+      <div class="card-title">📦 Eng ko'p isrof qilingan materiallar</div>
+      <table><thead><tr><th>Material</th><th class="text-right">Ortiqcha sarf</th><th class="text-right">Holatlar</th></tr></thead><tbody id="topItemsBody"></tbody></table>
+    </div>
+    <button class="btn btn-accent mt-2" onclick="refreshWasteReport()">🔄 Yangilash</button>
+  </div>
+</div>
+
+<!-- Voice Input Tab -->
+<div id="tab-voice" class="tab-content">
+  <div class="card">
+    <div class="card-title">🎤 Ovozli kirim</div>
+    <p class="text-muted mb-4">Materialni ovoz orqali qo'shish uchun mikrofonga bosing va gapiring.</p>
+    <div class="text-center">
+      <button class="mic-btn idle" id="micBtn" onclick="toggleRecording()">🎤</button>
+    </div>
+    <div id="voiceStatus" class="text-center text-muted mt-2">Tayyor</div>
+    <div id="voiceResult" class="hidden mt-2"></div>
+  </div>
+</div>
+
+<!-- Doctor Limit Monitor Tab -->
+<div id="tab-limits" class="tab-content">
+  <div id="limitsLoading" class="loading"><div class="spinner"></div>Yuklanmoqda...</div>
+  <div id="limitsContent" class="hidden">
+    <div class="card">
+      <div class="card-title">🥼 Limit monitoringi</div>
+      <p class="text-muted mb-4">Barcha shifokorlarning buyurtma limitlari va joriy holati.</p>
+      <div id="limitsFilterRow" class="mb-4">
+        <select id="doctorFilter" class="w-full" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px" onchange="renderLimits()">
+          <option value="">Barcha shifokorlar</option>
+        </select>
+      </div>
+      <table><thead><tr><th>Shifokor</th><th>Limit / Oy</th><th>Bu oy</th><th>Qoldi</th><th>Status</th></tr></thead><tbody id="limitsBody"></tbody></table>
+    </div>
+    <button class="btn btn-outline mt-2" onclick="refreshLimits()">🔄 Yangilash</button>
+  </div>
+</div>
+
+<script>
+const WebApp = window.Telegram?.WebApp;
+if (WebApp) {
+  WebApp.ready();
+  WebApp.expand();
+}
+
+let currentUser = null;
+
+async function apiGet(path) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+  const r = await fetch(path, { headers });
+  return r.json();
+}
+
+async function apiPost(path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+  const r = await fetch(path, { method:'POST', headers, body: JSON.stringify(body) });
+  return r.json();
+}
+
+// ---- Role-based UI ----
+async function initApp() {
+  const d = await apiGet('/api/auth/me');
+  if (!d.success || !d.user) {
+    document.querySelector('.header').innerHTML = '<h1>⚠️ Xatolik</h1><p>Autentifikatsiyadan o\'tmadi</p>';
+    return;
+  }
+  currentUser = d.user;
+  window.currentUserId = d.user.id || d.user.telegram_id || 'admin';
+
+  document.getElementById('roleBadge').textContent = roleLabel(d.user.role);
+  document.getElementById('userNameDisplay').textContent = d.user.name || 'Klinika Hayot';
+
+  const tabBar = document.getElementById('tabBar');
+  tabBar.innerHTML = '';
+  const tabs = [];
+
+  if (d.user.role === 'ceo') {
+    tabs.push({ id:'ceo', icon:'👑', label:'CEO Panel' });
+  }
+  if (d.user.role === 'ceo' || d.user.role === 'admin') {
+    tabs.push({ id:'voice', icon:'📦', label:'Ovozli Kirim' });
+  }
+  if (d.user.role === 'doctor' || d.user.role === 'ceo') {
+    tabs.push({ id:'limits', icon:'🥼', label:'Limit Nazorati' });
+  }
+  if (d.user.role === 'admin' || d.user.role === 'ceo') {
+    tabs.push({ id:'face', icon:'🔵', label:'Face ID' });
+  }
+
+  if (tabs.length === 0) {
+    document.body.innerHTML = '<div class="header"><h1>🚫 Ruxsat yo\'q</h1><p>Siz uchun mavjud bo\'lim yo\'q</p></div>';
+    return;
+  }
+
+  tabs.forEach((t, i) => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (i === 0 ? ' active' : '');
+    el.dataset.tab = t.id;
+    el.textContent = t.icon + ' ' + t.label;
+    el.onclick = () => switchTab(t.id);
+    tabBar.appendChild(el);
+  });
+
+  // Show first tab
+  switchTab(tabs[0].id);
+
+  // Face ID tab init (lazy)
+  let faceCaptureInstance = null;
+  window.faceSubTab = 'register';
+  window.faceDoctorsCache = [];
+
+  window.switchFaceTab = function(tab) {
+    window.faceSubTab = tab;
+    document.querySelectorAll('.face-subtab').forEach(t => t.classList.toggle('active', t.dataset.faceTab === tab));
+    document.querySelectorAll('.face-panel').forEach(p => p.classList.toggle('active', p.id === 'face-panel-' + tab));
+    if (tab === 'register') checkConsentAndInit();
+    if (tab === 'attendance') loadFaceAttendanceLogs();
+    if (tab === 'doctors') loadFaceDoctorStatus();
+  };
+
+  window.checkConsentAndInit = async function() {
+    const consentEl = document.getElementById('faceConsentOverlay');
+    const mount = document.getElementById('fc-mount-admin');
+    if (faceCaptureInstance) { mount.style.display = 'block'; consentEl.style.display = 'none'; return; }
+    try {
+      const d = await apiGet('/api/face/consent/doctor/' + (window.currentUserId || 'none'));
+      if (d.consent) {
+        consentEl.style.display = 'none';
+        mount.style.display = 'block';
+        initFaceRegister();
+      } else {
+        consentEl.style.display = 'block';
+        mount.style.display = 'none';
+        document.getElementById('faceConsentCheck').checked = false;
+        document.getElementById('faceConsentBtn').disabled = true;
+      }
+    } catch(e) {
+      consentEl.style.display = 'block';
+      mount.style.display = 'none';
+    }
+  };
+
+  // Consent enable/disable
+  document.addEventListener('DOMContentLoaded', function() {
+    const cb = document.getElementById('faceConsentCheck');
+    if (cb) cb.addEventListener('change', function() {
+      document.getElementById('faceConsentBtn').disabled = !this.checked;
+    });
+  });
+
+  window.giveConsent = async function() {
+    if (!document.getElementById('faceConsentCheck').checked) return;
+    const headers = { 'Content-Type': 'application/json' };
+    if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+    try {
+      const r = await fetch('/api/face/consent', {
+        method:'POST', headers,
+        body: JSON.stringify({
+          user_type: 'doctor',
+          user_id: window.currentUserId || 'admin',
+          consent_text: 'Biometrik ma\'lumotlarni qayta ishlashga rozilik (GDPR / O\'zbekiston Qonuni)'
+        })
+      });
+      const d = await r.json();
+      if (d.success) {
+        document.getElementById('faceConsentOverlay').style.display = 'none';
+        document.getElementById('fc-mount-admin').style.display = 'block';
+        initFaceRegister();
+      } else {
+        document.getElementById('faceConsentBtn').textContent = '❌ Xatolik: ' + (d.error || '');
+      }
+    } catch(e) {
+      document.getElementById('faceConsentBtn').textContent = '❌ Server xatosi';
+    }
+  };
+
+  window.initFaceRegister = async function() {
+    const mount = document.getElementById('fc-mount-admin');
+    if (faceCaptureInstance) { mount.innerHTML = ''; return; }
+    mount.innerHTML = '<div class="loading"><div class="spinner"></div>Yuklanmoqda...</div>';
+    try {
+      const module = await import('./face-capture.js');
+      const FaceCapture = module.default || module.FaceCapture || window.FaceCapture;
+      if (!FaceCapture) throw new Error('FaceCapture module not loaded');
+
+      faceCaptureInstance = new FaceCapture({
+        videoEl: document.getElementById('fc-video-admin'),
+        canvasEl: document.getElementById('fc-canvas-admin'),
+        statusEl: document.getElementById('fc-status-admin'),
+        challengeEl: document.getElementById('fc-challenge-admin'),
+        livenessEl: document.getElementById('fc-liveness-admin'),
+        baseUrl: '',
+        onCapture: async (payload) => {
+          const mode = document.getElementById('faceRegMode')?.value || 'verify';
+          const resultDiv = document.getElementById('faceRegResult');
+          resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div>Tekshirilmoqda...</div>';
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+
+            if (mode === 'register_doctor') {
+              const docId = document.getElementById('faceRegDoctorSelect')?.value;
+              if (!docId) { resultDiv.innerHTML = '<div class="alert-red">❌ Shifokor tanlang</div>'; return; }
+              const r = await fetch('/api/face/register', {
+                method:'POST', headers,
+                body: JSON.stringify({ doctor_id: docId, face_descriptor: payload.face_descriptor, liveness_score: payload.liveness_score, nonce: payload.nonce, timestamp: payload.timestamp, device_id: payload.device_id })
+              });
+              const data = await r.json();
+              resultDiv.innerHTML = data.success
+                ? '<div class="alert-green">✅ Shifokor yuz modeli saqlandi</div>'
+                : '<div class="alert-red">❌ ' + (data.error || 'Xatolik') + '</div>';
+              if (data.success) loadFaceDoctorStatus();
+            } else if (mode === 'register_patient') {
+              const fn = document.getElementById('faceRegPatientFn')?.value;
+              if (!fn) { resultDiv.innerHTML = '<div class="alert-red">❌ Bemor ismi kerak</div>'; return; }
+              const r = await fetch('/api/face/register-patient', {
+                method:'POST', headers,
+                body: JSON.stringify({ ...payload, first_name: fn, last_name: document.getElementById('faceRegPatientLn')?.value || '' })
+              });
+              const data = await r.json();
+              resultDiv.innerHTML = data.success
+                ? '<div class="alert-green">✅ Bemor ro\'yxatdan o\'tdi</div>'
+                : (r.status === 403 ? '<div class="alert-red">🚫 Spoof: ' + (data.error || '') + '</div>'
+                  : '<div class="alert-red">❌ ' + (data.error || 'Xatolik') + '</div>');
+            } else {
+              const r = await fetch('/api/face/verify', {
+                method:'POST', headers,
+                body: JSON.stringify(payload)
+              });
+              const data = await r.json();
+              if (r.status === 403 && data.spoof_warning) {
+                resultDiv.innerHTML = '<div class="alert-red">🚫 Liveness o\'tmadi (' + (data.liveness_score*100).toFixed(0) + '%)</div>';
+              } else if (data.matched) {
+                resultDiv.innerHTML = '<div class="alert-green">✅ ' + (data.identity?.name || data.matched_doctor?.name || 'Tanildi') + '</div>';
+              } else {
+                resultDiv.innerHTML = '<div class="alert-red">❌ Yuz tanilmadi</div>';
+              }
+            }
+          } catch(e) { resultDiv.innerHTML = '<div class="alert-red">❌ Server xatosi</div>'; }
+        }
+      });
+      mount.innerHTML = '';
+      const ok = await faceCaptureInstance.init();
+      if (!ok) mount.innerHTML = '<div class="alert-red">❌ Kamera ishga tushmadi</div>';
+    } catch(e) {
+      mount.innerHTML = '<div class="alert-red">❌ Face ID yuklanmadi: ' + e.message + '</div>';
+    }
+  };
+
+  window.rebuildFaceRegister = function() {
+    if (faceCaptureInstance) { faceCaptureInstance.destroy(); faceCaptureInstance = null; }
+    document.getElementById('faceConsentOverlay').style.display = 'block';
+    document.getElementById('fc-mount-admin').style.display = 'none';
+    document.getElementById('faceConsentCheck').checked = false;
+    document.getElementById('faceConsentBtn').disabled = true;
+    document.getElementById('faceRegResult').innerHTML = '';
+    checkConsentAndInit();
+  };
+
+  window.loadFaceAttendanceLogs = async function() {
+    const div = document.getElementById('faceAttendanceLogs');
+    div.innerHTML = '<div class="loading"><div class="spinner"></div>Yuklanmoqda...</div>';
+    try {
+      const d = await apiGet('/api/face/logs');
+      if (!d.success) { div.innerHTML = '<p class="text-muted">Ma\'lumot yo\'q</p>'; return; }
+      if (d.total === 0) { div.innerHTML = '<p class="text-muted">Bugun hech qanday log yo\'q</p>'; return; }
+      div.innerHTML = '<table><thead><tr><th>Shaxs</th><th>Rol</th><th>Vaqt</th><th>Ishonch</th><th>Liveness</th><th>Holat</th></tr></thead><tbody>' +
+        d.logs.map(l => {
+          const isSpoof = l.spoof_warning === 1;
+          const roleTxt = l.action === 'attended' || l.action === 'entry' ? '👨‍⚕️' : (l.action === 'checked_in' || l.action === 'patient_register' ? '🧑' : '❓');
+          const conf = l.confidence ? (parseFloat(l.confidence)*100).toFixed(0) + '%' : '-';
+          const live = l.liveness_score ? (l.liveness_score*100).toFixed(0) + '%' : '-';
+          const rowClass = isSpoof ? 'style="background:rgba(248,81,81,.08)"' : '';
+          const statusHtml = isSpoof ? '<span class="text-red">🚫 Spoof</span>' : (l.matched === 'yes' ? '<span class="text-green">✅</span>' : '<span class="text-muted">❌</span>');
+          return `<tr ${rowClass}><td>${l.doctor_name || l.patient_id || '-'}</td><td>${roleTxt}</td><td>${new Date(l.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</td><td>${conf}</td><td>${live}</td><td>${statusHtml}</td></tr>`;
+        }).join('') + '</tbody></table>';
+    } catch(e) { div.innerHTML = '<p class="text-red">❌ Yuklanmadi</p>'; }
+  };
+
+  window.loadFaceDoctorStatus = async function() {
+    const div = document.getElementById('faceDoctorList');
+    div.innerHTML = '<div class="loading"><div class="spinner"></div>Yuklanmoqda...</div>';
+    try {
+      const d = await apiGet('/api/face/doctors/status');
+      if (!d.success) { div.innerHTML = '<p class="text-muted">Ma\'lumot yo\'q</p>'; return; }
+      if (d.doctors.length === 0) { div.innerHTML = '<p class="text-muted">Shifokor yo\'q</p>'; return; }
+      window.faceDoctorsCache = d.doctors;
+      div.innerHTML = '<table><thead><tr><th>Shifokor</th><th>Mutaxassislik</th><th>Biometric</th><th>Status</th><th>Amal</th></tr></thead><tbody>' +
+        d.doctors.map(doc => {
+          const bioStatus = doc.biometric_status;
+          const accStatus = doc.account_status;
+          const bioLabel = bioStatus === 'active' ? '<span class="text-green">✅ Aktiv</span>' : '<span class="text-yellow">⏳ Yuz yo\'q</span>';
+          const accLabel = accStatus === 'Bloklangan' ? '<span class="text-red">🔴 Bloklangan</span>' : '<span class="text-green">✅ Faol</span>';
+          const actionBtn = bioStatus === 'active'
+            ? `<button class="face-action-btn" onclick="deleteDoctorFace('${doc.id}')">🗑 Yuz o'chir</button>`
+            : `<button class="face-action-btn" onclick="registerDoctorFace('${doc.id}')">📸 Yuz kiritish</button>`;
+          const blockBtn = accStatus === 'Bloklangan'
+            ? `<button class="face-action-btn" onclick="unblockDoctor('${doc.id}')">🔓 Ochish</button>`
+            : `<button class="face-action-btn" onclick="blockDoctor('${doc.id}')">🔒 Bloklash</button>`;
+          const forgetBtn = bioStatus === 'active'
+            ? `<button class="face-action-btn" style="border-color:var(--red);color:var(--red)" onclick="forgetDoctor('${doc.id}')">⚠️ Biometrikani unutish</button>`
+            : '';
+          return `<tr><td>${doc.first_name} ${doc.last_name}</td><td>${doc.specialty || '-'}</td><td>${bioLabel}</td><td>${accLabel}</td><td style="display:flex;gap:6px;flex-wrap:wrap">${actionBtn}${blockBtn}${forgetBtn}</td></tr>`;
+        }).join('') + '</tbody></table>';
+    } catch(e) { div.innerHTML = '<p class="text-red">❌ Yuklanmadi</p>'; }
+  };
+
+  window.blockDoctor = async function(id) {
+    const d = await apiPost('/api/face/doctors/' + id + '/block', {});
+    if (d.success) loadFaceDoctorStatus();
+  };
+  window.unblockDoctor = async function(id) {
+    const d = await apiPost('/api/face/doctors/' + id + '/unblock', {});
+    if (d.success) loadFaceDoctorStatus();
+  };
+  window.deleteDoctorFace = async function(id) {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+      const r = await fetch('/api/face/doctors/' + id + '/face', { method:'DELETE', headers });
+      const d = await r.json();
+      if (d.success) loadFaceDoctorStatus();
+    } catch(e) {}
+  };
+  window.registerDoctorFace = function(id) {
+    document.getElementById('faceRegDoctorSelect').value = id;
+    document.getElementById('faceRegMode').value = 'register_doctor';
+    switchFaceTab('register');
+  };
+
+  // Right to be Forgotten (GDPR / O'zbekiston Qonuni)
+  window.forgetDoctor = async function(id) {
+    if (!confirm('⚠️ Bu shifokorning barcha biometrik ma\'lumotlari qayta tiklanmasdan o\'chiriladi. Davom etilsinmi?')) return;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+      const r = await fetch('/api/face/forget/doctor/' + id, { method:'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { loadFaceDoctorStatus(); alert('✅ ' + d.message); }
+      else { alert('❌ ' + (d.error || 'Xatolik')); }
+    } catch(e) { alert('❌ Server xatosi'); }
+  };
+
+  window.forgetPatient = async function(id) {
+    if (!confirm('⚠️ Bu bemorning barcha biometrik ma\'lumotlari qayta tiklanmasdan o\'chiriladi. Davom etilsinmi?')) return;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+      const r = await fetch('/api/face/forget/patient/' + id, { method:'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { alert('✅ ' + d.message); loadFaceAttendanceLogs(); }
+      else { alert('❌ ' + (d.error || 'Xatolik')); }
+    } catch(e) { alert('❌ Server xatosi'); }
+  };
+
+  const faceCamHTML = `<div class="fc-container">
+    <div class="fc-viewport">
+      <video id="fc-video-admin" autoplay playsinline></video>
+      <canvas id="fc-canvas-admin"></canvas>
+      <div class="fc-guide" id="fc-guide-admin"></div>
+      <div class="fc-challenge-overlay hidden" id="fc-challenge-admin"></div>
+    </div>
+    <div class="fc-status fc-status-loading" id="fc-status-admin">Kutish...</div>
+    <div class="fc-liveness-indicator" id="fc-liveness-admin"><span class="fc-liveness-dot"></span> Liveness tekshiruvi...</div>
+    <div class="fc-controls">
+      <button class="fc-btn fc-btn-primary" onclick="window.faceCaptureInstance?.capture()">📸 Yuzni olish</button>
+      <button class="fc-btn fc-btn-secondary" onclick="rebuildFaceRegister()">🔄 Qayta</button>
+    </div>
+  </div>`;
+
+// Face registration mode toggle + doctor select
+document.addEventListener('DOMContentLoaded', function() {
+  const sel = document.getElementById('faceRegMode');
+  if (sel) {
+    sel.addEventListener('change', function() {
+      document.getElementById('faceRegDoctorSelect').style.display = this.value === 'register_doctor' ? 'block' : 'none';
+      document.getElementById('faceRegPatientFields').style.display = this.value === 'register_patient' ? 'block' : 'none';
+    });
+  }
+  (async function() {
+    try {
+      const d = await apiGet('/api/face/doctors/status');
+      if (!d.success) return;
+      const s = document.getElementById('faceRegDoctorSelect');
+      if (!s) return;
+      s.innerHTML = '<option value="">Shifokor tanlang</option>' +
+        (d.doctors||[]).map(doc => '<option value="' + doc.id + '">' + doc.first_name + ' ' + doc.last_name + ' (' + (doc.specialty||'') + ')</option>').join('');
+      window.faceDoctorsCache = d.doctors || [];
+    } catch(e) {}
+  })();
+});
+
+function roleLabel(role) {
+  const map = { ceo:'👑 CEO (Bosh direktor)', admin:'📦 Omborchi', doctor:'🥼 Shifokor' };
+  return map[role] || role;
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  const content = document.getElementById('tab-' + tabId);
+  if (content) content.classList.add('active');
+  const tabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
+  if (tabBtn) tabBtn.classList.add('active');
+  // Lazy init Face ID tab
+  if (tabId === 'face') {
+    setTimeout(() => { switchFaceTab(window.faceSubTab || 'register'); }, 300);
+  }
+  if (tabId === 'ceo') loadCeoPanel();
+  if (tabId === 'limits') loadLimits();
+}
+
+// ---- CEO: Waste Report ----
+let wasteLoaded = false;
+async function loadCeoPanel() {
+  if (!wasteLoaded) { wasteLoaded = true; await refreshWasteReport(); }
+}
+async function refreshWasteReport() {
+  document.getElementById('ceoLoading').classList.remove('hidden');
+  document.getElementById('ceoContent').classList.add('hidden');
+  const d = await apiGet('/api/reports/inventory-waste');
+  document.getElementById('ceoLoading').classList.add('hidden');
+  document.getElementById('ceoContent').classList.remove('hidden');
+  if (!d.success) { document.getElementById('wasteAlert').innerHTML = '❌ ' + (d.error || 'Xatolik'); return; }
+  const data = d.data || {};
+  const totalWaste = data.total_waste_sum || 0;
+  document.getElementById('totalWasteSum').textContent = totalWaste.toLocaleString();
+  document.getElementById('totalItemsUsed').textContent = (data.total_items_used || 0).toLocaleString();
+  document.getElementById('overuseCount').textContent = (data.overuse_count || 0).toLocaleString();
+  document.getElementById('wasteSum').textContent = totalWaste.toLocaleString();
+  if (totalWaste > 0) {
+    document.getElementById('wasteAlert').classList.remove('hidden');
+    document.getElementById('wasteClean').classList.add('hidden');
+  } else {
+    document.getElementById('wasteAlert').classList.add('hidden');
+    document.getElementById('wasteClean').classList.remove('hidden');
+  }
+  // Doctor waste ranking
+  const doctorTbody = document.getElementById('doctorWasteBody');
+  doctorTbody.innerHTML = '';
+  const doctors = data.doctor_waste_ranking || [];
+  doctors.forEach(doc => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (doc.doctor_name || doc.performed_by || 'Noma\'lum') + '</td><td class="text-right text-red">' + (doc.total_waste || 0).toLocaleString() + '</td><td class="text-right">' + (doc.count || 0) + '</td>';
+    doctorTbody.appendChild(tr);
+  });
+  // Top overused items
+  const itemsTbody = document.getElementById('topItemsBody');
+  itemsTbody.innerHTML = '';
+  const items = data.top_overused_items || [];
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (item.item_name || 'Noma\'lum') + '</td><td class="text-right text-red">' + (item.total_overuse || 0).toLocaleString() + '</td><td class="text-right">' + (item.count || 0) + '</td>';
+    itemsTbody.appendChild(tr);
+  });
+}
+
+// ---- Voice Input ----
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+function toggleRecording() {
+  if (isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
+    document.getElementById('micBtn').className = 'mic-btn idle';
+    document.getElementById('voiceStatus').textContent = '⏳ Audio tahlil qilinmoqda...';
+  } else {
+    startRecording();
+  }
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      await sendAudio(blob);
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    document.getElementById('micBtn').className = 'mic-btn recording';
+    document.getElementById('voiceStatus').textContent = '🔴 Yozilmoqda... gapiring';
+    document.getElementById('voiceResult').classList.add('hidden');
+  } catch (e) {
+    document.getElementById('voiceStatus').textContent = '❌ Mikrofonga ruxsat yo\'q: ' + e.message;
+  }
+}
+
+async function sendAudio(blob) {
+  try {
+    const formData = new FormData();
+    formData.append('audio', blob, 'voice.webm');
+    if (WebApp?.initData) formData.append('initData', WebApp.initData);
+    const r = await fetch('/api/inventory/voice-add', { method:'POST', body:formData });
+    const d = await r.json();
+    const resultDiv = document.getElementById('voiceResult');
+    resultDiv.classList.remove('hidden');
+    if (d.success) {
+      let html = '<div class="alert-green">✅ Material qo\'shildi</div><div class="card"><div class="field-row"><span class="field-label">Material</span><span class="field-value">' + (d.item_name||'') + '</span></div>';
+      if (d.batch_number) html += '<div class="field-row"><span class="field-label">Partiya</span><span class="field-value">' + d.batch_number + '</span></div>';
+      if (d.expiration_date) html += '<div class="field-row"><span class="field-label">Yaroqlilik</span><span class="field-value">' + d.expiration_date + '</span></div>';
+      html += '<div class="field-row"><span class="field-label">Miqdor</span><span class="field-value">' + (d.quantity||0) + '</span></div><div class="field-row"><span class="field-label">Narx</span><span class="field-value">' + (d.price||0) + ' UZS</span></div></div>';
+      resultDiv.innerHTML = html;
+      document.getElementById('voiceStatus').textContent = '✅ Tayyor';
+    } else {
+      resultDiv.innerHTML = '<div class="alert-red">❌ ' + (d.error || 'Xatolik') + '</div>';
+      document.getElementById('voiceStatus').textContent = '❌ Xatolik';
+    }
+  } catch (e) {
+    document.getElementById('voiceResult').classList.remove('hidden');
+    document.getElementById('voiceResult').innerHTML = '<div class="alert-red">❌ Tarmoq xatosi: ' + e.message + '</div>';
+    document.getElementById('voiceStatus').textContent = '❌ Xatolik';
+  }
+}
+
+// ---- Doctor Limit Monitoring ----
+let limitsLoaded = false;
+async function loadLimits() {
+  if (!limitsLoaded) { limitsLoaded = true; await refreshLimits(); }
+}
+async function refreshLimits() {
+  document.getElementById('limitsLoading').classList.remove('hidden');
+  document.getElementById('limitsContent').classList.add('hidden');
+  const d = await apiGet('/api/reports/limits');
+  document.getElementById('limitsLoading').classList.add('hidden');
+  document.getElementById('limitsContent').classList.remove('hidden');
+  if (!d.success) { document.getElementById('limitsBody').innerHTML = '<tr><td colspan="5" class="text-red">' + (d.error||'Xatolik') + '</td></tr>'; return; }
+  const doctors = d.data || [];
+  // Populate filter
+  const filter = document.getElementById('doctorFilter');
+  const currentVal = filter.value;
+  filter.innerHTML = '<option value="">Barcha shifokorlar</option>';
+  const seen = new Set();
+  doctors.forEach(doc => { if (doc.doctor_name && !seen.has(doc.doctor_name)) { seen.add(doc.doctor_name); filter.innerHTML += '<option value="' + doc.doctor_name.replace(/"/g,'&quot;') + '">' + doc.doctor_name + '</option>'; } });
+  filter.value = currentVal;
+  renderLimits(doctors);
+}
+let _limitsData = [];
+function renderLimits(data) {
+  if (data) _limitsData = data;
+  const filterVal = document.getElementById('doctorFilter').value;
+  const tbody = document.getElementById('limitsBody');
+  tbody.innerHTML = '';
+  const filtered = filterVal ? _limitsData.filter(d => d.doctor_name === filterVal) : _limitsData;
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Malumot topilmadi</td></tr>';
+    return;
+  }
+  filtered.forEach(doc => {
+    const used = doc.used_this_month || 0;
+    const limit = doc.monthly_limit || 0;
+    const remaining = Math.max(0, limit - used);
+    const pct = limit > 0 ? (used / limit * 100).toFixed(0) : 0;
+    let status = '<span class="text-green">✅ Normal</span>';
+    if (pct >= 100) status = '<span class="text-red">🔴 Limit tugagan</span>';
+    else if (pct >= 80) status = '<span class="text-yellow">⚠️ Limitga yaqin</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (doc.doctor_name || 'Noma\'lum') + '</td><td>' + limit.toLocaleString() + '</td><td>' + used.toLocaleString() + '</td><td>' + remaining.toLocaleString() + '</td><td>' + status + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+// ---- Init ----
+document.addEventListener('DOMContentLoaded', initApp);
+</script>
+
+<!-- Face ID Management Tab -->
+<div id="tab-face" class="tab-content">
+  <div class="card">
+    <div class="card-title">🔵 Face ID — Biometrik boshqaruv</div>
+    <div class="face-subtabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="face-subtab active" data-face-tab="register" onclick="switchFaceTab('register')">📸 Biometrik ro'yxat</button>
+      <button class="face-subtab" data-face-tab="attendance" onclick="switchFaceTab('attendance')">📊 Davomat jurnali</button>
+      <button class="face-subtab" data-face-tab="doctors" onclick="switchFaceTab('doctors')">👨‍⚕️ Shifokor statusi</button>
+    </div>
+
+    <!-- Panel: Registration -->
+    <div id="face-panel-register" class="face-panel active">
+      <div class="field-row" style="margin-bottom:12px">
+        <select id="faceRegMode" class="input" style="padding:8px;border-radius:8px">
+          <option value="verify">🔍 Yuzni tekshirish</option>
+          <option value="register_doctor">👨‍⚕️ Shifokor yuzini kiritish</option>
+          <option value="register_patient">🧑 Bemor yuzini kiritish</option>
+        </select>
+      </div>
+      <div id="faceRegExtra">
+        <div class="field-row" style="margin-bottom:8px">
+          <select id="faceRegDoctorSelect" class="input" style="padding:8px;border-radius:8px;display:none">
+            <option value="">Shifokor tanlang</option>
+          </select>
+        </div>
+        <div id="faceRegPatientFields" style="display:none">
+          <input id="faceRegPatientFn" class="input" placeholder="Bemor ismi" style="padding:8px;border-radius:8px;margin-bottom:8px;width:100%">
+          <input id="faceRegPatientLn" class="input" placeholder="Familiyasi (ixtiyoriy)" style="padding:8px;border-radius:8px;margin-bottom:8px;width:100%">
+        </div>
+      </div>
+      <!-- Biometrik rozilik (GDPR / O'zbekiston Qonuni) -->
+      <div id="faceConsentOverlay">
+        <div class="card" style="border:2px solid var(--accent);margin-bottom:12px">
+          <div class="card-title">🔒 Biometrik ma'lumotlarni qayta ishlashga rozilik</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.6">
+            <strong>O'zbekiston Respublikasining "Shaxsga doir ma'lumotlar to'g'risida"gi Qonuni</strong>
+            va <strong>GDPR</strong> talablariga muvofiq, yuzingizning biometrik modeli (face descriptor)
+            qayta ishlanadi va saqlanadi. Ushbu ma'lumot faqat shaxsni aniqlash uchun ishlatiladi,
+            uchinchi shaxslarga uzatilmaydi va 90 kundan keyin anonimlashtiriladi. Siz istalgan vaqtda
+            ma'lumotlaringizni o'chirishni talab qilish huquqiga egasiz.
+          </p>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;padding:8px 0">
+            <input type="checkbox" id="faceConsentCheck" style="margin-top:2px;width:18px;height:18px;accent-color:var(--accent)">
+            <span>Men yuqoridagi shartlarni tushunaman va biometrik ma'lumotlarimni qayta ishlashga roziman</span>
+          </label>
+          <button class="btn btn-accent mt-2" id="faceConsentBtn" onclick="giveConsent()" disabled>✅ Rozilik berish</button>
+        </div>
+      </div>
+      <div id="fc-mount-admin" style="display:none">
+        <div class="fc-container">
+          <div class="fc-viewport">
+            <video id="fc-video-admin" autoplay playsinline></video>
+            <canvas id="fc-canvas-admin"></canvas>
+            <div class="fc-guide" id="fc-guide-admin"></div>
+            <div class="fc-challenge-overlay hidden" id="fc-challenge-admin"></div>
+          </div>
+          <div class="fc-status fc-status-loading" id="fc-status-admin">Kutish...</div>
+          <div class="fc-liveness-indicator" id="fc-liveness-admin"><span class="fc-liveness-dot"></span> Liveness tekshiruvi...</div>
+          <div class="fc-controls">
+            <button class="fc-btn fc-btn-primary" onclick="window.faceCaptureInstance?.capture()">📸 Yuzni olish</button>
+            <button class="fc-btn fc-btn-secondary" onclick="rebuildFaceRegister()">🔄 Qayta</button>
+          </div>
+        </div>
+      </div>
+      <div id="faceRegResult" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Panel: Attendance Logs -->
+    <div id="face-panel-attendance" class="face-panel">
+      <p class="text-muted mb-4">Bugungi kundagi barcha Face ID loglari (spoof urinishlar qizil rangda)</p>
+      <div id="faceAttendanceLogs"><p class="text-muted">Yuklanmoqda...</p></div>
+    </div>
+
+    <!-- Panel: Doctor Status -->
+    <div id="face-panel-doctors" class="face-panel">
+      <p class="text-muted mb-4">Shifokorlarning biometrik holati va boshqaruv tugmalari</p>
+      <div id="faceDoctorList"><p class="text-muted">Yuklanmoqda...</p></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

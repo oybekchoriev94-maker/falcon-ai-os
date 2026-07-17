@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Front-Desk AI Scribe — Falcon AI OS</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+<div class="max-w-2xl mx-auto p-4 pb-24">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">🎙 AI Registrator</h1>
+      <p class="text-sm opacity-50">Front-Desk AI Scribe — Ovozli bemor qabuli</p>
+    </div>
+    <div class="flex gap-2">
+      <span id="statusBadge" class="px-3 py-1 rounded-full bg-blue-900/40 text-blue-400 text-xs">Tayyor</span>
+    </div>
+  </div>
+
+  <!-- Step 1: Voice Recording -->
+  <div class="card mb-4 text-center">
+    <h2 class="font-semibold mb-2">1️⃣ Bemorni gapirtiring</h2>
+    <p class="text-xs opacity-50 mb-4">Mikrofonni bosib, bemordan ismi, telefoni va qaysi shifokorga kerakligini so'rang</p>
+
+    <div class="flex flex-col items-center gap-3">
+      <button id="recordBtn" class="btn-record idle" onclick="toggleRecording()">
+        <span class="material-icons-round" id="recordIcon">mic</span>
+      </button>
+      <div id="waveform" class="wave" style="display:none">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <p id="recordStatus" class="text-sm opacity-50">Mikrofonni bosib yozishni boshlang</p>
+      <p id="timerDisplay" class="text-xs font-mono opacity-30" style="display:none">00:00</p>
+    </div>
+  </div>
+
+  <!-- Step 2: AI Extracted Data -->
+  <div class="card mb-4" id="resultCard" style="display:none">
+    <div class="flex items-center gap-2 mb-4">
+      <span class="material-icons-round text-emerald-400">check_circle</span>
+      <h2 class="font-semibold">2️⃣ AI tahlil natijasi</h2>
+      <span class="text-xs ml-auto opacity-30" id="transcriptPreview"></span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">👤 Bemor ismi *</label>
+        <input id="field_name" class="form-input" placeholder="Alisher Karimov">
+      </div>
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">📞 Telefon</label>
+        <input id="field_phone" class="form-input" placeholder="+998 90 123 45 67">
+      </div>
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">🩺 Shifokor mutaxassisligi</label>
+        <input id="field_doctor" class="form-input" placeholder="Terapevt, Xirurg...">
+      </div>
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">🏥 Bo'lim</label>
+        <input id="field_department" class="form-input" placeholder="Terapiya">
+      </div>
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">⏰ Vaqt</label>
+        <input id="field_time" class="form-input" placeholder="14:30">
+      </div>
+      <div>
+        <label class="text-xs opacity-50 mb-1 block">📅 Sana</label>
+        <input id="field_date" class="form-input" type="date">
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="text-xs opacity-50 mb-1 block">📝 Izoh</label>
+      <textarea id="field_notes" class="form-input" rows="2" placeholder="Qo'shimcha ma'lumot"></textarea>
+    </div>
+    <div class="flex gap-2">
+      <button id="confirmBtn" class="flex-1 py-3 rounded-xl font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-30" onclick="confirmAppointment()" disabled>
+        ✅ Navbatni tasdiqlash
+      </button>
+      <button class="py-3 px-4 rounded-xl bg-slate-700 text-white" onclick="resetAll()">
+        🔄 Yangi
+      </button>
+    </div>
+  </div>
+
+  <!-- Today's Appointments -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold text-sm">📋 Bugungi navbatlar</h2>
+      <button class="text-xs text-blue-400" onclick="loadTodayAppointments()">Yangilash</button>
+    </div>
+    <div id="todayList" class="space-y-2 max-h-60 overflow-y-auto">
+      <p class="text-sm opacity-40 text-center py-4">Yuklanmoqda...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let timerInterval = null;
+let seconds = 0;
+
+// Date default
+document.getElementById('field_date').value = new Date().toISOString().split('T')[0];
+
+// Toggle recording
+async function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      sendAudio();
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    startTimer();
+
+    document.getElementById('recordBtn').className = 'btn-record recording';
+    document.getElementById('recordIcon').textContent = 'stop';
+    document.getElementById('recordStatus').textContent = '🎤 Yozilmoqda...';
+    document.getElementById('waveform').style.display = 'flex';
+    document.getElementById('timerDisplay').style.display = 'block';
+    document.getElementById('statusBadge').textContent = '🔴 Yozilmoqda';
+    document.getElementById('statusBadge').className = 'px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs';
+  } catch (e) {
+    document.getElementById('recordStatus').textContent = '❌ Mikrofon xatosi: ' + e.message;
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  stopTimer();
+  document.getElementById('recordBtn').className = 'btn-record loading';
+  document.getElementById('recordBtn').disabled = true;
+  document.getElementById('recordIcon').textContent = 'hourglass_top';
+  document.getElementById('recordStatus').textContent = '⏳ AI tahlil qilmoqda...';
+  document.getElementById('waveform').style.display = 'none';
+  document.getElementById('statusBadge').textContent = '⏳ Tahlil...';
+  document.getElementById('statusBadge').className = 'px-3 py-1 rounded-full bg-yellow-900/40 text-yellow-400 text-xs';
+}
+
+async function sendAudio() {
+  if (audioChunks.length === 0) {
+    resetRecordBtn();
+    return;
+  }
+
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  const formData = new FormData();
+  formData.append('audio', blob, 'recording.webm');
+
+  try {
+    const res = await fetch(API + '/api/reception/voice-register', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+
+    if (data.success && data.extraction) {
+      const ext = data.extraction;
+      document.getElementById('field_name').value = ext.patient_name || '';
+      document.getElementById('field_phone').value = ext.phone || '';
+      document.getElementById('field_doctor').value = ext.doctor_specialty || '';
+      document.getElementById('field_department').value = ext.department || '';
+      document.getElementById('field_time').value = ext.preferred_time || '';
+      document.getElementById('field_notes').value = ext.notes || '';
+      document.getElementById('transcriptPreview').textContent = data.transcript ? `"${data.transcript.substring(0, 60)}..."` : '';
+
+      document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('confirmBtn').disabled = false;
+
+      document.getElementById('recordBtn').className = 'btn-record success';
+      document.getElementById('recordIcon').textContent = 'check';
+      document.getElementById('recordStatus').textContent = '✅ AI tahlil qildi! Ma\'lumotlarni tekshiring.';
+      document.getElementById('statusBadge').textContent = '✅ Tahlil yakunlandi';
+      document.getElementById('statusBadge').className = 'px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-400 text-xs';
+    } else {
+      document.getElementById('recordStatus').textContent = '❌ ' + (data.error || 'Xatolik yuz berdi');
+      resetRecordBtn();
+    }
+  } catch (e) {
+    document.getElementById('recordStatus').textContent = '❌ ' + e.message;
+    resetRecordBtn();
+  }
+}
+
+async function confirmAppointment() {
+  const name = document.getElementById('field_name').value.trim();
+  if (!name) {
+    document.getElementById('recordStatus').textContent = '❌ Bemor ismini kiriting';
+    return;
+  }
+
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('confirmBtn').textContent = '⏳ Saqlanmoqda...';
+
+  try {
+    const res = await fetch(API + '/api/reception/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patient_name: name,
+        phone: document.getElementById('field_phone').value.trim(),
+        department: document.getElementById('field_department').value.trim(),
+        doctor_name: document.getElementById('field_doctor').value.trim(),
+        appointment_date: document.getElementById('field_date').value,
+        appointment_time: document.getElementById('field_time').value.trim(),
+        notes: document.getElementById('field_notes').value.trim()
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      document.getElementById('recordStatus').textContent = '✅ Navbat muvaffaqiyatli yaratildi!';
+      document.getElementById('statusBadge').textContent = '✅ Saqlandi';
+      document.getElementById('statusBadge').className = 'px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-400 text-xs';
+      showToast('✅ Navbat yaratildi!', 'emerald');
+      loadTodayAppointments();
+      setTimeout(resetAll, 3000);
+    } else {
+      document.getElementById('recordStatus').textContent = '❌ ' + (data.error || 'Xatolik');
+      document.getElementById('confirmBtn').disabled = false;
+      document.getElementById('confirmBtn').textContent = '✅ Navbatni tasdiqlash';
+    }
+  } catch (e) {
+    document.getElementById('recordStatus').textContent = '❌ ' + e.message;
+    document.getElementById('confirmBtn').disabled = false;
+    document.getElementById('confirmBtn').textContent = '✅ Navbatni tasdiqlash';
+  }
+}
+
+async function loadTodayAppointments() {
+  try {
+    const res = await fetch(API + '/api/voice/queues');
+    const data = await res.json();
+    const apps = data.queues || [];
+    document.getElementById('todayList').innerHTML = apps.length
+      ? apps.slice(0, 20).map(a => `
+        <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-700/30">
+          <span class="material-icons-round text-blue-400 text-lg">person</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${a.patient_name || '—'}</p>
+            <p class="text-xs opacity-50">${a.doctor_name || a.department || '—'} · ${a.appointment_time || a.created_at ? new Date(a.appointment_time || a.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'}) : '—'}</p>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full ${a.status === 'confirmed' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-yellow-900/30 text-yellow-400'}">${a.status}</span>
+        </div>
+      `).join('')
+      : '<p class="text-sm opacity-40 text-center py-4">Bugungi navbatlar yo\'q</p>';
+  } catch(e) {
+    document.getElementById('todayList').innerHTML = '<p class="text-sm opacity-40 text-center py-4">Ma\'lumot yo\'q</p>';
+  }
+}
+
+function showToast(msg, color) {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-4 right-4 px-4 py-3 rounded-xl bg-${color}-600 text-white text-sm shadow-2xl z-50 animate-slide-in`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function resetAll() {
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('field_name').value = '';
+  document.getElementById('field_phone').value = '';
+  document.getElementById('field_doctor').value = '';
+  document.getElementById('field_department').value = '';
+  document.getElementById('field_time').value = '';
+  document.getElementById('field_notes').value = '';
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('confirmBtn').textContent = '✅ Navbatni tasdiqlash';
+  resetRecordBtn();
+}
+
+function resetRecordBtn() {
+  document.getElementById('recordBtn').className = 'btn-record idle';
+  document.getElementById('recordBtn').disabled = false;
+  document.getElementById('recordIcon').textContent = 'mic';
+  document.getElementById('statusBadge').textContent = 'Tayyor';
+  document.getElementById('statusBadge').className = 'px-3 py-1 rounded-full bg-blue-900/40 text-blue-400 text-xs';
+}
+
+function startTimer() {
+  seconds = 0;
+  document.getElementById('timerDisplay').textContent = '00:00';
+  timerInterval = setInterval(() => {
+    seconds++;
+    const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const s = String(seconds % 60).padStart(2, '0');
+    document.getElementById('timerDisplay').textContent = m + ':' + s;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+// Init
+loadTodayAppointments();
+setInterval(loadTodayAppointments, 30000);
+</script>
+<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
+</html>

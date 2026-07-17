@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="face-capture.css">
+<title>Face ID — Falcon AI OS</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--text:#e6edf3;--text-muted:#8b949e;--border:#30363d;--accent:#58a6ff;--green:#3fb950;--red:#f85149}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px}
+.header{text-align:center;padding:16px 0 20px}
+.header h1{font-size:22px;font-weight:800}
+.header p{font-size:14px;color:var(--text-muted);margin-top:4px}
+.mode-tabs{display:flex;gap:8px;margin-bottom:16px}
+.mode-tab{flex:1;padding:12px;text-align:center;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid var(--border);background:var(--card);color:var(--text-muted);transition:all .2s}
+.mode-tab.active{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.1)}
+.mode-tab:hover{border-color:var(--accent)}
+.panel{display:none}
+.panel.active{display:block}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
+.form-group input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px}
+.form-group input:focus{outline:none;border-color:var(--accent)}
+.form-row{display:flex;gap:10px}
+.form-row .form-group{flex:1}
+.hidden{display:none!important}
+.loading{text-align:center;padding:40px;color:var(--text-muted)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.text-center{text-align:center}
+.mt-2{margin-top:8px}
+.mt-4{margin-top:16px}
+.error-box{padding:12px;border-radius:10px;background:rgba(248,81,81,.12);border:1px solid rgba(248,81,81,.3);color:var(--red);font-size:13px;font-weight:600;margin-bottom:12px}
+.success-box{padding:12px;border-radius:10px;background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.3);color:var(--green);font-size:13px;font-weight:600;margin-bottom:12px}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-staff{background:rgba(88,166,255,.15);color:var(--accent)}
+.badge-patient{background:rgba(63,185,80,.15);color:var(--green)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔵 Face ID</h1>
+  <p>Falcon AI OS — Yuzni tanish tizimi</p>
+</div>
+
+<div class="mode-tabs">
+  <div class="mode-tab active" data-mode="verify" onclick="switchMode('verify')">🔍 Tekshirish</div>
+  <div class="mode-tab" data-mode="register" onclick="switchMode('register')">📝 Ro'yxatdan o'tish</div>
+</div>
+
+<!-- VERIFY MODE -->
+<div id="panel-verify" class="panel active">
+  <div id="fc-mount-verify"></div>
+  <div id="verifyResult" class="hidden"></div>
+</div>
+
+<!-- REGISTER MODE -->
+<div id="panel-register" class="panel">
+  <div id="registerForm">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Ism</label>
+        <input type="text" id="regFirstName" placeholder="Ism" required>
+      </div>
+      <div class="form-group">
+        <label>Familiya</label>
+        <input type="text" id="regLastName" placeholder="Familiya">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Telefon</label>
+        <input type="tel" id="regPhone" placeholder="+998 XX XXX XX XX">
+      </div>
+      <div class="form-group">
+        <label>Tug'ilgan sana</label>
+        <input type="date" id="regBirthDate">
+      </div>
+    </div>
+  </div>
+  <div id="fc-mount-register"></div>
+  <div id="registerResult" class="hidden"></div>
+</div>
+
+<script>
+const WebApp = window.Telegram?.WebApp;
+if (WebApp) { WebApp.ready(); WebApp.expand(); }
+
+const API = '';
+let faceCaptureVerify = null;
+let faceCaptureRegister = null;
+
+function switchMode(mode) {
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + mode));
+  if (mode === 'verify' && !faceCaptureVerify) initVerifyCapture();
+  if (mode === 'register' && !faceCaptureRegister) initRegisterCapture();
+}
+
+async function initVerifyCapture() {
+  const mount = document.getElementById('fc-mount-verify');
+  mount.innerHTML = buildCaptureHTML('verify');
+  faceCaptureVerify = new FaceCapture({
+    videoEl: document.getElementById('fc-video-verify'),
+    canvasEl: document.getElementById('fc-canvas-verify'),
+    statusEl: document.getElementById('fc-status-verify'),
+    challengeEl: document.getElementById('fc-challenge-verify'),
+    livenessEl: document.getElementById('fc-liveness-verify'),
+    baseUrl: API,
+    onCapture: (payload) => onVerifyCapture(payload)
+  });
+  await faceCaptureVerify.init();
+}
+
+async function initRegisterCapture() {
+  const mount = document.getElementById('fc-mount-register');
+  mount.innerHTML = buildCaptureHTML('register');
+  faceCaptureRegister = new FaceCapture({
+    videoEl: document.getElementById('fc-video-register'),
+    canvasEl: document.getElementById('fc-canvas-register'),
+    statusEl: document.getElementById('fc-status-register'),
+    challengeEl: document.getElementById('fc-challenge-register'),
+    livenessEl: document.getElementById('fc-liveness-register'),
+    baseUrl: API,
+    onCapture: (payload) => onRegisterCapture(payload)
+  });
+  await faceCaptureRegister.init();
+}
+
+function buildCaptureHTML(id) {
+  return `
+    <div class="fc-container">
+      <div class="fc-viewport">
+        <video id="fc-video-${id}" autoplay playsinline></video>
+        <canvas id="fc-canvas-${id}"></canvas>
+        <div class="fc-guide" id="fc-guide-${id}"></div>
+        <div class="fc-challenge-overlay hidden" id="fc-challenge-${id}"></div>
+      </div>
+      <div class="fc-status fc-status-loading" id="fc-status-${id}">Yuklanmoqda...</div>
+      <div class="fc-liveness-indicator" id="fc-liveness-${id}">
+        <span class="fc-liveness-dot"></span> Liveness tekshiruvi...
+      </div>
+      <div class="fc-controls">
+        <button class="fc-btn fc-btn-primary" id="fc-capture-${id}" onclick="doCapture('${id}')">📸 Yuzni olish</button>
+        <button class="fc-btn fc-btn-secondary" onclick="location.reload()">🔄 Qayta boshlash</button>
+      </div>
+    </div>`;
+}
+
+async function doCapture(id) {
+  const fc = id === 'verify' ? faceCaptureVerify : faceCaptureRegister;
+  if (!fc) return;
+  const btn = document.getElementById('fc-capture-' + id);
+  btn.disabled = true;
+  btn.textContent = '⏳ Ishlanmoqda...';
+
+  if (id === 'register') {
+    const firstName = document.getElementById('regFirstName').value.trim();
+    if (!firstName) { showError('register', 'Ism majburiy'); btn.disabled = false; btn.textContent = '📸 Yuzni olish'; return; }
+  }
+
+  const payload = await fc.capture();
+
+  btn.disabled = false;
+  btn.textContent = '📸 Yuzni olish';
+}
+
+async function onVerifyCapture(payload) {
+  try {
+    const resp = await fetch(API + '/api/face/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    const div = document.getElementById('verifyResult');
+    div.classList.remove('hidden');
+
+    if (resp.status === 403 && data.spoof_warning) {
+      div.innerHTML = `
+        <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
+        Liveness tekshiruvi o'tmadi (${(data.liveness_score * 100).toFixed(0)}%).<br>
+        Iltimos, to'g'ridan-to'g'ri kameraga qarang va ko'rsatilgan harakatlarni bajaring.</div>
+        <div class="fc-result fc-result-error">
+          <h4>🚫 Spoof bloklandi</h4>
+          <p>Liveness: <strong>${(data.liveness_score * 100).toFixed(0)}%</strong> (talab: ≥85%)</p>
+          <div class="fc-score-bar"><div class="fc-score-fill" style="width:${Math.min(100, data.liveness_score * 100)}%;background:#f85149"></div></div>
+          <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>
+        </div>`;
+      return;
+    }
+
+    if (data.matched) {
+      div.innerHTML = `
+        <div class="success-box">
+          ✅ <strong>${data.identity.name}</strong> — tanildi
+          <span class="badge ${data.type === 'staff' ? 'badge-staff' : 'badge-patient'}">${data.type === 'staff' ? '👨‍⚕️ Xodim' : '🧑 Bemor'}</span>
+        </div>
+        <div class="fc-result ${data.success ? 'fc-result-success' : 'fc-result-error'}">
+          <h4>${data.success ? '✅ Muvaffaqiyatli' : '❌ Xatolik'}</h4>
+          <p>Ishonchlilik: <strong>${(data.confidence * 100).toFixed(1)}%</strong></p>
+          <p>Liveness: ${data.liveness_passed ? '✅ O\'tdi' : '❌ O\'tmadi'}</p>
+          ${data.identity?.specialty ? '<p>Mutaxassislik: ' + data.identity.specialty + '</p>' : ''}
+        </div>`;
+    } else {
+      div.innerHTML = `
+        <div class="error-box">❌ Yuz tanilmadi. Qayta urinib ko'ring.</div>`;
+    }
+  } catch (e) {
+    showError('verify', 'Server bilan bog\'lanishda xatolik');
+  }
+}
+
+async function onRegisterCapture(payload) {
+  try {
+    const firstName = document.getElementById('regFirstName').value.trim();
+    if (!firstName) { showError('register', 'Ism majburiy'); return; }
+    const resp = await fetch(API + '/api/face/register-patient', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        first_name: firstName,
+        last_name: document.getElementById('regLastName').value.trim(),
+        phone: document.getElementById('regPhone').value.trim(),
+        birth_date: document.getElementById('regBirthDate').value
+      })
+    });
+    const data = await resp.json();
+    const div = document.getElementById('registerResult');
+    div.classList.remove('hidden');
+
+    if (resp.status === 403 && data.spoof_warning) {
+      div.innerHTML = `
+        <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
+        Ro'yxatdan o'tish uchun jonli yuz talab qilinadi.<br>
+        Liveness: ${(data.liveness_score * 100).toFixed(0)}% (talab: ≥85%)</div>
+        <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>`;
+      return;
+    }
+
+    if (data.success) {
+      div.innerHTML = `
+        <div class="success-box">✅ <strong>${data.patient.first_name}</strong> ro'yxatdan o'tdi</div>`;
+      document.getElementById('registerForm').classList.add('hidden');
+    } else if (resp.status === 409) {
+      div.innerHTML = `
+        <div class="error-box">⚠️ Bu yuz oldin <strong>${data.existing_patient.name}</strong> sifatida ro'yxatdan o'tgan</div>`;
+    } else {
+      div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
+    }
+  } catch (e) {
+    showError('register', 'Server bilan bog\'lanishda xatolik');
+  }
+}
+
+function showError(panel, msg) {
+  const div = document.getElementById(panel + 'Result');
+  div.classList.remove('hidden');
+  div.innerHTML = `<div class="error-box">❌ ${msg}</div>`;
+}
+
+// Init verify mode by default
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => initVerifyCapture(), 500);
+});
+</script>
+<script src="face-capture.js"></script>
+</body>
+</html>

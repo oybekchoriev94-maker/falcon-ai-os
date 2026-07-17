@@ -1,0 +1,81 @@
+# Environment secrets — ALWAYS keep out of version control
+.env
+.env.local
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Generated temp files
+find-sections*.mjs
+refactor-script*.mjs
+gen-secrets*.js
+apply-secrets*.js
+
+# Backups
+server.js.backup
+*.backup.txt
+*.backup.json
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+server-error.log
+server-start.log
+test_server.log
+test_server_err.log
+
+# SSL certs
+*.pem
+cert.pem
+key.pem
+
+# Test recordings
+recordings/
+
+# Dev test tokens (environment-specific, har safar o'zgaradi)
+t_admin.json
+t_ceo.json
+t_doc.json
+t_rec.json
+
+# OpenCode IDE (agent configs — Falcon AI OS ga tegishli emas)
+.opencode/
+
+# whisper.cpp (local model — har bir mashinada build qilinadi)
+whisper.cpp/
+
+# Build artifacts
+.next/
+.next
+
+# Proposals
+*.docx
+*.pdf
+*.bak
+proposal-*
+COMMERCIAL_PROPOSAL.md
+falcon-ai-os-tijorat*
+
+# Temp
+~$*
+start.bat
+fix.cjs

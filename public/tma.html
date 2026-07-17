@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Bemor Portali</title>
+  <script src="https://telegram.org/js/telegram-webapp.js"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { inter: ['Inter', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+
+<div id="app" class="pb-24">
+  <!-- HEADER -->
+  <div class="tg-header p-4 pt-6 text-white" style="background:var(--tg-theme-header-bg-color, linear-gradient(135deg,#2c3e6b,#1a1a2e))">
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h1 class="text-xl font-bold" id="greeting">Assalomu alaykum 👋</h1>
+        <p class="text-sm opacity-80 mt-1" id="patientInfo">Bemor Portaliga xush kelibsiz</p>
+      </div>
+      <div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+        <span class="material-icons-round text-2xl">person</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <!-- NAVIGATION TABS -->
+  <div class="flex justify-around px-4 pt-4 pb-2 border-b border-gray-100" style="border-color:var(--tg-theme-secondary-bg-color,#e2e8f0)">
+    <div class="nav-tab tab-active text-center pb-3 px-6" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <span class="material-icons-round text-xl block mx-auto mb-1">dashboard</span>
+      <span class="text-xs">Dashboard</span>
+    </div>
+    <div class="nav-tab text-center pb-3 px-6" data-tab="reminders" onclick="switchTab('reminders')">
+      <span class="material-icons-round text-xl block mx-auto mb-1">medication</span>
+      <span class="text-xs">Eslatmalar</span>
+    </div>
+    <div class="nav-tab text-center pb-3 px-6" data-tab="referrals" onclick="switchTab('referrals')">
+      <span class="material-icons-round text-xl block mx-auto mb-1">qr_code</span>
+      <span class="text-xs">Yo'llanmalar</span>
+    </div>
+  </div>
+
+  <!-- TAB 1: DASHBOARD -->
+  <div id="tab-dashboard" class="tab-content px-4 pt-4">
+    <!-- Stats -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="tg-card p-4 anim-in">
+        <span class="material-icons-round text-2xl mb-2" style="color:var(--tg-theme-button-color,#2c3e6b)">assignment</span>
+        <p class="text-2xl font-bold" id="statReferrals">0</p>
+        <p class="text-xs opacity-60">Yo'llanmalar</p>
+      </div>
+      <div class="tg-card p-4 anim-in" style="animation-delay:.1s">
+        <span class="material-icons-round text-2xl mb-2" style="color:var(--tg-theme-button-color,#2c3e6b)">medication</span>
+        <p class="text-2xl font-bold" id="statReminders">0</p>
+        <p class="text-xs opacity-60">Eslatmalar</p>
+      </div>
+    </div>
+
+    <!-- Last consultations -->
+    <div class="tg-card p-4 mb-4 anim-in" style="animation-delay:.15s">
+      <h3 class="font-semibold mb-3 flex items-center gap-2">
+        <span class="material-icons-round text-lg" style="color:var(--tg-theme-button-color,#2c3e6b)">history</span>
+        Oxirgi tashxislar
+      </h3>
+      <div id="consultationsList">
+        <p class="text-sm opacity-50 py-4 text-center">Ma'lumot yuklanmoqda...</p>
+      </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="grid grid-cols-2 gap-3 anim-in" style="animation-delay:.2s">
+      <button class="tg-btn p-4 flex items-center gap-2 justify-center" onclick="switchTab('reminders')">
+        <span class="material-icons-round">add_alarm</span> Eslatma qo'shish
+      </button>
+      <button class="tg-btn p-4 flex items-center gap-2 justify-center" style="background:var(--tg-theme-button-color,#2c3e6b)" onclick="switchTab('referrals')">
+        <span class="material-icons-round">qr_code_scanner</span> Yo'llanmalar
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB 2: REMINDERS -->
+  <div id="tab-reminders" class="tab-content px-4 pt-4" style="display:none">
+
+    <!-- Add Reminder Form -->
+    <div class="tg-card p-4 mb-4">
+      <h3 class="font-semibold mb-4 flex items-center gap-2">
+        <span class="material-icons-round text-lg" style="color:var(--tg-theme-button-color,#2c3e6b)">add_circle</span>
+        Yangi eslatma
+      </h3>
+      <div class="space-y-3">
+        <input class="tg-input" id="medName" placeholder="💊 Dori nomi" required>
+        <div class="flex gap-2">
+          <input class="tg-input flex-1" id="medDosage" placeholder="Miqdor (mg/dona)">
+          <input class="tg-input w-24" id="medTime" type="time" placeholder="Vaqti">
+        </div>
+        <input class="tg-input" id="medNotes" placeholder="📝 Qo'shimcha izoh">
+        <button class="tg-btn w-full py-3 flex items-center justify-center gap-2" onclick="addReminder()">
+          <span class="material-icons-round">check</span> Saqlash
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Reminders -->
+    <h3 class="font-semibold mb-3 flex items-center gap-2">
+      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2c3e6b)">alarm</span>
+      Faol eslatmalar
+    </h3>
+    <div id="remindersList">
+      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+    </div>
+  </div>
+
+  <!-- TAB 3: REFERRALS -->
+  <div id="tab-referrals" class="tab-content px-4 pt-4" style="display:none">
+    <h3 class="font-semibold mb-3 flex items-center gap-2">
+      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2c3e6b)">qr_code</span>
+      Mening yo'llanmalarim
+    </h3>
+    <div id="referralsList" class="space-y-4">
+      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+    </div>
+  </div>
+</div>
+
+<!-- QR Modal -->
+<div id="qrModal" class="modal-overlay">
+  <div class="modal-content text-center">
+    <span class="material-icons-round text-5xl mb-4" style="color:var(--tg-theme-button-color,#2c3e6b)">qr_code_scanner</span>
+    <h3 class="text-lg font-bold mb-2" id="qrModalTitle">Yo'llanma QR-kodi</h3>
+    <p class="text-sm opacity-60 mb-4">Ushbu kodni hamkor klinikada ko'rsating</p>
+    <div id="qrModalCode" class="flex justify-center mb-4"></div>
+    <p class="text-xs opacity-50 mb-4" id="qrModalId">REF-XXX</p>
+    <button class="tg-btn py-3 px-8" onclick="closeQRModal()">Yopish</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+const API_BASE = '';
+let tg = null;
+let telegramId = '';
+let userName = '';
+
+// ========== INIT ==========
+try {
+  tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.expand();
+    tg.ready();
+    telegramId = tg.initDataUnsafe?.user?.id?.toString() || '';
+    userName = tg.initDataUnsafe?.user?.first_name || 'Bemor';
+  }
+} catch (e) {}
+
+// URL dan telegram_id olish
+if (!telegramId) {
+  const params = new URLSearchParams(window.location.search);
+  telegramId = params.get('telegram_id') || '';
+}
+if (!telegramId) telegramId = 'demo_user';
+
+// Sync user
+async function syncUser() {
+  try {
+    const u = tg?.initDataUnsafe?.user;
+    await fetch(API_BASE + '/api/tma/user/sync', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        telegram_id: telegramId,
+        first_name: u?.first_name || userName,
+        username: u?.username || '',
+        patient_name: ''
+      })
+    });
+  } catch(e) {}
+}
+syncUser();
+
+// Greeting
+function updateGreeting() {
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Xayrli tong' : hour < 18 ? 'Xayrli kun' : 'Xayrli kech';
+  document.getElementById('greeting').textContent = `${greet} ${userName} 👋`;
+}
+updateGreeting();
+
+// ========== TOAST ==========
+function showToast(msg, duration = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', duration);
+}
+
+// ========== TAB SWITCHING ==========
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('tab-active'));
+  document.getElementById('tab-' + tab).style.display = 'block';
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('tab-active');
+  // Load data on tab switch
+  if (tab === 'dashboard') loadDashboard();
+  else if (tab === 'reminders') loadReminders();
+  else if (tab === 'referrals') loadReferrals();
+}
+
+// ========== DASHBOARD ==========
+async function loadDashboard() {
+  try {
+    // Referrals count
+    const refRes = await fetch(API_BASE + `/api/tma/referrals?telegram_id=${telegramId}`);
+    const refData = await refRes.json();
+    document.getElementById('statReferrals').textContent = refData.total || 0;
+
+    // Reminders count
+    const remRes = await fetch(API_BASE + `/api/tma/reminders?telegram_id=${telegramId}`);
+    const remData = await remRes.json();
+    document.getElementById('statReminders').textContent = remData.total || 0;
+
+    // Consultations - from scribe history
+    const consRes = await fetch(API_BASE + '/api/scribe/history');
+    const consData = await consRes.json();
+    const list = document.getElementById('consultationsList');
+    const items = Array.isArray(consData) ? consData : consData?.data || [];
+
+    if (items.length === 0) {
+      list.innerHTML = '<p class="text-sm opacity-50 py-4 text-center">📋 Hali tashxislar mavjud emas</p>';
+    } else {
+      list.innerHTML = items.slice(0, 3).map(c => `
+        <div class="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
+          <span class="material-icons-round text-lg mt-0.5" style="color:var(--tg-theme-button-color,#2c3e6b)">stethoscope</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${c.patient_name || 'Bemor'}</p>
+            <p class="text-xs opacity-50 truncate">${c.structured_json ? (JSON.parse(c.structured_json).diagnosis || 'Tahlil qilingan') : 'Tahlil qilingan'}</p>
+          </div>
+          <span class="text-xs opacity-30">${new Date(c.created_at).toLocaleDateString('uz-UZ')}</span>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('patientInfo').textContent =
+      `📊 ${refData.total || 0} ta yo'llanma, ${remData.total || 0} ta eslatma`;
+  } catch(e) {
+    document.getElementById('statReferrals').textContent = '0';
+    document.getElementById('statReminders').textContent = '0';
+  }
+}
+
+// ========== REMINDERS ==========
+async function loadReminders() {
+  try {
+    const res = await fetch(API_BASE + `/api/tma/reminders?telegram_id=${telegramId}`);
+    const data = await res.json();
+    const list = document.getElementById('remindersList');
+    const items = data.data || [];
+
+    if (items.length === 0) {
+      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">alarm_off</span><p class="text-sm opacity-50">Faol eslatmalar yo\'q</p></div>';
+      return;
+    }
+    list.innerHTML = items.map(r => `
+      <div class="tg-card p-4 mb-3 flex items-center gap-3 anim-in">
+        <div class="w-12 h-12 rounded-full flex items-center justify-center" style="background:${tg?.themeParams?.secondary_bg_color || '#f0f2f5'}">
+          <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2c3e6b)">medication</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-medium">${r.medicine_name}</p>
+          <p class="text-xs opacity-50">${r.dosage || '1 marta'} · ${r.reminder_time}</p>
+        </div>
+        <button class="p-2 rounded-full hover:bg-red-50 transition" onclick="deleteReminder('${r.id}')">
+          <span class="material-icons-round text-red-400">delete</span>
+        </button>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('remindersList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
+  }
+}
+
+async function addReminder() {
+  const name = document.getElementById('medName').value.trim();
+  const time = document.getElementById('medTime').value;
+  if (!name) return showToast('💊 Dori nomini kiriting');
+  if (!time) return showToast('⏰ Vaqtni tanlang');
+
+  try {
+    const res = await fetch(API_BASE + '/api/tma/reminders', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        telegram_id: telegramId,
+        medicine_name: name,
+        dosage: document.getElementById('medDosage').value.trim(),
+        reminder_time: time,
+        notes: document.getElementById('medNotes').value.trim()
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✅ Eslatma qo\'shildi');
+      document.getElementById('medName').value = '';
+      document.getElementById('medDosage').value = '';
+      document.getElementById('medTime').value = '';
+      document.getElementById('medNotes').value = '';
+      loadReminders();
+    } else showToast('❌ ' + data.error);
+  } catch(e) { showToast('❌ Xatolik yuz berdi'); }
+}
+
+async function deleteReminder(id) {
+  try {
+    await fetch(API_BASE + '/api/tma/reminders/' + id, { method: 'DELETE' });
+    showToast('🗑️ Eslatma o\'chirildi');
+    loadReminders();
+  } catch(e) { showToast('❌ Xatolik'); }
+}
+
+// ========== REFERRALS ==========
+async function loadReferrals() {
+  try {
+    const res = await fetch(API_BASE + `/api/tma/referrals?telegram_id=${telegramId}`);
+    const data = await res.json();
+    const list = document.getElementById('referralsList');
+    const items = data.data || [];
+
+    if (items.length === 0) {
+      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">qr_code_2</span><p class="text-sm opacity-50">Sizda faol yo\'llanmalar yo\'q</p></div>';
+      return;
+    }
+    list.innerHTML = items.map((r, i) => {
+      const statusClass = r.status === 'pending' ? 'status-pending' : r.status === 'completed' ? 'status-completed' : 'status-cancelled';
+      const statusText = r.status === 'pending' ? '⏳ Kutilmoqda' : r.status === 'completed' ? '✅ Bajarilgan' : '❌ Bekor qilingan';
+      return `
+      <div class="tg-card p-4 anim-in" style="animation-delay:${i*0.1}s">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <p class="font-semibold">${r.service_required || 'Muolaja'}</p>
+            <p class="text-xs opacity-50">🏥 ${r.receiver_name || 'Hamkor klinika'}</p>
+            <p class="text-xs opacity-30 mt-1">${r.referral_id || ''}</p>
+          </div>
+          <span class="status-badge ${statusClass}">${statusText}</span>
+        </div>
+        ${r.status === 'pending' ? `
+        <div class="flex justify-center my-3" id="qrContainer${i}">
+          <div class="qr-container">
+            <div id="qrcode${i}"></div>
+          </div>
+        </div>
+        <button class="text-xs py-2 px-4 rounded-full" style="color:var(--tg-theme-button-color,#2c3e6b);background:${tg?.themeParams?.secondary_bg_color || '#f0f2f5'}" onclick="showQR('${r.id}','${r.referral_id || ''}','${r.receiver_name || ''}','${r.service_required || ''}')">
+          <span class="material-icons-round text-sm align-middle">fullscreen</span> Kattalashtirish
+        </button>
+        ` : '<p class="text-xs opacity-30 text-center py-2">Ushbu yo\'llanma yopilgan</p>'}
+      </div>`;
+    }).join('');
+
+    // Generate QR codes for pending referrals
+    items.forEach((r, i) => {
+      if (r.status === 'pending') {
+        new QRCode(document.getElementById('qrcode' + i), {
+          text: JSON.stringify({ referral_id: r.id, ref: r.referral_id, clinic: r.receiver_name }),
+          width: 140, height: 140,
+          colorDark: '#1a1a2e', colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.H
+        });
+      }
+    });
+  } catch(e) {
+    document.getElementById('referralsList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
+  }
+}
+
+// ========== QR MODAL ==========
+function showQR(id, refId, clinic, service) {
+  const modal = document.getElementById('qrModal');
+  document.getElementById('qrModalTitle').textContent = `📋 ${service}`;
+  document.getElementById('qrModalId').textContent = `${refId} · ${clinic}`;
+  const container = document.getElementById('qrModalCode');
+  container.innerHTML = '';
+  new QRCode(container, {
+    text: JSON.stringify({ referral_id: id, ref: refId, clinic }),
+    width: 220, height: 220,
+    colorDark: '#1a1a2e', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+  modal.style.display = 'flex';
+}
+function closeQRModal() {
+  document.getElementById('qrModal').style.display = 'none';
+}
+// Close modal on overlay click
+document.getElementById('qrModal').addEventListener('click', function(e) {
+  if (e.target === this) closeQRModal();
+});
+
+// ========== INIT LOAD ==========
+loadDashboard();
+</script>
+<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
+</html>

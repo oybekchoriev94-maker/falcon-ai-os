@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>QR To'lov — Falcon AI OS Kiosk</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--text-muted:#64748b;--border:#334155;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#eab308}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+.header{background:var(--card);padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
+.header h1 span{color:var(--accent)}
+.header .status{font-size:13px;color:var(--green);background:rgba(34,197,94,.15);padding:4px 12px;border-radius:20px}
+.content{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:800px;margin:0 auto;width:100%}
+.steps{display:flex;gap:24px;margin-bottom:32px;width:100%;justify-content:center}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);text-align:center;flex:1;position:relative}
+.step .circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;border:2px solid var(--border);background:var(--card);color:var(--text-muted);transition:all .3s}
+.step.active .circle{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 0 20px rgba(59,130,246,.4)}
+.step.done .circle{background:var(--green);color:#fff;border-color:var(--green)}
+.step.done .label{color:var(--green)}
+.step:not(:last-child)::after{content:'';position:absolute;top:20px;left:60%;width:80%;height:2px;background:var(--border)}
+.step.done:not(:last-child)::after{background:var(--green)}
+.qr-section{background:var(--card);border-radius:20px;border:1px solid var(--border);padding:32px;text-align:center;width:100%;max-width:420px}
+.qr-section .amount{font-size:36px;font-weight:800;margin-bottom:4px}
+.qr-section .desc{color:var(--text-muted);font-size:14px;margin-bottom:20px}
+.qr-section .qr-placeholder{width:280px;height:280px;margin:0 auto 16px;background:var(--bg);border-radius:16px;border:2px dashed var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;overflow:hidden}
+.qr-section .qr-placeholder img{width:100%;height:100%;object-fit:contain}
+.qr-section .qr-placeholder .loader{width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.qr-section .patient-info{padding:12px;background:var(--bg);border-radius:12px;margin-bottom:16px;font-size:14px}
+.qr-section .patient-info strong{color:var(--text)}
+.qr-section .patient-info .tag{display:inline-block;background:var(--green);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:8px}
+.qr-section .actions{display:flex;gap:8px;margin-top:16px;justify-content:center}
+.btn{padding:10px 20px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#16a34a}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border)}
+.btn-outline:hover{background:var(--card)}
+.btn-lg{padding:14px 28px;font-size:16px}
+.btn-block{width:100%;justify-content:center}
+.pay-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%}
+.pay-option{padding:14px;border-radius:12px;border:2px solid var(--border);background:var(--card);text-align:center;cursor:pointer;transition:all .2s;font-size:13px;font-weight:600}
+.pay-option:hover{border-color:var(--accent);background:rgba(59,130,246,.1)}
+.pay-option.selected{border-color:var(--accent);background:rgba(59,130,246,.15)}
+.pay-option .provider-icon{font-size:28px;margin-bottom:4px}
+.status-box{padding:16px;border-radius:12px;text-align:center;margin-top:16px;font-size:15px;font-weight:600}
+.status-box.success{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.status-box.pending{background:rgba(234,179,8,.15);color:var(--yellow);border:1px solid rgba(234,179,8,.3)}
+.status-box.error{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+.status-box .big-icon{font-size:48px;display:block;margin-bottom:8px}
+.hidden{display:none!important}
+.text-muted{color:var(--text-muted);font-size:13px}
+.refresh-btn{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);transition:transform .2s;z-index:100}
+.refresh-btn:hover{transform:scale(1.1)}
+@media(max-width:500px){
+  .qr-section{padding:20px}
+  .qr-section .amount{font-size:28px}
+  .qr-section .qr-placeholder{width:220px;height:220px}
+  .steps{flex-direction:column;gap:8px;margin-bottom:20px}
+  .step{flex-direction:row;justify-content:flex-start}
+  .step:not(:last-child)::after{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>💳</span> QR To'lov</h1>
+  <div class="status">🟢 Online</div>
+</div>
+
+<div class="content" id="app">
+  <!-- Step indicator -->
+  <div class="steps" id="steps">
+    <div class="step active" data-step="1">
+      <div class="circle">1</div>
+      <div class="label">Bemor keldi</div>
+    </div>
+    <div class="step" data-step="2">
+      <div class="circle">2</div>
+      <div class="label">Xizmat tanlash</div>
+    </div>
+    <div class="step" data-step="3">
+      <div class="circle">3</div>
+      <div class="label">To'lov</div>
+    </div>
+    <div class="step" data-step="4">
+      <div class="circle">✅</div>
+      <div class="label">Tayyor</div>
+    </div>
+  </div>
+
+  <!-- Step 1: Bemorni topish -->
+  <div id="step-1" class="qr-section">
+    <h2 style="margin-bottom:16px;font-size:22px">👤 Bemorni tanlang</h2>
+    <div style="margin-bottom:12px">
+      <input type="tel" id="patientPhone" placeholder="📱 Telefon raqam (+998 XX XXX XX XX)"
+             style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:16px;text-align:center">
+    </div>
+    <div style="margin-bottom:8px;color:var(--text-muted);font-size:13px">yoki</div>
+    <button class="btn btn-outline btn-block" onclick="useFaceID()" style="margin-bottom:16px">
+      🤳 Face ID orqali topish
+    </button>
+    <div id="patientSearchResult"></div>
+    <button class="btn btn-primary btn-lg btn-block" onclick="selectPatient()" style="margin-top:8px">
+      📋 Bemorlarni ko'rish
+    </button>
+    <div id="patientList" class="hidden" style="margin-top:12px;max-height:200px;overflow-y:auto"></div>
+  </div>
+
+  <!-- Step 2: Xizmat tanlash -->
+  <div id="step-2" class="qr-section hidden">
+    <h2 style="margin-bottom:16px;font-size:22px">
+      🏥 Xizmatni tanlang
+      <span id="selectedPatientName2" style="font-size:14px;display:block;color:var(--text-muted);margin-top:4px"></span>
+    </h2>
+    <div style="margin-bottom:12px">
+      <input type="text" id="serviceSearch" placeholder="🔍 Xizmat qidirish..."
+             oninput="filterServices()"
+             style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px">
+    </div>
+    <div id="serviceList" style="max-height:280px;overflow-y:auto;margin-bottom:12px"></div>
+    <div id="selectedServices" class="hidden" style="background:var(--bg);border-radius:12px;padding:12px;margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:600">Tanlangan xizmatlar:</div>
+      <div id="selectedServicesList"></div>
+      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-size:16px;font-weight:700">
+        <span>Jami:</span>
+        <span id="totalAmountDisplay">0 so'm</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-outline" onclick="goStep(1)">⬅ Orqaga</button>
+      <button class="btn btn-success btn-lg" onclick="goToPayment()">
+        💳 To'lovga o'tish
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 3: QR to'lov -->
+  <div id="step-3" class="qr-section hidden">
+    <div id="paymentInfo">
+      <div class="patient-info" id="paymentPatientInfo">
+        👤 <strong id="payPatientName">Bemor</strong>
+        <span class="tag" id="payPatientId">ID</span>
+      </div>
+      <div id="payServicesList" style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-align:left"></div>
+      <div class="amount" id="payAmount">0</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-bottom:4px">so'm</div>
+      <div class="desc" id="payDesc">To'lov tayyorlanmoqda...</div>
+
+      <!-- QR kod -->
+      <div class="qr-placeholder" id="qrContainer">
+        <div class="loader" id="qrLoader"></div>
+        <span id="qrPlaceholderText">QR kod tayyorlanmoqda...</span>
+        <img id="qrImage" class="hidden" alt="QR kod" style="cursor:pointer" onclick="openPaymentUrl()">
+      </div>
+
+      <!-- To'lov platformalari -->
+      <div class="pay-options" id="payOptions">
+        <div class="pay-option selected" data-provider="auto" onclick="selectProvider('auto', this)">
+          <div class="provider-icon">🤖</div>
+          Avtomatik
+          <div style="font-size:11px;color:var(--text-muted)">Eng arzon</div>
+        </div>
+        <div class="pay-option" data-provider="payme" onclick="selectProvider('payme', this)">
+          <div class="provider-icon">💳</div>
+          Payme
+          <div style="font-size:11px;color:var(--text-muted)">1.5%</div>
+        </div>
+        <div class="pay-option" data-provider="click" onclick="selectProvider('click', this)">
+          <div class="provider-icon">🖱️</div>
+          Click
+          <div style="font-size:11px;color:var(--text-muted)">1.8%</div>
+        </div>
+        <div class="pay-option" data-provider="uzum" onclick="selectProvider('uzum', this)">
+          <div class="provider-icon">🏦</div>
+          Uzum
+          <div style="font-size:11px;color:var(--text-muted)">1.2%</div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:16px">
+        <button class="btn btn-outline" onclick="goStep(2)">⬅ Orqaga</button>
+        <button class="btn btn-primary btn-lg" id="payBtn" onclick="createPayment()">
+          🔗 To'lovni yaratish
+        </button>
+      </div>
+
+      <div id="paymentStatus" class="hidden"></div>
+    </div>
+  </div>
+</div>
+
+<button class="refresh-btn" onclick="resetAll()" title="Yangi to'lov">🔄</button>
+
+<script>
+// ─── STATE ────────────────────────────────────────────
+const API = '';
+let state = {
+  step: 1,
+  patient: null,
+  services: [],
+  selectedServices: [],
+  totalAmount: 0,
+  orderId: null,
+  provider: 'auto',
+  paymentUrl: null,
+  pollingInterval: null
+};
+
+// ─── SERVICE CATALOG ──────────────────────────────────
+const ALL_SERVICES = [
+  { id: 'srv-1', name: 'Terapevt ko\'rigi', price: 50000, category: 'Qabul' },
+  { id: 'srv-2', name: 'UZI tekshiruvi', price: 120000, category: 'Diagnostika' },
+  { id: 'srv-3', name: 'Laborator tahlil', price: 35000, category: 'Laboratoriya' },
+  { id: 'srv-4', name: 'Kardiolog', price: 80000, category: 'Qabul' },
+  { id: 'srv-5', name: 'Nevrolog', price: 70000, category: 'Qabul' },
+  { id: 'srv-6', name: 'Stomatolog', price: 60000, category: 'Qabul' },
+  { id: 'srv-7', name: 'Massaj (1 seans)', price: 55000, category: 'Fizioterapiya' },
+  { id: 'srv-8', name: 'Fizioterapiya', price: 45000, category: 'Fizioterapiya' },
+  { id: 'srv-9', name: 'EKG', price: 30000, category: 'Diagnostika' },
+  { id: 'srv-10', name: 'Konsultatsiya', price: 40000, category: 'Qabul' },
+  { id: 'srv-11', name: 'Ginekolog ko\'rigi', price: 80000, category: 'Qabul' },
+  { id: 'srv-12', name: 'Lor ko\'rigi', price: 60000, category: 'Qabul' },
+  { id: 'srv-13', name: 'Tomchi (kungi)', price: 25000, category: 'Muolaja' },
+  { id: 'srv-14', name: 'Ukol (mushak ichi)', price: 15000, category: 'Muolaja' }
+];
+
+// ─── HELPERS ──────────────────────────────────────────
+function $(s) { return document.querySelector(s); }
+function $$(s) { return document.querySelectorAll(s); }
+function format(sum) { return (sum || 0).toLocaleString('uz-UZ'); }
+
+function show(id) { $(id).classList.remove('hidden'); }
+function hide(id) { $(id).classList.add('hidden'); }
+
+// ─── STEP NAVIGATION ──────────────────────────────────
+function goStep(n) {
+  state.step = n;
+  $$('[id^="step-"]').forEach(el => el.classList.add('hidden'));
+  show('#step-' + n);
+  $$('.step').forEach((s, i) => {
+    s.classList.toggle('active', i + 1 === n);
+    s.classList.toggle('done', i + 1 < n);
+  });
+}
+
+function updateSteps() {
+  const n = state.step;
+  $$('.step').forEach((s, i) => {
+    s.classList.toggle('active', i + 1 === n);
+    s.classList.toggle('done', i + 1 < n);
+  });
+}
+
+// ─── STEP 1: PATIENT ──────────────────────────────────
+async function loadPatients() {
+  try {
+    const r = await fetch(API + '/api/face/patients');
+    const d = await r.json();
+    const list = $('#patientList');
+    list.classList.remove('hidden');
+    if (!d.success || !d.patients?.length) {
+      list.innerHTML = '<div style="padding:12px;color:var(--text-muted);text-align:center">Bemor topilmadi</div>';
+      return;
+    }
+    list.innerHTML = d.patients.map(p =>
+      `<div onclick="pickPatient('${p.id}','${p.first_name} ${p.last_name||''}')"
+            style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+            onmouseover="this.style.background='var(--card)'" onmouseout="this.style.background=''">
+         <span><strong>${p.first_name} ${p.last_name||''}</strong></span>
+         <span style="color:var(--text-muted);font-size:12px">${p.phone||''}</span>
+       </div>`
+    ).join('');
+  } catch(e) {
+    $('#patientSearchResult').innerHTML = `<div class="status-box error">⚠️ Server xatosi</div>`;
+  }
+}
+
+function selectPatient() {
+  loadPatients();
+}
+
+function pickPatient(id, name) {
+  state.patient = { id, name };
+  $('#patientSearchResult').innerHTML =
+    `<div class="status-box success">✅ ${name}</div>`;
+  $('#selectedPatientName2').textContent = `👤 ${name}`;
+  setTimeout(() => goStep(2), 500);
+}
+
+function useFaceID() {
+  $('#patientSearchResult').innerHTML =
+    `<div class="status-box pending">⏳ Face ID tekshirilmoqda... (kameraga qarang)</div>`;
+  // Face ID kiosk ga o'tish
+  setTimeout(() => {
+    window.location.href = '/face-kiosk.html?return=qr-pay-kiosk';
+  }, 1000);
+}
+
+// ─── STEP 2: SERVICES ─────────────────────────────────
+function renderServices(list) {
+  const el = $('#serviceList');
+  const cats = {};
+  (list || ALL_SERVICES).forEach(s => {
+    if (!cats[s.category]) cats[s.category] = [];
+    cats[s.category].push(s);
+  });
+  el.innerHTML = Object.entries(cats).map(([cat, items]) =>
+    `<div style="margin-bottom:8px">
+       <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:4px;padding:0 4px">${cat}</div>
+       ${items.map(s => {
+         const sel = state.selectedServices.find(x => x.id === s.id);
+         return `<div onclick="toggleService('${s.id}')"
+                     style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;cursor:pointer;margin-bottom:2px;${sel ? 'background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3)' : 'border:1px solid transparent'}"
+                     onmouseover="this.style.background='var(--card)'" onmouseout="this.style.background='${sel ? 'rgba(34,197,94,.15)' : ''}'">
+                <span>${s.name}</span>
+                <span style="font-weight:600;color:var(--green)">${format(s.price)} <span style="font-size:11px;color:var(--text-muted)">so'm</span></span>
+              </div>`;
+       }).join('')}
+     </div>`
+  ).join('');
+}
+
+function filterServices() {
+  const q = $('#serviceSearch').value.toLowerCase();
+  const filtered = ALL_SERVICES.filter(s =>
+    s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)
+  );
+  renderServices(filtered);
+}
+
+function toggleService(id) {
+  const idx = state.selectedServices.findIndex(s => s.id === id);
+  if (idx >= 0) state.selectedServices.splice(idx, 1);
+  else state.selectedServices.push({ ...ALL_SERVICES.find(s => s.id === id) });
+  updateSelectedServices();
+  renderServices();
+}
+
+function updateSelectedServices() {
+  const list = $('#selectedServicesList');
+  const total = state.selectedServices.reduce((sum, s) => sum + s.price, 0);
+
+  if (!state.selectedServices.length) {
+    hide('#selectedServices');
+    return;
+  }
+
+  show('#selectedServices');
+  list.innerHTML = state.selectedServices.map(s =>
+    `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0">
+       <span>${s.name}</span>
+       <span style="color:var(--green)">${format(s.price)} so'm</span>
+     </div>`
+  ).join('');
+  $('#totalAmountDisplay').textContent = format(total) + ' so\'m';
+  state.totalAmount = total;
+}
+
+function goToPayment() {
+  if (!state.selectedServices.length) {
+    alert('Iltimos, kamida 1 ta xizmat tanlang');
+    return;
+  }
+  // To'lov ma'lumotlarini ko'rsatish
+  const names = state.selectedServices.map(s => s.name).join(', ');
+  $('#payPatientName').textContent = state.patient?.name || 'Bemor';
+  $('#payPatientId').textContent = state.patient?.id?.substring(0, 8) || '—';
+  $('#payServicesList').innerHTML = state.selectedServices.map(s =>
+    `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+       <span>${s.name}</span>
+       <span>${format(s.price)} so'm</span>
+     </div>`
+  ).join('');
+  $('#payAmount').textContent = format(state.totalAmount);
+  $('#payDesc').textContent = `${state.selectedServices.length} ta xizmat`;
+
+  // QR ni reset qilish
+  hide('#qrImage');
+  show('#qrLoader');
+  $('#qrPlaceholderText').textContent = 'To\'lov yaratilmagan';
+  hide('#paymentStatus');
+
+  goStep(3);
+}
+
+// ─── STEP 3: PAYMENT ──────────────────────────────────
+function selectProvider(provider, el) {
+  state.provider = provider;
+  $$('.pay-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function createPayment() {
+  const btn = $('#payBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Yaratilmoqda...';
+
+  try {
+    const r = await fetch(API + '/api/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patient_id: state.patient?.id || null,
+        amount: state.totalAmount,
+        description: state.selectedServices.map(s => s.name).join(', '),
+        provider: state.provider,
+        services: state.selectedServices
+      })
+    });
+    const d = await r.json();
+
+    if (!d.success) {
+      showError(d.error || 'Xatolik yuz berdi');
+      btn.disabled = false;
+      btn.textContent = '🔗 To\'lovni yaratish';
+      return;
+    }
+
+    state.orderId = d.orderId;
+
+    // QR kodni yuklash
+    const qrResp = await fetch(API + '/api/payments/qr/' + d.orderId);
+    if (qrResp.ok) {
+      const blob = await qrResp.blob();
+      const url = URL.createObjectURL(blob);
+      $('#qrImage').src = url;
+      $('#qrImage').classList.remove('hidden');
+      hide('#qrLoader');
+      $('#qrPlaceholderText').textContent = '📱 Skaner qiling';
+    }
+
+    state.paymentUrl = d.paymentUrl || `${window.location.origin}/api/payments/pay/${d.orderId}`;
+
+    showSuccess('✅ To\'lov yaratildi! QR kodni skaner qiling');
+    btn.textContent = '✅ Yaratildi';
+
+    // Polling — to'lov kelguncha
+    startPolling(d.orderId);
+
+  } catch(e) {
+    showError('Server bilan bog\'lanishda xatolik');
+    btn.disabled = false;
+    btn.textContent = '🔗 To\'lovni yaratish';
+  }
+}
+
+function startPolling(orderId) {
+  if (state.pollingInterval) clearInterval(state.pollingInterval);
+
+  state.pollingInterval = setInterval(async () => {
+    try {
+      const r = await fetch(API + '/api/payments/status/' + orderId);
+      const d = await r.json();
+      if (d.status === 'paid') {
+        clearInterval(state.pollingInterval);
+        state.pollingInterval = null;
+        onPaymentSuccess(d);
+      }
+    } catch(e) {}
+  }, 3000); // Har 3 soniyada tekshirish
+}
+
+function onPaymentSuccess(data) {
+  showSuccess(`✅ To'lov o'tdi! ${format(data.amount)} so'm`);
+  $('#qrPlaceholderText').textContent = `✅ ${format(data.amount)} so'm to'landi`;
+  $('#payBtn').textContent = '✅ To\'landi';
+
+  // Step 4: tayyor
+  state.step = 4;
+  updateSteps();
+}
+
+function openPaymentUrl() {
+  if (state.paymentUrl) {
+    window.open(state.paymentUrl, '_blank');
+  }
+}
+
+function showSuccess(msg) {
+  const el = $('#paymentStatus');
+  el.className = 'status-box success';
+  el.innerHTML = `<span class="big-icon">✅</span>${msg}`;
+  el.classList.remove('hidden');
+}
+
+function showError(msg) {
+  const el = $('#paymentStatus');
+  el.className = 'status-box error';
+  el.innerHTML = `<span class="big-icon">❌</span>${msg}`;
+  el.classList.remove('hidden');
+}
+
+// ─── RESET ────────────────────────────────────────────
+function resetAll() {
+  if (state.pollingInterval) clearInterval(state.pollingInterval);
+  state = { step: 1, patient: null, services: [], selectedServices: [], totalAmount: 0, orderId: null, provider: 'auto', paymentUrl: null, pollingInterval: null };
+  $('#patientPhone').value = '';
+  $('#patientSearchResult').innerHTML = '';
+  $('#patientList').classList.add('hidden');
+  $('#serviceSearch').value = '';
+  renderServices();
+  hide('#selectedServices');
+  hide('#paymentStatus');
+  hide('#qrImage');
+  show('#qrLoader');
+  $('#qrPlaceholderText').textContent = 'QR kod tayyorlanmoqda...';
+  $('#payBtn').disabled = false;
+  $('#payBtn').textContent = '🔗 To\'lovni yaratish';
+  $$('.pay-option').forEach(o => o.classList.remove('selected'));
+  document.querySelector('.pay-option[data-provider="auto"]')?.classList.add('selected');
+  goStep(1);
+}
+
+// ─── INIT ─────────────────────────────────────────────
+renderServices();
+
+// Telefon raqam format
+$('#patientPhone').addEventListener('keyup', async (e) => {
+  const val = e.target.value.trim();
+  if (val.length < 4) return;
+  try {
+    const r = await fetch(API + '/api/face/patients?q=' + encodeURIComponent(val));
+    const d = await r.json();
+    if (d.success && d.patients?.length === 1) {
+      const p = d.patients[0];
+      pickPatient(p.id, `${p.first_name} ${p.last_name||''}`);
+    }
+  } catch(e) {}
+});
+</script>
+</body>
+</html>

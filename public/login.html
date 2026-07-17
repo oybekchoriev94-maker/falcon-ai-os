@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Kirish</title>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+<div class="min-h-screen flex items-center justify-center p-4" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+  <div class="glass rounded-3xl p-8 w-full max-w-md fade-in">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">🦅</div>
+      <h1 class="text-2xl font-bold">Falcon AI OS</h1>
+      <p class="text-slate-400 mt-1">Shifokor kabinetiga kirish</p>
+    </div>
+    <div id="roleTabs" class="flex gap-2 mb-6">
+      <button data-role="uzi" class="tab-spec px-4 py-2 rounded-xl text-sm font-medium bg-blue-600 text-white flex-1" onclick="setSpec('uzi')">🔬 UZI</button>
+      <button data-role="laborant" class="tab-spec px-4 py-2 rounded-xl text-sm font-medium bg-slate-700 text-white flex-1" onclick="setSpec('laborant')">🧪 Laborant</button>
+      <button data-role="admin" class="tab-spec px-4 py-2 rounded-xl text-sm font-medium bg-slate-700 text-white flex-1" onclick="setSpec('admin')">⚙️ Admin</button>
+    </div>
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1">Foydalanuvchi nomi</label>
+        <input type="text" id="loginUsername" class="input-field" placeholder="dr_uzi, dr_lab yoki admin" required>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-300 mb-1">Parol</label>
+        <input type="password" id="loginPassword" class="input-field" placeholder="Parolni kiriting" required>
+      </div>
+      <div id="loginError" class="text-red-400 text-sm hidden"></div>
+      <div id="loginHint" class="text-xs text-slate-500 text-center">
+        <p>Sinov hisoblari: dr_uzi, dr_lab, admin</p>
+      </div>
+      <button type="submit" id="loginBtn" class="btn-primary w-full text-lg">Kirish</button>
+    </form>
+  </div>
+</div>
+
+<script>
+let selectedSpec = 'uzi';
+
+function setSpec(spec) {
+  selectedSpec = spec;
+  document.querySelectorAll('.tab-spec').forEach(b => {
+    b.className = b.dataset.role === spec
+      ? 'tab-spec px-4 py-2 rounded-xl text-sm font-medium bg-blue-600 text-white flex-1'
+      : 'tab-spec px-4 py-2 rounded-xl text-sm font-medium bg-slate-700 text-white flex-1';
+  });
+  const hint = document.getElementById('loginHint');
+  if (spec === 'admin') {
+    hint.innerHTML = '<p>Admin: admin</p>';
+  } else if (spec === 'uzi') {
+    hint.innerHTML = '<p>UZI shifokori: dr_uzi</p>';
+  } else {
+    hint.innerHTML = '<p>Laborant: dr_lab</p>';
+  }
+}
+
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  btn.disabled = true; btn.textContent = 'Kutilmoqda...';
+  errEl.classList.add('hidden');
+
+  try {
+    let data;
+    if (selectedSpec === 'admin') {
+      const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password}) });
+      data = await res.json();
+    } else {
+      const res = await fetch('/api/auth/doctor-login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password}) });
+      data = await res.json();
+    }
+
+    if (!data.success) {
+      errEl.textContent = data.error; errEl.classList.remove('hidden');
+      btn.disabled=false; btn.textContent='Kirish'; return;
+    }
+
+    localStorage.setItem('falcon_token', data.token);
+    localStorage.setItem('falcon_user', JSON.stringify(data.user));
+    window.location.href = '/dashboard.html';
+  } catch(e) {
+    errEl.textContent = 'Server bilan bog\'lanishda xatolik';
+    errEl.classList.remove('hidden');
+  }
+  btn.disabled = false; btn.textContent = 'Kirish';
+};
+
+setSpec('uzi');
+</script>
+</body>
+</html>

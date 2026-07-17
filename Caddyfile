@@ -1,0 +1,42 @@
+{$DOMAIN:localhost} {
+    log {
+        output file /data/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+
+    @api path /api/* /metrics /healthz /readyz /livez /api-docs
+
+    handle @api {
+        reverse_proxy {$APP_URL:http://app:3000}
+    }
+
+    @frontend path / /login /dashboard /patients /reception /wards /inventory \
+                    /billing /scribe /admin /face-id /b2b /_next/*
+
+    handle @frontend {
+        reverse_proxy {$FRONTEND_URL:http://frontend:3001}
+    }
+
+    handle {
+        respond "Not Found" 404
+    }
+
+    header / {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    header /.env* {
+        deny
+    }
+
+    header /data* {
+        deny
+    }
+}
