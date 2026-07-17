@@ -155,5 +155,18 @@ export default function adminRoutes() {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  router.patch('/users/:id/reset-password', async (req, res) => {
+    try {
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 4) {
+        return res.status(400).json({ error: 'Yangi parol kamida 4 belgi bo\'lishi kerak' });
+      }
+      const bcrypt = await import('bcrypt');
+      const hashed = bcrypt.hashSync(newPassword, 10);
+      await q("UPDATE users SET password = $1 WHERE id = $2", [hashed, req.params.id]);
+      res.json({ success: true, message: 'Parol tiklandi' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   return router;
 }
