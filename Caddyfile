@@ -1,4 +1,4 @@
-{$DOMAIN:localhost} {
+{$DOMAIN:http://167.233.44.193} {
     log {
         output file /data/access.log {
             roll_size 10mb
