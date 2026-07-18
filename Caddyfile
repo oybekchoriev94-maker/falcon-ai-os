@@ -1,3 +1,7 @@
+{
+    auto_https disable_redirects
+}
+
 http://167.233.44.193 {
     log {
         output file /data/access.log {
@@ -32,13 +36,8 @@ http://167.233.44.193 {
         -Server
     }
 
-    header /.env* {
-        deny
-    }
-
-    header /data* {
-        deny
-    }
+    header /.env* { deny }
+    header /data* { deny }
 }
 
 falconmedai.uz, www.falconmedai.uz {
@@ -75,11 +74,6 @@ falconmedai.uz, www.falconmedai.uz {
         -Server
     }
 
-    header /.env* {
-        deny
-    }
-
-    header /data* {
-        deny
-    }
+    header /.env* { deny }
+    header /data* { deny }
 }
