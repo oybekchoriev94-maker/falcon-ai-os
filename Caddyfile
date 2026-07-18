@@ -1,4 +1,4 @@
-falconmedai.uz, www.falconmedai.uz {
+http://167.233.44.193, falconmedai.uz, www.falconmedai.uz {
     log {
         output file /data/access.log {
             roll_size 10mb
