@@ -1,4 +1,4 @@
-http://167.233.44.193 {
+falconmedai.uz, www.falconmedai.uz {
     log {
         output file /data/access.log {
             roll_size 10mb
@@ -28,7 +28,7 @@ http://167.233.44.193 {
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
         -Server
     }
 
