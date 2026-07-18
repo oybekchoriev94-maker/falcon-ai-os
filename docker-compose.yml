@@ -75,7 +75,6 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     environment:
-      DOMAIN: ${PUBLIC_URL:-localhost}
       APP_URL: http://app:3000
 
 volumes:
