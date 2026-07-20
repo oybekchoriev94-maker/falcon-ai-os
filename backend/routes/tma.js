@@ -198,8 +198,8 @@ export default function tmaRoutes(pool) {
       const tenantId = user?.tenant_id || 'default';
 
       const result = await q(
-        "INSERT INTO medication_reminders (tenant_id, telegram_id, medicine_name, dosage, reminder_time, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-        [tenantId, telegram_id, medicine_name, dosage || '', reminder_time, notes || '']
+        "INSERT INTO medication_reminders (tenant_id, telegram_id, medicine_name, dosage, reminder_time) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        [tenantId, telegram_id, medicine_name, dosage || '', reminder_time]
       );
 
       res.json({ success: true, id: result.rows[0]?.id || result[0]?.id });
