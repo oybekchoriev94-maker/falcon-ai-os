@@ -192,6 +192,42 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     }
   );
 
+  // POST /register-simple — simplified face registration (no nonce, no descriptor)
+  const registerSimpleSchema = z.object({
+    first_name: z.string().min(1).max(100),
+    last_name: z.string().max(100).optional(),
+    phone: z.string().max(20).optional(),
+    photo_base64: z.string().min(50).optional(),
+  });
+  router.post(
+    '/register-simple',
+    authMiddleware,
+    faceRouteLimiter,
+    validate(registerSimpleSchema),
+    async (req, res) => {
+      try {
+        const { first_name, last_name, phone, photo_base64 } = req.body;
+        const tenantId = req.tenant_id;
+        const id = uuidv4();
+        await q(
+          `INSERT INTO patients (id, tenant_id, first_name, last_name, phone, face_descriptor, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, tenantId, first_name, last_name || '', phone || '',
+           photo_base64 ? JSON.stringify({ photo: true, captured: new Date().toISOString() }) : null,
+           photo_base64 ? `photo:${photo_base64.substring(0, 100)}...` : '']
+        );
+        await q(
+          'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [null, `${first_name} ${last_name || ''}`, 'patient_register_simple', 1.0, 'yes', id, null]
+        );
+        const patient = await qGet(
+          'SELECT id, first_name, last_name, phone, created_at FROM patients WHERE id = $1', [id]
+        );
+        res.json({ success: true, patient, message: 'Bemor muvaffaqiyatli ro\'yxatdan o\'tkazildi' });
+      } catch (e) { safeError(res, e); }
+    }
+  );
+
   // POST /verify — verify face against both doctors and patients
   router.post(
     '/verify',

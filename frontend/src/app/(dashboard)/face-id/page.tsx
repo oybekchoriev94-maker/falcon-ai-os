@@ -17,9 +17,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
+  Phone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -108,6 +110,10 @@ export default function FaceIdPage() {
   const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [regFirstName, setRegFirstName] = useState("");
+  const [regLastName, setRegLastName] = useState("");
+  const [regPhone, setRegPhone] = useState("");
 
   const startCamera = useCallback(async () => {
     if (streamRef.current) return;
@@ -170,9 +176,11 @@ export default function FaceIdPage() {
 
   const registerMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ patient: Patient }>("/api/face/register-patient", {
-        role: selectedRole,
-        face_descriptor: [],
+      const res = await api.post<{ patient: Patient }>("/api/face/register-simple", {
+        first_name: regFirstName.trim(),
+        last_name: regLastName.trim() || undefined,
+        phone: regPhone.trim() || undefined,
+        photo_base64: capturedPhoto || undefined,
       });
       if (!res.success) throw new Error(res.error || "Ro'yxatdan o'tkazishda xatolik");
       return res.patient;
@@ -180,8 +188,13 @@ export default function FaceIdPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["face-patients"] });
       queryClient.invalidateQueries({ queryKey: ["face-registrations"] });
-      toast.success("Yuz muvaffaqiyatli ro'yxatdan o'tkazildi");
+      toast.success("Bemor ro'yxatdan o'tkazildi");
       setScanStatus("idle");
+      setCapturedPhoto(null);
+      setRegFirstName("");
+      setRegLastName("");
+      setRegPhone("");
+      stopCamera();
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -203,8 +216,9 @@ export default function FaceIdPage() {
       setScanError("Rasmga olishda xatolik");
       return;
     }
+    setCapturedPhoto(photo);
     setScanStatus("success");
-    toast.success("Yuz skanerdan o'tkazildi");
+    toast.success("Rasm olindi");
   }
 
   async function handleVerify() {
@@ -234,7 +248,11 @@ export default function FaceIdPage() {
     setIsVerifying(false);
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (!regFirstName.trim()) {
+      toast.error("Ism majburiy");
+      return;
+    }
     registerMutation.mutate();
   }
 
@@ -354,6 +372,37 @@ export default function FaceIdPage() {
                       </Button>
                     )}
 
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Ism *</label>
+                        <Input
+                          placeholder="Bemor ismi"
+                          value={regFirstName}
+                          onChange={(e) => setRegFirstName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Familiya</label>
+                        <Input
+                          placeholder="Familiyasi"
+                          value={regLastName}
+                          onChange={(e) => setRegLastName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Telefon</label>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                          <Input
+                            className="pl-9"
+                            placeholder="+998 XX XXX XX XX"
+                            value={regPhone}
+                            onChange={(e) => setRegPhone(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <Button
                       className="w-full gap-2"
                       size="lg"
@@ -365,7 +414,7 @@ export default function FaceIdPage() {
                       ) : (
                         <Camera className="size-5" />
                       )}
-                      Yuzni skaner qilish
+                      Rasmga olish
                     </Button>
 
                     {scanStatus === "scanning" && (
@@ -375,18 +424,18 @@ export default function FaceIdPage() {
                         className="flex items-center gap-2 text-sm text-primary"
                       >
                         <Loader2 className="size-4 animate-spin" />
-                        Yuz aniqlanmoqda...
+                        Rasm olinmoqda...
                       </motion.div>
                     )}
 
-                    {scanStatus === "success" && (
+                    {scanStatus === "success" && capturedPhoto && (
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="flex items-center gap-2 text-sm text-emerald-500"
                       >
                         <CheckCircle2 className="size-4" />
-                        Skanerlandi
+                        Rasm olindi ({capturedPhoto.length} bayt)
                       </motion.div>
                     )}
 
@@ -403,10 +452,10 @@ export default function FaceIdPage() {
 
                     <Button
                       className="w-full gap-2"
-                      variant={scanStatus === "success" ? "default" : "outline"}
+                      variant={scanStatus === "success" && regFirstName.trim() ? "default" : "outline"}
                       size="lg"
                       onClick={handleSave}
-                      disabled={scanStatus !== "success" || registerMutation.isPending}
+                      disabled={scanStatus !== "success" || !regFirstName.trim() || registerMutation.isPending}
                     >
                       {registerMutation.isPending ? (
                         <Loader2 className="size-5 animate-spin" />
