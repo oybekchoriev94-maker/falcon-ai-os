@@ -186,6 +186,7 @@ export default function PatientsPage() {
       if (!res.success) throw new Error(res.error || "Bemorlarni yuklashda xatolik");
       return res.patients;
     },
+    refetchInterval: 30_000,
   });
 
   useEffect(() => {

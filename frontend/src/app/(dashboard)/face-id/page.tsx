@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   Camera,
   ScanFace,
+  RefreshCw,
   UserRound,
   CalendarDays,
   ShieldCheck,
@@ -165,13 +166,14 @@ export default function FaceIdPage() {
     },
   });
 
-  const { data: registrationsData, isLoading: regsLoading } = useQuery({
+  const { data: registrationsData, isLoading: regsLoading, isError: regsError, refetch: regsRefetch } = useQuery({
     queryKey: ["face-registrations"],
     queryFn: async () => {
       const res = await api.get<{ registrations: Registration[] }>("/api/face/registrations");
       if (!res.success) throw new Error(res.error || "Ro'yxatni yuklashda xatolik");
       return res.registrations;
     },
+    refetchInterval: 30_000,
   });
 
   const registerMutation = useMutation({
@@ -188,6 +190,7 @@ export default function FaceIdPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["face-patients"] });
       queryClient.invalidateQueries({ queryKey: ["face-registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
       toast.success("Bemor ro'yxatdan o'tkazildi");
       setScanStatus("idle");
       setCapturedPhoto(null);
@@ -606,6 +609,20 @@ export default function FaceIdPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : regsError ? (
+              <div className="py-12 flex flex-col items-center justify-center text-center">
+                <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                  <XCircle className="size-6 text-destructive" />
+                </div>
+                <p className="text-base font-medium">Yuklashda xatolik</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Server bilan bog'lanib bo'lmadi
+                </p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => regsRefetch()}>
+                  <RefreshCw className="size-3 mr-1" />
+                  Qayta yuklash
+                </Button>
               </div>
             ) : registrations.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-center">
