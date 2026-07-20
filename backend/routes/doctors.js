@@ -190,33 +190,28 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
       const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
       if (error) return res.status(500).json({ success: false, error });
       if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
-      const raw = await llm(
-        `Siz reception uchun ma'lumot yig'uvchi AI asistentsiz.
-VAZIFA 1 — Matnni o'zbek lotin alifbosiga to'g'rilang:
-  • ö, õ → o'
-  • ü → u'
-  • ğ, ģ → g'
-  • ş → sh
-  • ç → ch
-  • ý → y
-  • ı → i
-  • â → a,  ê → e,  î → i
-  • Turkcha so'zlarni o'zbekcha variantiga almashtiring (çünki→chunki, yapmak→qilmoq, gitmek→ketmoq, hasta→bemor, doktor→shifokor, vb)
-
-VAZIFA 2 — Bemor ma'lumotlarini ajratib, faqat JSON qaytaring:
-{
-  "fixed_text": "...",
-  "patient_name": "...",
-  "phone": "...",
-  "doctor_specialty": "...",
-  "department": "...",
-  "preferred_time": "...",
-  "notes": "..."
-}`,
+      const fixed = await llm(
+        `Quyidagi matnni o'zbek lotin alifbosiga to'g'rilang (faqat matn qaytaring, izohsiz):
+        • ö,õ→o'  ü→u'  ğ,ģ→g'  ş→sh  ç→ch  ý→y  ı→i  â→a  ê→e  î→i
+        • Turkcha so'zlarni o'zbekchasiga almashtiring`,
         text,
         { temperature: 0.0 }
       );
-      const transcript = (typeof raw === 'object' && raw !== null && raw.fixed_text) ? raw.fixed_text : text;
+      const cleaned = (typeof fixed === 'string') ? fixed : text;
+      const raw = await llm(
+        `Bemor ma'lumotlarini ajratib, faqat JSON qaytaring:
+{
+  "patient_name": "bemor ismi",
+  "phone": "telefon raqami yoki bo'sh",
+  "doctor_specialty": "shifokor mutaxassisligi yoki ismi",
+  "department": "bo'lim (Terapiya/Kardiologiya/Nevrologiya/Pediatriya/Xirurgiya/Stomatologiya yoki bo'sh)",
+  "preferred_time": "vaqt yoki bo'sh",
+  "notes": "qo'shimcha ma'lumot yoki bo'sh"
+}`,
+        cleaned,
+        { temperature: 0.0 }
+      );
+      const transcript = cleaned;
       const extraction = (typeof raw === 'object' && raw !== null && !raw.error)
         ? raw
         : { patient_name: '', phone: '', doctor_specialty: '', department: '', preferred_time: '', notes: text };
