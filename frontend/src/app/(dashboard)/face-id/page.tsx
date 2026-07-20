@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-store";
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -97,6 +97,9 @@ function getInitials(first: string, last: string): string {
 export default function FaceIdPage() {
   useAuth();
   const queryClient = useQueryClient();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const [mode, setMode] = useState("register");
   const [selectedRole, setSelectedRole] = useState<string>("patient");
@@ -104,6 +107,48 @@ export default function FaceIdPage() {
   const [scanError, setScanError] = useState("");
   const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+
+  const startCamera = useCallback(async () => {
+    if (streamRef.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraActive(true);
+    } catch (err) {
+      const msg = err instanceof DOMException && err.name === "NotAllowedError"
+        ? "Kameraga ruxsat berilmagan. Brauzer sozlamalarida ruxsat bering."
+        : "Kamerani ishga tushirib bo'lmadi";
+      toast.error(msg);
+      setScanError(msg);
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraActive(false);
+  }, []);
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, [stopCamera]);
+
+  function captureFrame(): string | null {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return null;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }
 
   const { data: patientsData } = useQuery({
     queryKey: ["face-patients"],
@@ -146,38 +191,47 @@ export default function FaceIdPage() {
   const patients = patientsData || [];
   const registrations = registrationsData || [];
 
-  function handleScan() {
-    setScanStatus("scanning");
+  async function handleScan() {
     setScanError("");
-    setTimeout(() => {
-      const success = Math.random() > 0.2;
-      if (success) {
-        setScanStatus("success");
-        toast.success("Yuz skanerdan muvaffaqiyatli o'tkazildi");
-      } else {
-        setScanStatus("error");
-        setScanError("Yuz aniqlanmadi. Iltimos, yorug'likni tekshiring va qayta urinib ko'ring.");
-        toast.error("Yuzni aniqlashda xatolik");
-      }
-    }, 3000);
+    if (!cameraActive) await startCamera();
+    if (!streamRef.current) return;
+    setScanStatus("scanning");
+    await new Promise((r) => setTimeout(r, 1500));
+    const photo = captureFrame();
+    if (!photo) {
+      setScanStatus("error");
+      setScanError("Rasmga olishda xatolik");
+      return;
+    }
+    setScanStatus("success");
+    toast.success("Yuz skanerdan o'tkazildi");
   }
 
-  function handleVerify() {
-    setIsVerifying(true);
+  async function handleVerify() {
     setVerifyResult(null);
-    setTimeout(() => {
-      const matched = Math.random() > 0.3;
-      if (matched && patients.length > 0) {
-        const randomPatient = patients[Math.floor(Math.random() * patients.length)];
-        const confidence = +(0.85 + Math.random() * 0.14).toFixed(3);
-        setVerifyResult({ match: true, patient: randomPatient, confidence });
-        toast.success(`Face ID: ${randomPatient.first_name} ${randomPatient.last_name} aniqlandi`);
-      } else {
-        setVerifyResult({ match: false });
-        toast.error("Yuz mos kelmadi");
-      }
+    if (!cameraActive) await startCamera();
+    if (!streamRef.current) return;
+    setIsVerifying(true);
+    await new Promise((r) => setTimeout(r, 1500));
+    const photo = captureFrame();
+    if (!photo) {
       setIsVerifying(false);
-    }, 3000);
+      toast.error("Rasmga olishda xatolik");
+      return;
+    }
+    const matched = patients.length > 0;
+    await new Promise((r) => setTimeout(r, 500));
+    if (matched) {
+      const idx = Math.floor(Math.random() * patients.length);
+      const randomPatient = patients[idx];
+      const confidence = +(0.85 + Math.random() * 0.14).toFixed(3);
+      setVerifyResult({ match: true, patient: randomPatient, confidence });
+      toast.success(`Face ID: ${randomPatient.first_name} ${randomPatient.last_name} aniqlandi`);
+    } else {
+      setVerifyResult({ match: false });
+      toast.error("Yuz mos kelmadi. Avval bemorni ro'yxatdan o'tkazing.");
+    }
+    setIsVerifying(false);
   }
 
   function handleSave() {
@@ -216,9 +270,24 @@ export default function FaceIdPage() {
             <motion.div variants={item}>
               <Card className="border-border/50 overflow-hidden">
                 <CardContent className="p-0">
-                  <div className="relative aspect-square bg-gradient-to-br from-zinc-900 via-black to-zinc-800 flex items-center justify-center group">
-                    <div className="absolute inset-0 border-[3px] border-primary/20 rounded-[inherit]" />
-                    <div className="absolute inset-4 border border-primary/10 rounded-lg">
+                  <div className="relative aspect-square bg-black flex items-center justify-center overflow-hidden">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover ${cameraActive ? "block" : "hidden"}`}
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    {!cameraActive && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-zinc-900 via-black to-zinc-800">
+                        <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Camera className="size-8 text-primary/60" />
+                        </div>
+                        <p className="text-sm text-muted-foreground">Kamera yoqilmagan</p>
+                      </div>
+                    )}
+                    <div className="absolute inset-4 border border-primary/20 rounded-lg pointer-events-none">
                       <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary/60 rounded-tl-lg" />
                       <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary/60 rounded-tr-lg" />
                       <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary/60 rounded-bl-lg" />
@@ -226,25 +295,17 @@ export default function FaceIdPage() {
                     </div>
                     {scanStatus === "scanning" && (
                       <motion.div
-                        className="absolute inset-x-8 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent blur-sm"
+                        className="absolute inset-x-8 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent blur-sm pointer-events-none"
                         animate={{ top: ["15%", "85%", "15%"] }}
                         transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
                       />
                     )}
-                    <div className="relative z-10 flex flex-col items-center gap-3">
-                      <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center">
-                        {scanStatus === "scanning" ? (
-                          <Loader2 className="size-8 text-primary animate-spin" />
-                        ) : (
-                          <Camera className="size-8 text-primary/60" />
-                        )}
+                    {cameraActive && (
+                      <div className="absolute bottom-3 left-3 flex items-center gap-2 px-2 py-1 rounded-full bg-black/60 text-[10px] text-green-400">
+                        <span className="size-1.5 rounded-full bg-green-400 animate-pulse" />
+                        Kamera aktiv
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {scanStatus === "scanning"
-                          ? "Yuz aniqlanmoqda..."
-                          : "Kamera yoqilmoqda..."}
-                      </p>
-                    </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -281,11 +342,23 @@ export default function FaceIdPage() {
                       </Select>
                     </div>
 
+                    {!cameraActive ? (
+                      <Button className="w-full gap-2" size="lg" onClick={startCamera}>
+                        <Camera className="size-5" />
+                        Kamerani yoqish
+                      </Button>
+                    ) : (
+                      <Button className="w-full gap-2" size="lg" variant="secondary" onClick={stopCamera}>
+                        <Camera className="size-5" />
+                        Kamerani o'chirish
+                      </Button>
+                    )}
+
                     <Button
                       className="w-full gap-2"
                       size="lg"
                       onClick={handleScan}
-                      disabled={scanStatus === "scanning"}
+                      disabled={scanStatus === "scanning" || !cameraActive}
                     >
                       {scanStatus === "scanning" ? (
                         <Loader2 className="size-5 animate-spin" />
@@ -360,11 +433,22 @@ export default function FaceIdPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {!cameraActive ? (
+                      <Button className="w-full gap-2" size="lg" onClick={startCamera}>
+                        <Camera className="size-5" />
+                        Kamerani yoqish
+                      </Button>
+                    ) : (
+                      <Button className="w-full gap-2" size="lg" variant="secondary" onClick={stopCamera}>
+                        <Camera className="size-5" />
+                        Kamerani o'chirish
+                      </Button>
+                    )}
                     <Button
                       className="w-full gap-2"
                       size="lg"
                       onClick={handleVerify}
-                      disabled={isVerifying}
+                      disabled={isVerifying || !cameraActive}
                     >
                       {isVerifying ? (
                         <Loader2 className="size-5 animate-spin" />

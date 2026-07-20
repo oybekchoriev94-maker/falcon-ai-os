@@ -180,11 +180,18 @@ export default function appointmentRoutes(pool, authMiddleware) {
     } catch (e) { safeError(res, e); }
   });
 
-  // === POST /api/appointments/cancel — Band qilishni bekor qilish ===
+  // === POST /api/appointments/cancel — Navbatdagi bemorni bekor qilish ===
   router.post('/cancel', authMiddleware, async (req, res) => {
     try {
-      const { booking_id } = req.body;
-      if (!booking_id) return res.status(400).json({ success: false, error: 'booking_id talab qilinadi' });
+      const { id, booking_id } = req.body;
+      // patient_queue dan bekor qilish
+      if (id) {
+        const qItem = await qGet("SELECT id FROM patient_queue WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
+        if (!qItem) return res.status(404).json({ success: false, error: 'Navbatdagi bemor topilmadi' });
+        await q("UPDATE patient_queue SET status = 'cancelled' WHERE id = $1", [id]);
+        return res.json({ success: true, message: 'Navbat bekor qilindi' });
+      }
+      if (!booking_id) return res.status(400).json({ success: false, error: 'id yoki booking_id talab qilinadi' });
       const booking = await qGet("SELECT * FROM bookings WHERE id = $1", [booking_id]);
       if (!booking) return res.status(404).json({ success: false, error: 'Band topilmadi' });
       if (req.user.role !== 'admin' && booking.doctor_id !== req.user.doctor_id) {
@@ -198,8 +205,13 @@ export default function appointmentRoutes(pool, authMiddleware) {
   // === POST /api/appointments/complete-status — Qabulni yakunlash + Balansdan yechish ===
   router.post('/complete-status', authMiddleware, async (req, res) => {
     try {
-      const { booking_id, total_price, referral_id, idempotency_key } = req.body;
-      if (!booking_id) return res.status(400).json({ success: false, error: 'booking_id talab qilinadi' });
+      const { id, booking_id, total_price, referral_id, idempotency_key } = req.body;
+      // patient_queue dan yakunlash
+      if (id) {
+        await q("UPDATE patient_queue SET status = 'completed' WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
+        return res.json({ success: true, message: 'Qabul yakunlandi' });
+      }
+      if (!booking_id) return res.status(400).json({ success: false, error: 'id yoki booking_id talab qilinadi' });
 
       // Idempotency key tekshirish
       if (idempotency_key) {

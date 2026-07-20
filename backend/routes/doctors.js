@@ -200,14 +200,22 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/reception/confirm — receptionist tomonidan qabulni tasdiqlash
   router.post('/reception/confirm', authMiddleware, checkRole('receptionist', 'admin'), validate(schemas.receptionConfirm), async (req, res) => {
     try {
-      const { patient_name, phone, doctor_name, department, notes } = req.body;
+      const { patient_name, phone, doctor_name, department, notes, appointment_time, status } = req.body;
+      // Agar status berilgan bo'lsa, queue statusini yangilash
+      if (status && req.body.id) {
+        await q(
+          "UPDATE patient_queue SET status = $1, department = COALESCE($2, department), appointment_time = COALESCE($3, appointment_time) WHERE id = $4 AND tenant_id = $5",
+          [status, department || '', appointment_time || null, req.body.id, req.tenant_id]
+        );
+        return res.json({ success: true, status });
+      }
       const aptId = 'apt-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
       await q("INSERT INTO appointments (appointment_id, patient_name, phone, doctor_name, department, notes, source) VALUES ($1, $2, $3, $4, $5, $6, 'reception')",
         [aptId, patient_name, phone || '', doctor_name || '', department || 'therapy', notes || '']);
       // Queue
       const maxQ = await qGet("SELECT COALESCE(MAX(queue_number),0) + 1 as n FROM patient_queue WHERE status='waiting'");
-      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor) VALUES ($1, $2, $3, $4)",
-        [maxQ.n, patient_name, phone || '', doctor_name || '']);
+      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, department, appointment_time) VALUES ($1, $2, $3, $4, $5, $6)",
+        [maxQ.n, patient_name, phone || '', doctor_name || '', department || '', appointment_time || null]);
       // Doctor analytics
       if (doctor_name) {
         const period = new Date().toISOString().slice(0, 10);
@@ -217,6 +225,37 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
           [doctor_name.toLowerCase().replace(/\s/g, '_'), doctor_name, period, period]);
       }
       res.json({ success: true, appointment: { appointment_id: aptId, patient_name, phone, doctor_name, queue: maxQ.n } });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // GET /voice/queues — navbatdagi bemorlar ro'yxati
+  router.get('/voice/queues', authMiddleware, async (req, res) => {
+    try {
+      const queues = await q(
+        `SELECT id, patient_name, doctor as doctor_name, department,
+                status, appointment_time, notes, created_at,
+                row_number() OVER (ORDER BY
+                  CASE status
+                    WHEN 'in_progress' THEN 0
+                    WHEN 'waiting' THEN 1
+                    WHEN 'completed' THEN 2
+                    WHEN 'cancelled' THEN 3
+                    ELSE 4
+                  END, created_at ASC
+                ) as queue_number
+         FROM patient_queue
+         WHERE tenant_id = $1
+         ORDER BY
+           CASE status
+             WHEN 'in_progress' THEN 0
+             WHEN 'waiting' THEN 1
+             WHEN 'completed' THEN 2
+             WHEN 'cancelled' THEN 3
+             ELSE 4
+           END, created_at ASC`,
+        [req.tenant_id]
+      );
+      res.json({ success: true, queues });
     } catch (e) { safeError(res, e); }
   });
 

@@ -199,11 +199,14 @@ export const schemas = {
     standard_quantity: z.number().positive().optional()
   }),
   receptionConfirm: z.object({
-    patient_name: z.string().min(2).max(255),
+    patient_name: z.string().min(2).max(255).optional(),
     phone: z.string().max(50).optional(),
     doctor_name: z.string().max(255).optional(),
     department: z.string().max(100).optional(),
-    notes: z.string().optional()
+    notes: z.string().optional(),
+    id: z.number().int().positive().optional(),
+    status: z.enum(['waiting', 'in_progress', 'completed', 'cancelled']).optional(),
+    appointment_time: z.string().max(30).optional()
   }),
   scribeTranscribe: z.object({
     doctor_id: z.string().optional()
