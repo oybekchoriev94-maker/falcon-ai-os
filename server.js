@@ -53,6 +53,7 @@ import appointmentRoutes from './backend/routes/appointments.js';
 import billingRoutes from './backend/routes/billing.js';
 import subscriptionRoutes from './backend/routes/subscription.js';
 import tenantRoutes from './backend/routes/tenants.js';
+import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
 import webhookRoutes from './backend/routes/webhooks.js';
 import scribeRoutes from './backend/routes/scribe.js';
@@ -411,6 +412,7 @@ async function main() {
       app.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), checkSubscription, checkAiLimit, aiRoutes(getPool(), authMiddleware, checkRole, validate, schemas, orchestrator));
       app.use(`${p}`, doctorRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
       app.use(`${p}`, inpatientRoutes(getPool(), authMiddleware, checkRole));
+      app.use(`/api/tma`, tmaRoutes(getPool()));
       app.use(`${p}/appointments`, appointmentRoutes(getPool(), authMiddleware));
       app.use(`${p}/billing`, authMiddleware, billingRoutes(getPool(), authMiddleware, validate, schemas));
     }
