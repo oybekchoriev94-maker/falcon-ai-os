@@ -9,20 +9,25 @@ function groqKey() { return (process.env.GROQ_API_KEY && process.env.GROQ_API_KE
 function isLocal() { return process.env.LOCAL_ONLY !== 'false'; }
 
 // ─── Transkripsiya ───────────────────────────────────────
-export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}) {
+function makeForm(audioBuffer, filename, opts) {
   const isWav = filename.endsWith('.wav');
   const mime = isWav ? 'audio/wav' : 'audio/webm';
   const form = new FormData();
   const blob = new Blob([audioBuffer], { type: mime });
   form.append('file', blob, filename);
   form.append('response_format', 'json');
+  form.append('language', opts.language || 'uz');
   if (opts.temperature !== undefined) form.append('temperature', String(opts.temperature));
+  return form;
+}
 
+export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}) {
   // 1-URINISH: Lokal whisper.cpp
   // MUHIM: whisper.cpp server OpenAI API formatini to'liq qo'llab-quvvatlaydi!
   // Aynan shu API (https://api.groq.com/openai/v1/audio/transcriptions) bilan bir xil
   if (isLocal()) {
     try {
+      const form = makeForm(audioBuffer, filename, opts);
       const res = await fetch(`${WHISPER_URL}/v1/audio/transcriptions`, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer not-needed' }, // whisper.cpp auth talab qilmaydi
@@ -45,10 +50,9 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
   const key = groqKey();
   if (!key) return { text: '', error: 'STT kaliti sozlanmagan. whisper.cpp yoki GROQ_API_KEY kerak.' };
 
-  form.append('model', 'whisper-large-v3');
-  form.append('language', opts.language || 'uz');
-
   try {
+    const form = makeForm(audioBuffer, filename, opts);
+    form.append('model', 'whisper-large-v3');
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}` },
@@ -64,11 +68,6 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
 
 // ─── Translate (audioni ingliz tiliga tarjima) ───────────
 export async function translate(audioBuffer, filename = 'audio.webm', targetLang = 'en') {
-  const form = new FormData();
-  const blob = new Blob([audioBuffer], { type: 'audio/webm' });
-  form.append('file', blob, filename);
-  form.append('response_format', 'json');
-
   if (isLocal()) {
     try {
       // whisper.cpp translate ni qo'llab-quvvatlamaydi, transcribe qilamiz
@@ -81,8 +80,9 @@ export async function translate(audioBuffer, filename = 'audio.webm', targetLang
 
   const key = groqKey();
   if (!key) return { text: '', error: 'GROQ_API_KEY not set' };
-  form.append('model', 'whisper-large-v3');
   try {
+    const form = makeForm(audioBuffer, filename, { language: targetLang });
+    form.append('model', 'whisper-large-v3');
     const res = await fetch('https://api.groq.com/openai/v1/audio/translations', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}` },
