@@ -114,10 +114,9 @@ export default function tmaRoutes(pool) {
 
       const today = new Date().toISOString().slice(0, 10);
       const queue = await q(
-        `SELECT pq.id, pq.department, pq.status, pq.priority, pq.appointment_time, pq.created_at,
-                d.first_name || ' ' || d.last_name AS doctor_name
+        `SELECT pq.id, pq.department, pq.status, pq.queue_number, pq.appointment_time, pq.created_at,
+                pq.doctor AS doctor_name
          FROM patient_queue pq
-         LEFT JOIN doctors d ON d.id::text = pq.doctor_id
          WHERE pq.patient_name ILIKE $1 AND DATE(pq.created_at) = $2
          ORDER BY pq.created_at DESC LIMIT 10`,
         [`%${patient.first_name}%`, today]
