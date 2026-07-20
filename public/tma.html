@@ -5,320 +5,336 @@
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Bemor Kabineti</title>
 <script src="https://telegram.org/js/telegram-webapp.js"></script>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script>
-tailwind.config = {
-  darkMode:"class", theme:{ extend: {
-    colors: {
-      secondary:"#4d661c","secondary-container":"#ceee93","secondary-fixed":"#ceee93","secondary-fixed-dim":"#b3d17a",
-      "on-secondary":"#ffffff","on-secondary-container":"#536d22","on-secondary-fixed":"#131f00","on-secondary-fixed-variant":"#364e03",
-      primary:"#004ac6","primary-container":"#2563eb","primary-fixed":"#dbe1ff","primary-fixed-dim":"#b4c5ff",
-      "on-primary":"#ffffff","on-primary-container":"#eeefff","on-primary-fixed":"#00174b","on-primary-fixed-variant":"#003ea8",
-      background:"#f7f9fb",surface:"#f7f9fb","surface-dim":"#d8dadc","surface-bright":"#f7f9fb",
-      "surface-container-lowest":"#ffffff","surface-container-low":"#f2f4f6","surface-container":"#eceef0",
-      "surface-container-high":"#e6e8ea","surface-container-highest":"#e0e3e5",
-      "on-surface":"#191c1e","on-surface-variant":"#434655",
-      "inverse-surface":"#2d3133","inverse-on-surface":"#eff1f3",
-      outline:"#737686","outline-variant":"#c3c6d7",
-      error:"#ba1a1a","error-container":"#ffdad6","on-error":"#ffffff","on-error-container":"#93000a",
-      tertiary:"#4d556b","tertiary-container":"#656d84",
-    },
-    borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem","2xl":"1rem","3xl":"1.5rem",full:"9999px"},
-    spacing:{gutter:"1rem","element-gap":"1rem","section-margin":"2rem","radius-inner":"0.75rem","container-padding":"1.25rem"},
-    fontFamily:{"headline-lg":["Inter"],"headline-md":["Inter"],"headline-lg-mobile":["Inter"],"body-lg":["Inter"],"body-md":["Inter"],"label-md":["Inter"]},
-    fontSize:{
-      "headline-lg":["28px",{lineHeight:"34px",letterSpacing:"-0.02em",fontWeight:"700"}],
-      "headline-md":["20px",{lineHeight:"28px",letterSpacing:"-0.01em",fontWeight:"600"}],
-      "headline-lg-mobile":["24px",{lineHeight:"30px",fontWeight:"700"}],
-      "body-lg":["16px",{lineHeight:"24px",fontWeight:"400"}],
-      "body-md":["14px",{lineHeight:"20px",fontWeight:"400"}],
-      "label-md":["12px",{lineHeight:"16px",letterSpacing:"0.02em",fontWeight:"600"}]
-    }
-  }}
-}
-</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <style>
-body{font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;background:#f7f9fb}
-.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;display:inline-block;vertical-align:middle}
-.glass-card{background:rgba(255,255,255,0.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-.hide-scrollbar::-webkit-scrollbar{display:none}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+:root {
+  --primary: #004ac6;
+  --primary-container: #2563eb;
+  --on-primary: #ffffff;
+  --on-primary-container: #eeefff;
+  --primary-fixed: #dbe1ff;
+  --primary-fixed-dim: #b4c5ff;
+  --secondary: #4d661c;
+  --secondary-container: #ceee93;
+  --secondary-fixed: #ceee93;
+  --secondary-fixed-dim: #b3d17a;
+  --on-secondary: #ffffff;
+  --on-secondary-container: #536d22;
+  --background: #f7f9fb;
+  --surface: #f7f9fb;
+  --surface-dim: #d8dadc;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f4f6;
+  --surface-container: #eceef0;
+  --surface-container-high: #e6e8ea;
+  --surface-container-highest: #e0e3e5;
+  --on-surface: #191c1e;
+  --on-surface-variant: #434655;
+  --outline: #737686;
+  --outline-variant: #c3c6d7;
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;background:var(--background);color:var(--on-surface);min-height:100vh;overflow-x:hidden}
+.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;display:inline-block;vertical-align:middle;line-height:1}
+.fs-10{font-size:10px}.fs-12{font-size:12px}.fs-14{font-size:14px}.fs-16{font-size:16px}.fs-20{font-size:20px}.fs-24{font-size:24px}.fs-28{font-size:28px}
+.fw-400{font-weight:400}.fw-600{font-weight:600}.fw-700{font-weight:700}
+.lh-16{line-height:16px}.lh-20{line-height:20px}.lh-24{line-height:24px}.lh-28{line-height:28px}.lh-30{line-height:30px}.lh-34{line-height:34px}
+.ls-m02{letter-spacing:-0.02em}.ls-m01{letter-spacing:-0.01em}.ls-02{letter-spacing:0.02em}
+.ttu{text-transform:uppercase}.tdu{text-decoration:underline}
+.text-primary{color:var(--primary)}.text-primary-container{color:var(--primary-container)}.text-on-primary{color:var(--on-primary)}
+.text-on-primary-container{color:var(--on-primary-container)}.text-on-surface{color:var(--on-surface)}
+.text-on-surface-variant{color:var(--on-surface-variant)}.text-outline{color:var(--outline)}.text-error{color:var(--error)}
+.text-on-secondary-container{color:var(--on-secondary-container)}.text-on-secondary{color:var(--on-secondary)}
+.bg-background{background:var(--background)}.bg-surface{background:var(--surface)}
+.bg-surface-container-lowest{background:var(--surface-container-lowest)}
+.bg-surface-container-low{background:var(--surface-container-low)}
+.bg-surface-container{background:var(--surface-container)}
+.bg-surface-container-high{background:var(--surface-container-high)}
+.bg-primary{background:var(--primary)}.bg-primary-container{background:var(--primary-container)}
+.bg-primary-fixed{background:var(--primary-fixed)}.bg-secondary-container{background:var(--secondary-container)}
+.bg-error-container-30{background:rgba(186,26,26,0.3)}
+.border-outline-20{border-color:rgba(115,118,134,0.2)}.border-outline-30{border-color:rgba(115,118,134,0.3)}
+.border-primary-20{border-color:rgba(0,74,198,0.2)}.border-white{border-color:#fff}
+.shadow-sm{box-shadow:0 1px 3px rgba(0,0,0,.06)}.shadow-md{box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.shadow-xl{box-shadow:0 8px 30px rgba(0,0,0,.12)}.shadow-primary-20{box-shadow:0 4px 12px rgba(0,74,198,0.2)}
+.shadow-inner{box-shadow:inset 0 2px 4px rgba(0,0,0,.06)}
+.rounded-xl{border-radius:.75rem}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-2rem{border-radius:2rem}
+.rounded-full{border-radius:9999px}
+.d-flex{display:flex}.d-grid{display:grid}.d-block{display:block}.d-none{display:none}.d-inline-flex{display:inline-flex}
+.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.flex-1{flex:1}
+.justify-center{justify-content:center}.justify-between{justify-content:space-between}
+.items-center{align-items:center}.items-start{align-items:flex-start}
+.gap-1{gap:4px}.gap-1-5{gap:6px}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}
+.p-4{padding:16px}.p-5{padding:20px}.p-6{padding:24px}.p-8{padding:32px}
+.px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}
+.px-8{padding-left:32px;padding-right:32px}
+.py-1{padding-top:4px;padding-bottom:4px}.py-1-5{padding-top:6px;padding-bottom:6px}
+.py-2{padding-top:8px;padding-bottom:8px}.py-3{padding-top:12px;padding-bottom:12px}
+.py-3-5{padding-top:14px;padding-bottom:14px}.py-4{padding-top:16px;padding-bottom:16px}
+.py-6{padding-top:24px;padding-bottom:24px}.py-8{padding-top:32px;padding-bottom:32px}
+.pt-2{padding-top:8px}.pb-28{padding-bottom:112px}.pb-4{padding-bottom:16px}
+.pl-12{padding-left:48px}.pr-4{padding-right:16px}.ml-1{margin-left:4px}.ml-2{margin-left:8px}
+.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}.mb-8{margin-bottom:32px}
+.mt-0-5{margin-top:2px}.mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-8{margin-top:32px}.mt-12{margin-top:48px}
+.mr-2{margin-right:8px}
+.w-full{width:100%}.w-9{width:36px}.w-10{width:40px}.w-12{width:48px}.w-14{width:56px}.w-16{width:64px}.w-32{width:128px}.w-48{width:192px}
+.h-1{height:4px}.h-9{height:36px}.h-10{height:40px}.h-12{height:48px}.h-14{height:56px}.h-16{height:64px}
+.h-48{height:192px}.h-1px{height:1px}
+.min-h-screen{min-height:100vh}
+.max-w-md{max-width:448px}
+.mx-auto{margin-left:auto;margin-right:auto}
+.overflow-hidden{overflow:hidden}.object-cover{object-fit:cover}
+.absolute{position:absolute}.fixed{position:fixed}.relative{position:relative}.sticky{position:sticky}
+.top-0{top:0}.bottom-0{bottom:0}.left-0{left:0}.right-0{right:0}.right-5{right:20px}
+.top-1-2{top:50%}.left-4{left:16px}.right-2{right:8px}.top-2{top:8px}
+.-translate-y-1-2{transform:translateY(-50%)}.translate-x-half{transform:translateX(-50%)}
+.inset-0{top:0;right:0;bottom:0;left:0}
+.z-10{z-index:10}.z-40{z-index:40}.z-50{z-index:50}
+.cursor-pointer{cursor:pointer}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.whitespace-pre-wrap{white-space:pre-wrap}
+.text-center{text-align:center}
+.line-clamp-1{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.space-y-2>*+*{margin-top:8px}.space-y-3>*+*{margin-top:12px}.space-y-4>*+*{margin-top:16px}.space-y-5>*+*{margin-top:20px}.space-y-6>*+*{margin-top:24px}
+.shrink-0{flex-shrink:0}.leading-tight{line-height:1.2}
+.grid-cols-1{grid-template-columns:repeat(1,1fr)}.grid-cols-2{grid-template-columns:repeat(2,1fr)}
+.text-sm{font-size:14px}
+.opacity-20{opacity:0.2}.opacity-30{opacity:0.3}.opacity-40{opacity:0.4}.opacity-50{opacity:0.5}.opacity-60{opacity:0.6}.opacity-80{opacity:0.8}
+input,select,button{font-family:inherit;font-size:inherit}
+input:focus,select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(0,74,198,0.1)}
+input[type=checkbox]{accent-color:var(--primary);width:20px;height:20px}
+select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23737686' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:36px}
 .active-tap:active{transform:scale(0.95);transition:transform .1s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .anim-in{animation:fadeUp .35s ease both}
 @keyframes pulse-soft{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.85;transform:scale(.98)}}
 .animate-pulse-soft{animation:pulse-soft 3s ease-in-out infinite}
-.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:999;padding:12px 24px;border-radius:12px;font-weight:600;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:none;max-width:90%;text-align:center}
-.toast-success{background:#2563eb;color:#fff}.toast-error{background:#dc2626;color:#fff}
-.spinner-sm{width:18px;height:18px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;display:inline-block}
-.spinner{width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f7f9fb;transition:opacity .4s ease}
+.toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:999;padding:12px 24px;border-radius:12px;font-weight:600;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:none;max-width:90%;text-align:center}
+.toast-success{background:var(--primary-container);color:#fff}
+.toast-error{background:var(--error);color:#fff}
+#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--background);transition:opacity .4s ease}
 #splash.hidden{opacity:0;pointer-events:none}
+.spinner{width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:var(--primary-container);border-radius:50%;animation:spin .8s linear infinite}
+.spinner-sm{width:18px;height:18px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;display:inline-block}
 .status-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
 .status-pending{background:#fef3c7;color:#92400e}
 .status-completed{background:#d1fae5;color:#065f46}
 .status-cancelled{background:#fee2e2;color:#991b1b}
 .status-active{background:#dbeafe;color:#1e40af}
+.nav-tab{transition:all .2s;border-radius:12px}
+.glass{background:rgba(255,255,255,0.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.backdrop-blur{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.backdrop-blur-md{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.w-fit{width:fit-content}
+.w-64{width:256px}.-mr-12{margin-right:-48px}.-mt-12{margin-top:-48px}.-ml-8{margin-left:-32px}.-mb-8{margin-bottom:-32px}
+.blur-2xl{filter:blur(40px)}.blur-3xl{filter:blur(64px)}
+.px-container-padding{padding-left:20px;padding-right:20px}
+.pb-safe{padding-bottom:env(safe-area-inset-bottom,16px)}
+.border{border:1px solid}.border-t{border-top:1px solid}
+.bg-white{background:#fff}
+.text-white{color:#fff}
+.text-xl{font-size:20px}.text-2xl{font-size:24px}.text-4xl{font-size:36px}.text-5xl{font-size:48px}.text-7xl{font-size:80px}
+.border-outline-variant-20{border-color:rgba(195,198,215,0.2)}.border-outline-variant-30{border-color:rgba(195,198,215,0.3)}
+.nav-wrap{position:fixed;bottom:0;left:0;width:100%;z-index:50;background:var(--surface-container-lowest);border-top:1px solid rgba(195,198,215,0.2);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,16px));box-shadow:0 -4px 20px rgba(0,0,0,.06)}
+button:disabled{opacity:0.6;cursor:not-allowed}
 </style>
 </head>
-<body class="bg-background text-on-surface min-h-screen pb-28">
+<body>
 
-<div id="splash"><div class="spinner mb-4"></div><p class="text-sm opacity-60">Yuklanmoqda...</p></div>
+<div id="splash"><div class="spinner" style="margin-bottom:16px"></div><div class="fs-14" style="opacity:0.6">Yuklanmoqda...</div></div>
 <div id="toast" class="toast"></div>
 
-<!-- ===== REGISTRATION ===== -->
-<div id="screen-register" style="display:none">
-  <main class="w-full max-w-md mx-auto px-container-padding flex flex-col justify-center min-h-screen py-8">
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-container rounded-xl mb-6 shadow-lg shadow-primary/20">
-        <span class="material-symbols-outlined text-on-primary text-4xl" style="font-variation-settings:'FILL'1">health_and_safety</span>
-      </div>
-      <h1 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface mb-2">Xush kelibsiz!</h1>
-      <p class="text-body-md text-on-surface-variant">Klinika platformasida ro'yxatdan o'ting va sog'lig'ingizni nazorat qiling.</p>
-    </div>
-    <div class="space-y-4">
-      <div class="space-y-1.5">
-        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regFirstName">Ism va Familiya</label>
-        <div class="relative">
-          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">person</span>
-          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="regFirstName" placeholder="Masalan: Aziz Rahimov" required>
-        </div>
-      </div>
-      <div class="space-y-1.5">
-        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regPhone">Telefon raqami</label>
-        <div class="relative">
-          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">call</span>
-          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="regPhone" type="text" inputmode="tel" placeholder="+998 90 123 45 67" required>
-        </div>
-      </div>
-      <div class="space-y-1.5">
-        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regBirthDate">Tug'ilgan yil, oy, kun</label>
-        <div class="relative">
-          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">calendar_today</span>
-          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="regBirthDate" type="date">
-        </div>
-      </div>
-      <div class="flex items-start gap-3 py-2">
-        <input class="mt-0.5 rounded border-outline/30 text-primary focus:ring-primary w-5 h-5" id="regTerms" type="checkbox" checked>
-        <label class="text-label-md text-on-surface-variant leading-tight" for="regTerms">Men <a class="text-primary font-semibold" href="#">foydalanish shartlari</a> va <a class="text-primary font-semibold" href="#">maxfiylik siyosatiga</a> roziman.</label>
-      </div>
-      <div class="pt-2 space-y-4">
-        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md text-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" id="registerBtn" onclick="registerPatient()">
-          <span class="material-symbols-outlined text-on-primary">how_to_reg</span> Ro'yxatdan o'tish
-        </button>
-        <div class="flex items-center gap-2 py-1">
-          <div class="h-[1px] flex-1 bg-outline/20"></div>
-          <span class="text-label-md text-outline">yoki</span>
-          <div class="h-[1px] flex-1 bg-outline/20"></div>
-        </div>
-        <a class="w-full block text-center py-3.5 border border-primary/20 bg-white text-primary rounded-xl font-headline-md text-headline-md active:bg-surface-container-low transition-colors" href="#">
-          Kirish
-        </a>
-      </div>
-    </div>
-    <footer class="w-full py-6 flex flex-col items-center gap-2 opacity-60 mt-8">
-      <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">lock</span><span class="text-[10px] font-bold uppercase tracking-widest">Xavfsiz ulanish</span></div>
-      <p class="text-[10px] text-center px-8">© 2025 Falcon Med AI. Barcha huquqlar himoyalangan.</p>
-    </footer>
-  </main>
-</div>
 
-<!-- ===== MAIN APP ===== -->
-<div id="screen-main" style="display:none">
+
+<!-- MAIN APP -->
+<div id="screen-main" class="d-none">
   <!-- TOP BAR -->
-  <header class="bg-background/80 backdrop-blur-md flex justify-between items-center px-container-padding py-4 w-full sticky top-0 z-40">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed bg-surface-container flex items-center justify-center shrink-0">
-        <span class="material-symbols-outlined text-primary text-xl">person</span>
+  <div class="d-flex items-center justify-between" style="padding:16px 20px;position:sticky;top:0;z-index:40;background:rgba(247,249,251,0.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+    <div class="d-flex items-center gap-3">
+      <div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid var(--primary-fixed);background:var(--surface-container)">
+        <span class="material-symbols-outlined" style="color:var(--primary)">person</span>
       </div>
       <div>
-        <p class="text-label-md font-label-md text-on-surface-variant" id="greetingLabel">Xayrli kun,</p>
-        <h1 class="text-headline-md font-headline-md text-on-background leading-tight truncate max-w-[200px]" id="greeting">Bemor</h1>
+        <div class="fs-12 fw-600 ls-02" id="greetingLabel" style="color:var(--on-surface-variant)">Xayrli kun,</div>
+        <div class="fs-20 fw-600" id="greeting" style="line-height:1.2;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Bemor</div>
       </div>
     </div>
-    <button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors relative">
-      <span class="material-symbols-outlined text-primary">notifications</span>
-      <span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-background"></span>
+    <button class="d-flex items-center justify-center active-tap" style="width:40px;height:40px;border-radius:50%;border:none;background:transparent;cursor:pointer;position:relative">
+      <span class="material-symbols-outlined" style="color:var(--primary)">notifications</span>
+      <span style="position:absolute;top:8px;right:8px;width:8px;height:8px;background:var(--error);border-radius:50%;border:2px solid var(--background)"></span>
     </button>
-  </header>
+  </div>
 
-  <main class="px-container-padding space-y-6 pt-2 pb-4">
+  <div style="padding:8px 20px 16px;space-y:24px">
 
     <!-- DASHBOARD -->
-    <div id="tab-dashboard" class="tab-content space-y-6">
-      <section class="relative overflow-hidden rounded-3xl bg-primary p-6 text-on-primary shadow-xl">
-        <div class="relative z-10 space-y-4">
-          <h2 class="text-headline-lg-mobile font-headline-lg-mobile leading-tight" id="dashboardGreeting">O'zingizni bugun qanday his qilyapsiz?</h2>
-          <div class="flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-full px-4 py-2 w-fit text-sm">
-            <span class="material-symbols-outlined text-[18px]">search</span>
+    <div id="tab-dashboard" class="space-y-6">
+      <section class="relative overflow-hidden" style="border-radius:1.5rem;background:var(--primary);padding:24px;box-shadow:0 8px 30px rgba(0,0,0,.12)">
+        <div class="relative" style="z-index:10;space-y:16px">
+          <div class="fs-24 fw-700" id="dashboardGreeting" style="line-height:1.2;color:var(--on-primary-container)">O'zingizni bugun qanday his qilyapsiz?</div>
+          <div class="d-flex items-center gap-2" style="background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:9999px;padding:8px 16px;width:fit-content;color:var(--on-primary-container);font-size:14px">
+            <span class="material-symbols-outlined" style="font-size:18px">search</span>
             <span>Shifokor yoki xizmatni qidiring</span>
           </div>
         </div>
-        <div class="absolute right-[-20px] bottom-[-20px] opacity-20">
-          <span class="material-symbols-outlined text-[120px]" style="font-variation-settings:'FILL'1">medical_services</span>
-        </div>
+        <div class="absolute" style="right:-20px;bottom:-20px;opacity:0.2"><span class="material-symbols-outlined" style="font-size:120px;font-variation-settings:'FILL'1;color:var(--on-primary-container)">medical_services</span></div>
       </section>
 
       <section>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-headline-md font-headline-md">Bugungi navbat</h3>
-          <button class="text-primary text-label-md font-label-md" onclick="switchTab('queue')">Hammasi</button>
+        <div class="d-flex items-center justify-between mb-3">
+          <div class="fs-20 fw-600" style="letter-spacing:-0.01em">Bugungi navbat</div>
+          <div class="fs-12 fw-600 ls-02" style="color:var(--primary);cursor:pointer" onclick="switchTab('queue')">Hammasi</div>
         </div>
-        <div id="todayQueue" class="bg-secondary-container p-5 rounded-3xl shadow-sm border border-secondary-fixed flex items-center justify-between">
-          <p class="text-body-md text-on-secondary-container/80">Yuklanmoqda...</p>
-        </div>
+        <div id="todayQueue" class="d-flex items-center justify-between" style="background:var(--secondary-container);padding:20px;border-radius:1.5rem;border:1px solid var(--secondary-fixed);min-height:100px"></div>
       </section>
 
       <section>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
-            <div class="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center">
-              <span class="material-symbols-outlined text-on-secondary-container text-xl">format_list_numbered</span>
+        <div class="d-grid grid-cols-2 gap-4">
+          <div class="d-flex flex-col" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);box-shadow:0 1px 3px rgba(0,0,0,.06)">
+            <div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:12px;background:var(--secondary-container);margin-bottom:12px">
+              <span class="material-symbols-outlined" style="color:var(--on-secondary-container)">format_list_numbered</span>
             </div>
-            <div>
-              <p class="text-label-md font-label-md text-on-surface-variant">Navbatdagi</p>
-              <p class="text-headline-md font-headline-md text-on-surface" id="statQueue">0</p>
-            </div>
+            <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant)">Navbatdagi</div>
+            <div class="fs-20 fw-600" id="statQueue" style="color:var(--on-surface)">0</div>
           </div>
-          <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
-            <div class="w-10 h-10 rounded-xl bg-primary-fixed flex items-center justify-center">
-              <span class="material-symbols-outlined text-primary text-xl">event</span>
+          <div class="d-flex flex-col" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);box-shadow:0 1px 3px rgba(0,0,0,.06)">
+            <div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:12px;background:var(--primary-fixed);margin-bottom:12px">
+              <span class="material-symbols-outlined" style="color:var(--primary)">event</span>
             </div>
-            <div>
-              <p class="text-label-md font-label-md text-on-surface-variant">Kelgusi qabullar</p>
-              <p class="text-headline-md font-headline-md text-on-surface" id="statAppointments">0</p>
-            </div>
+            <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant)">Kelgusi qabullar</div>
+            <div class="fs-20 fw-600" id="statAppointments" style="color:var(--on-surface)">0</div>
           </div>
         </div>
       </section>
 
       <section>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-headline-md font-headline-md">Oxirgi tashxislar</h3>
-          <button class="text-primary text-label-md font-label-md" onclick="switchTab('consultations')">Barchasi</button>
+        <div class="d-flex items-center justify-between mb-3">
+          <div class="fs-20 fw-600" style="letter-spacing:-0.01em">Oxirgi tashxislar</div>
+          <div class="fs-12 fw-600 ls-02" style="color:var(--primary);cursor:pointer" onclick="switchTab('consultations')">Barchasi</div>
         </div>
         <div id="recentConsultations" class="space-y-3"></div>
       </section>
     </div>
 
     <!-- QUEUE -->
-    <div id="tab-queue" class="tab-content space-y-6" style="display:none">
-      <section class="pt-2">
-        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Sizning navbatingiz</h2>
-        <p class="text-body-md text-on-surface-variant mt-1">Klinikadagi hozirgi holatingiz</p>
+    <div id="tab-queue" class="space-y-6 d-none">
+      <section style="padding-top:8px">
+        <div class="fs-24 fw-700">Sizning navbatingiz</div>
+        <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Klinikadagi hozirgi holatingiz</div>
       </section>
       <div id="queueList" class="space-y-4"></div>
     </div>
 
     <!-- APPOINTMENTS -->
-    <div id="tab-appointments" class="tab-content space-y-6" style="display:none">
-      <section class="pt-2">
-        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Shifokorga yozilish</h2>
-        <p class="text-body-md text-on-surface-variant mt-1">Yangi vaqt band qilish</p>
+    <div id="tab-appointments" class="space-y-6 d-none">
+      <section style="padding-top:8px">
+        <div class="fs-24 fw-700">Shifokorga yozilish</div>
+        <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Yangi vaqt band qilish</div>
       </section>
-      <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm space-y-4">
-        <div class="space-y-1.5">
-          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Shifokor</label>
-          <select class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookDoctor"><option value="">Shifokorni tanlang</option></select>
+      <div class="d-flex flex-col space-y-4" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Shifokor</div>
+          <select id="bookDoctor" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Shifokorni tanlang</option></select>
         </div>
-        <div class="space-y-1.5">
-          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Sana</label>
-          <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookDate" type="date">
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Sana</div>
+          <input id="bookDate" type="date" style="width:100%;padding:14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)">
         </div>
-        <div class="space-y-1.5">
-          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Vaqt</label>
-          <select class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookSlot"><option value="">Vaqtni tanlang</option></select>
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Vaqt</div>
+          <select id="bookSlot" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Vaqtni tanlang</option></select>
         </div>
-        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" onclick="bookAppointment()">
-          <span class="material-symbols-outlined">event_available</span> Yozilish
+        <button class="active-tap" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s" onclick="bookAppointment()">
+          <span class="material-symbols-outlined" style="vertical-align:middle;margin-right:4px">event_available</span> Yozilish
         </button>
       </div>
       <section>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-headline-md font-headline-md">Mening qabullarim</h3>
-        </div>
+        <div class="fs-20 fw-600 mb-3" style="letter-spacing:-0.01em">Mening qabullarim</div>
         <div id="appointmentsList" class="space-y-3"></div>
       </section>
     </div>
 
     <!-- CONSULTATIONS -->
-    <div id="tab-consultations" class="tab-content space-y-6" style="display:none">
-      <section class="pt-2">
-        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Tashxis va hisobotlar</h2>
-        <p class="text-body-md text-on-surface-variant mt-1">Shifokor yozgan barcha tashxislar</p>
+    <div id="tab-consultations" class="space-y-6 d-none">
+      <section style="padding-top:8px">
+        <div class="fs-24 fw-700">Tashxis va hisobotlar</div>
+        <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Shifokor yozgan barcha tashxislar</div>
       </section>
       <div id="consultationsList" class="space-y-3"></div>
     </div>
 
     <!-- REMINDERS -->
-    <div id="tab-reminders" class="tab-content space-y-6" style="display:none">
-      <section class="pt-2">
-        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Dori eslatmalari</h2>
-        <p class="text-body-md text-on-surface-variant mt-1">Dorilarni vaqtida olishni unutmang</p>
+    <div id="tab-reminders" class="space-y-6 d-none">
+      <section style="padding-top:8px">
+        <div class="fs-24 fw-700">Dori eslatmalari</div>
+        <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Dorilarni vaqtida olishni unutmang</div>
       </section>
-      <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm space-y-4">
-        <div class="space-y-1.5">
-          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Dori nomi</label>
-          <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medName" placeholder="Mas: Paratsetamol">
+      <div class="d-flex flex-col space-y-4" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Dori nomi</div>
+          <input id="medName" placeholder="Mas: Paratsetamol" style="width:100%;padding:14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px">
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <label class="text-label-md font-label-md text-on-surface-variant ml-1">Miqdor</label>
-            <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medDosage" placeholder="500mg">
+        <div class="d-grid grid-cols-2 gap-3">
+          <div class="space-y-2">
+            <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Miqdor</div>
+            <input id="medDosage" placeholder="500mg" style="width:100%;padding:14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px">
           </div>
-          <div class="space-y-1.5">
-            <label class="text-label-md font-label-md text-on-surface-variant ml-1">Vaqt</label>
-            <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medTime" type="time">
+          <div class="space-y-2">
+            <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Vaqt</div>
+            <input id="medTime" type="time" style="width:100%;padding:14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)">
           </div>
         </div>
-        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" onclick="addReminder()">
-          <span class="material-symbols-outlined">check</span> Saqlash
+        <button class="active-tap" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1)" onclick="addReminder()">
+          <span class="material-symbols-outlined" style="vertical-align:middle;margin-right:4px">check</span> Saqlash
         </button>
       </div>
       <section>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-headline-md font-headline-md">Faol eslatmalar</h3>
-        </div>
+        <div class="fs-20 fw-600 mb-3" style="letter-spacing:-0.01em">Faol eslatmalar</div>
         <div id="remindersList" class="space-y-3"></div>
       </section>
     </div>
-  </main>
+  </div>
 
   <!-- BOTTOM NAV -->
-  <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe shadow-xl bg-surface-container-lowest rounded-t-[1.25rem] border-t border-outline-variant/20">
-    <button class="nav-tab flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1.5 active-tap" data-tab="dashboard" onclick="switchTab('dashboard')">
-      <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">dashboard</span>
-      <span class="text-[10px] font-semibold mt-0.5">Asosiy</span>
-    </button>
-    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="queue" onclick="switchTab('queue')">
-      <span class="material-symbols-outlined">format_list_numbered</span>
-      <span class="text-[10px] font-semibold mt-0.5">Navbat</span>
-    </button>
-    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="appointments" onclick="switchTab('appointments')">
-      <span class="material-symbols-outlined">calendar_today</span>
-      <span class="text-[10px] font-semibold mt-0.5">Qabullar</span>
-    </button>
-    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="consultations" onclick="switchTab('consultations')">
-      <span class="material-symbols-outlined">description</span>
-      <span class="text-[10px] font-semibold mt-0.5">Tashxislar</span>
-    </button>
-    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="reminders" onclick="switchTab('reminders')">
-      <span class="material-symbols-outlined">notification_add</span>
-      <span class="text-[10px] font-semibold mt-0.5">Eslatmalar</span>
-    </button>
-  </nav>
+  <div class="nav-wrap">
+    <div class="d-flex justify-around items-center">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="dashboard" onclick="switchTab('dashboard')" style="border:none;background:var(--secondary-container);padding:6px 12px;cursor:pointer;color:var(--primary)">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">dashboard</span>
+        <span class="fs-10 fw-600" style="margin-top:2px">Asosiy</span>
+      </button>
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="queue" onclick="switchTab('queue')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+        <span class="material-symbols-outlined">format_list_numbered</span>
+        <span class="fs-10 fw-600" style="margin-top:2px">Navbat</span>
+      </button>
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="appointments" onclick="switchTab('appointments')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+        <span class="material-symbols-outlined">calendar_today</span>
+        <span class="fs-10 fw-600" style="margin-top:2px">Qabullar</span>
+      </button>
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="consultations" onclick="switchTab('consultations')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+        <span class="material-symbols-outlined">description</span>
+        <span class="fs-10 fw-600" style="margin-top:2px">Tashxislar</span>
+      </button>
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="reminders" onclick="switchTab('reminders')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+        <span class="material-symbols-outlined">notification_add</span>
+        <span class="fs-10 fw-600" style="margin-top:2px">Eslatmalar</span>
+      </button>
+    </div>
+  </div>
 
-  <button class="fixed bottom-[88px] right-5 w-14 h-14 bg-primary-container text-on-primary rounded-2xl shadow-xl flex items-center justify-center active-tap z-40" onclick="switchTab('appointments')">
-    <span class="material-symbols-outlined text-[32px]">add</span>
+  <!-- FAB -->
+  <button class="active-tap" onclick="switchTab('appointments')" style="position:fixed;bottom:calc(80px + env(safe-area-inset-bottom,16px));right:20px;width:56px;height:56px;border-radius:1rem;background:var(--primary-container);border:none;box-shadow:0 8px 24px rgba(0,0,0,.2);cursor:pointer;z-index:40;display:flex;align-items:center;justify-content:center">
+    <span class="material-symbols-outlined" style="color:#fff;font-size:32px;font-variation-settings:'FILL'1">add</span>
   </button>
 </div>
 
 <script>
-const API=''; let tg=null,telegramId='',userName='',registered=false,patientData=null;
+const API='';let tg=null,telegramId='',userName='',registered=false,patientData=null;
 function hideSplash(){document.getElementById('splash').classList.add('hidden')}
-function showScreen(id){['register','main'].forEach(s=>document.getElementById('screen-'+s).style.display=s===id?'block':'none')}
+function showScreen(id){document.getElementById('screen-'+id).className=''}
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast toast-'+type;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
 try{tg=window.Telegram?.WebApp;if(tg){tg.expand();tg.ready()}}catch(e){}
 const initDataRaw=tg?.initData||'',initData=tg?.initDataUnsafe||{};
@@ -339,8 +355,8 @@ async function init(){
     updateGreeting();
     await api('POST','/api/tma/user/sync',{telegram_id:telegramId,first_name:userName,username:initData?.user?.username||'',patient_name:''});
     const data=await api('GET','/api/tma/my-data');
-    if(data?.registered&&data?.patient){registered=true;patientData=data.patient;showScreen('main');loadDashboard();loadDoctors();document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
-    else{showScreen('register');document.getElementById('regFirstName').value=userName||''}
+    if(data?.registered&&data?.patient){registered=true;patientData=data.patient;document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
+    showScreen('main');loadDashboard();loadDoctors();
   }catch(e){showToast('Ulanish xatosi: '+e.message,'error')}
   hideSplash()
 }
@@ -348,33 +364,17 @@ async function init(){
 function updateGreeting(){
   const h=new Date().getHours();const g=h<12?'Xayrli tong':h<18?'Xayrli kun':'Xayrli kech';
   document.getElementById('greeting').textContent=userName;
-  const lbl=document.getElementById('greetingLabel');if(lbl)lbl.textContent=g+','
+  if(document.getElementById('greetingLabel'))document.getElementById('greetingLabel').textContent=g+','
 }
 
-async function registerPatient(){
-  const btn=document.getElementById('registerBtn');
-  if(!btn)return;
-  try{
-    const first_name=document.getElementById('regFirstName').value.trim();
-    const phone=document.getElementById('regPhone').value.trim();
-    if(!first_name)return showToast('Ismni kiriting','error');
-    if(!phone)return showToast('Telefon raqamni kiriting','error');
-    btn.disabled=true;
-    const origHtml=btn.innerHTML;
-    btn.innerHTML='<span class="spinner-sm"></span> Yuklanmoqda...';
-    const data=await api('POST','/api/tma/register-patient',{telegram_id:telegramId,first_name,last_name:'',phone,birth_date:document.getElementById('regBirthDate').value||null});
-    if(data?.success){patientData=data.patient;registered=true;showScreen('main');loadDashboard();loadDoctors();document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
-    else showToast(data?.error||'Xatolik yuz berdi','error');
-    btn.disabled=false;btn.innerHTML=origHtml
-  }catch(e){showToast('Xatolik: '+e.message,'error');btn.disabled=false;btn.innerHTML='<span class="material-symbols-outlined text-on-primary">how_to_reg</span> Ro\'yxatdan o\'tish'}
-}
+
 
 function switchTab(tab){
-  document.querySelectorAll('.tab-content').forEach(el=>el.style.display='none');
-  document.querySelectorAll('.nav-tab').forEach(el=>{el.classList.remove('text-primary','bg-secondary-container','rounded-xl');el.classList.add('text-on-surface-variant')});
+  document.querySelectorAll('.tab-content,.tab-content-fs').forEach(el=>el.style.display='none');
+  document.querySelectorAll('.nav-tab').forEach(el=>{el.style.background='transparent';el.style.color='var(--on-surface-variant)'});
   document.getElementById('tab-'+tab).style.display='block';
   const nav=document.querySelector(`.nav-tab[data-tab="${tab}"]`);
-  if(nav){nav.classList.remove('text-on-surface-variant');nav.classList.add('text-primary','bg-secondary-container','rounded-xl')}
+  if(nav){nav.style.background='var(--secondary-container)';nav.style.color='var(--primary)'}
   if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors()}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
 }
 
@@ -386,34 +386,31 @@ async function loadDashboard(){
     document.getElementById('statAppointments').textContent=apps.filter(a=>a.status!=='Yakunlangan'&&a.status!=='Bekor qilingan').length;
     document.getElementById('dashboardGreeting').textContent=`${patientData?.first_name||userName}, o'zingizni bugun qanday his qilyapsiz?`;
     const tq=document.getElementById('todayQueue');
-    if(queue.length===0)tq.innerHTML='<div class="flex items-center justify-between w-full"><div class="space-y-1"><p class="text-label-md font-label-md text-on-secondary-container/70 uppercase tracking-wider">Sizning navbatingiz</p><p class="text-body-md text-on-secondary-container/80">Hozircha navbat yo\'q</p></div><div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-inner shrink-0"><span class="material-symbols-outlined text-primary text-[28px]">diversity_3</span></div></div>';
-    else{const q=queue[0];tq.innerHTML=`<div class="flex items-center justify-between w-full"><div class="space-y-1"><p class="text-label-md font-label-md text-on-secondary-container/70 uppercase tracking-wider">Sizning navbatingiz</p><div class="flex items-baseline gap-1"><span class="text-[40px] font-bold text-on-secondary-container">${q.queue_number||'—'}</span><span class="text-body-md text-on-secondary-container/80">/ ${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div><div class="mt-2 flex items-center gap-2"><span class="material-symbols-outlined text-primary text-[18px]">schedule</span><span class="text-label-md font-label-md">${q.doctor_name||q.department||'Qabul'}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</span></div></div><div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-inner shrink-0"><span class="material-symbols-outlined text-primary text-[28px]">diversity_3</span></div></div>`}
+    if(queue.length===0)tq.innerHTML='<div class="d-flex items-center justify-between w-full"><div><div class="fs-12 fw-600 ls-02 ttu" style="color:var(--on-secondary-container);opacity:0.7">Sizning navbatingiz</div><div class="fs-14" style="color:var(--on-secondary-container);opacity:0.8">Hozircha navbat yo\'q</div></div><div class="d-flex items-center justify-center" style="width:56px;height:56px;background:#fff;border-radius:1rem;box-shadow:inset 0 2px 4px rgba(0,0,0,.06)"><span class="material-symbols-outlined" style="color:var(--primary);font-size:28px">diversity_3</span></div></div>';
+    else{const q=queue[0];tq.innerHTML=`<div class="d-flex items-center justify-between w-full"><div><div class="fs-12 fw-600 ls-02 ttu" style="color:var(--on-secondary-container);opacity:0.7">Sizning navbatingiz</div><div class="d-flex items-baseline gap-1"><span style="font-size:40px;font-weight:700;color:var(--on-secondary-container)">${q.queue_number||'—'}</span><span class="fs-14" style="color:var(--on-secondary-container);opacity:0.8">/ ${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div><div class="d-flex items-center gap-2" style="margin-top:8px"><span class="material-symbols-outlined" style="color:var(--primary);font-size:18px">schedule</span><span class="fs-12 fw-600">${q.doctor_name||q.department||'Qabul'}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</span></div></div><div class="d-flex items-center justify-center" style="width:56px;height:56px;background:#fff;border-radius:1rem;box-shadow:inset 0 2px 4px rgba(0,0,0,.06)"><span class="material-symbols-outlined" style="color:var(--primary);font-size:28px">diversity_3</span></div></div>`}
     const rc=document.getElementById('recentConsultations');
-    if(cons.length===0)rc.innerHTML='<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><p class="text-body-md text-on-surface-variant">Hali tashxislar yo\'q</p></div>';
-    else rc.innerHTML=cons.slice(0,3).map((c,i)=>{const d=tryParseJson(c.data_json);const diag=d?.diagnosis||d?.tashxis||'';return `<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex gap-4 active-tap cursor-pointer anim-in" style="animation-delay:${i*0.08}s"><div class="w-14 h-14 rounded-2xl overflow-hidden bg-surface-container flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-primary text-2xl">stethoscope</span></div><div class="flex-1 min-w-0"><div class="flex justify-between items-start"><h4 class="text-body-lg font-bold truncate">${c.doctor_name||'Shifokor'}</h4><span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full ml-2 whitespace-nowrap">${fmtDate(c.created_at)}</span></div>${diag?'<p class="text-body-md text-on-surface-variant line-clamp-1 mt-0.5">'+diag+'</p>':'<p class="text-body-md text-on-surface-variant/50 mt-0.5">Tahlil qilingan</p>'}</div></div>`}).join('')
+    if(cons.length===0)rc.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><div class="fs-14" style="color:var(--on-surface-variant)">Hali tashxislar yo\'q</div></div>';
+    else rc.innerHTML=cons.slice(0,3).map((c,i)=>{const d=tryParseJson(c.data_json);const diag=d?.diagnosis||d?.tashxis||'';return`<div class="d-flex items-start gap-4 active-tap cursor-pointer anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.08}s;box-shadow:0 1px 3px rgba(0,0,0,.06)" onclick="switchTab(\'consultations\')"><div class="d-flex items-center justify-center" style="width:56px;height:56px;border-radius:1rem;background:var(--surface-container);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary);font-size:24px">stethoscope</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-16 fw-700 truncate">${c.doctor_name||'Shifokor'}</div><span class="fs-10" style="color:var(--on-surface-variant);background:var(--surface-container);padding:2px 8px;border-radius:9999px;margin-left:8px;white-space:nowrap;flex-shrink:0">${fmtDate(c.created_at)}</span></div>${diag?'<div class="fs-14" style="color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+diag+'</div>':'<div class="fs-14" style="color:var(--on-surface-variant);opacity:0.5;margin-top:2px">Tahlil qilingan</div>'}</div></div>`}).join('')
   }catch(e){document.getElementById('statQueue').textContent='0';document.getElementById('statAppointments').textContent='0'}
 }
 
 async function loadQueue(){
   try{
-    const data=await api('GET','/api/tma/my-queue');const list=document.getElementById('queueList');const items=data?.queue||[];
-    if(items.length===0){list.innerHTML='<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">format_list_numbered</span><p class="text-body-md text-on-surface-variant">Navbatda turgan bemorlar yo\'q</p></div>';return}
-    list.innerHTML=items.map((q,i)=>{
-      if(i===0)return `<div class="bg-primary p-6 rounded-[2rem] text-on-primary shadow-xl relative overflow-hidden animate-pulse-soft"><div class="absolute top-0 right-0 -mr-12 -mt-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div><div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-secondary-container/20 rounded-full blur-2xl"></div><div class="relative z-10 flex flex-col items-center text-center"><span class="text-label-md font-label-md uppercase tracking-widest text-primary-fixed/80 mb-2">Navbatdagi o\'rni</span><div class="text-[80px] font-bold leading-none mb-2">${q.queue_number||'—'}</div><div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 rounded-full backdrop-blur-md"><span class="material-symbols-outlined text-[18px]">${q.status==='waiting'?'hourglass_empty':q.status==='in_progress'||q.status==='active'?'hearing':'check_circle'}</span><span class="text-label-md font-label-md">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div></div></div>`;
-      return `<div class="bg-surface-container-lowest p-5 rounded-[1.5rem] shadow-sm border border-outline-variant/30 flex items-center gap-4 anim-in" style="animation-delay:${i*0.06}s"><div class="w-10 h-10 rounded-xl ${q.status==='completed'?'bg-secondary-container':'bg-primary-fixed'} flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-sm ${q.status==='completed'?'text-on-secondary-container':'text-primary'}">${q.status==='completed'?'check':q.status==='cancelled'?'close':'schedule'}</span></div><div class="flex-1 min-w-0"><p class="text-body-md font-semibold">${q.department||'Qabul'}</p><p class="text-label-md text-on-surface-variant">${q.doctor_name||''}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</p></div><span class="status-badge ${q.status==='waiting'?'status-pending':q.status==='in_progress'||q.status==='active'?'status-active':q.status==='completed'?'status-completed':'status-cancelled'}">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':q.status==='completed'?'Yakunlangan':'Bekor qilingan'}</span></div>`
+    const data=await api('GET','/api/tma/my-queue');const items=data?.queue||[];
+    const el=document.getElementById('queueList');
+    if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">format_list_numbered</span><div class="fs-14" style="color:var(--on-surface-variant)">Navbatda turgan bemorlar yo\'q</div></div>';return}
+    el.innerHTML=items.map((q,i)=>{
+      if(i===0)return`<div style="background:var(--primary);padding:24px;border-radius:2rem;color:#fff;position:relative;overflow:hidden;animation:pulse-soft 3s ease-in-out infinite"><div class="absolute" style="top:0;right:0;margin-right:-48px;margin-top:-48px;width:192px;height:192px;background:rgba(255,255,255,0.1);border-radius:50%;filter:blur(64px)"></div><div class="absolute" style="bottom:0;left:0;margin-left:-32px;margin-bottom:-32px;width:128px;height:128px;background:rgba(206,238,147,0.2);border-radius:50%;filter:blur(40px)"></div><div class="relative d-flex flex-col items-center text-center" style="z-index:10"><div class="fs-12 fw-600 ls-02 ttu" style="letter-spacing:0.1em;opacity:0.8;margin-bottom:8px">Navbatdagi o\'rni</div><div style="font-size:80px;font-weight:700;line-height:1;margin-bottom:8px">${q.queue_number||'—'}</div><div class="d-inline-flex items-center gap-2" style="background:rgba(255,255,255,0.2);border-radius:9999px;padding:6px 16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)"><span class="material-symbols-outlined" style="font-size:18px">${q.status==='waiting'?'hourglass_empty':q.status==='in_progress'||q.status==='active'?'hearing':'check_circle'}</span><span class="fs-12 fw-600">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div></div></div>`;
+      return`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:12px;background:${q.status==='completed'?'var(--secondary-container)':'var(--primary-fixed)'};flex-shrink:0"><span class="material-symbols-outlined" style="font-size:14px;color:${q.status==='completed'?'var(--on-secondary-container)':'var(--primary)'}">${q.status==='completed'?'check':q.status==='cancelled'?'close':'schedule'}</span></div><div class="flex-1 min-w-0"><div class="fs-14 fw-600">${q.department||'Qabul'}</div><div class="fs-12" style="color:var(--on-surface-variant)">${q.doctor_name||''}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</div></div><span class="status-badge ${q.status==='waiting'?'status-pending':q.status==='in_progress'||q.status==='active'?'status-active':q.status==='completed'?'status-completed':'status-cancelled'}">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':q.status==='completed'?'Yakunlangan':'Bekor qilingan'}</span></div>`
     }).join('')
-  }catch(e){document.getElementById('queueList').innerHTML='<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'}
+  }catch(e){document.getElementById('queueList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
 
 async function loadDoctors(){
-  try{
-    const data=await api('GET','/api/appointments/doctors');
-    const sel=document.getElementById('bookDoctor');
-    sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')
-  }catch(e){}
+  try{const data=await api('GET','/api/appointments/doctors');const sel=document.getElementById('bookDoctor');sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')}catch(e){}
 }
-document.getElementById('bookDoctor').addEventListener('change',async function(){const date=document.getElementById('bookDate').value;if(this.value&&date)await loadSlots(this.value,date)});
-document.getElementById('bookDate').addEventListener('change',async function(){const doc=document.getElementById('bookDoctor').value;if(doc&&this.value)await loadSlots(doc,this.value)});
+document.getElementById('bookDoctor').addEventListener('change',async function(){const dt=document.getElementById('bookDate').value;if(this.value&&dt)await loadSlots(this.value,dt)});
+document.getElementById('bookDate').addEventListener('change',async function(){const dr=document.getElementById('bookDoctor').value;if(dr&&this.value)await loadSlots(dr,this.value)});
 async function loadSlots(doctorId,date){
   try{const data=await api('GET',`/api/appointments/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');sel.innerHTML='<option value="">Vaqtni tanlang</option>'+(data?.slots||[]).filter(s=>s.available).map(s=>`<option value="${s.time}">${s.time}</option>`).join('')}catch(e){}
 }
@@ -425,16 +422,16 @@ async function bookAppointment(){
 }
 
 async function loadAppointments(){
-  try{const data=await api('GET','/api/tma/my-appointments');const list=document.getElementById('appointmentsList');const items=data?.appointments||[];if(items.length===0){list.innerHTML='<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">event_busy</span><p class="text-body-md text-on-surface-variant">Sizda qabullar yo\'q</p></div>';return}list.innerHTML=items.map((a,i)=>`<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex items-center gap-4 anim-in" style="animation-delay:${i*0.06}s"><div class="w-12 h-12 rounded-2xl bg-primary-fixed flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-primary">event</span></div><div class="flex-1 min-w-0"><div class="flex justify-between items-start"><h4 class="text-body-md font-semibold">${a.doctor_name||'Shifokor'}</h4><span class="status-badge ${a.status==='Kutilmoqda'?'status-pending':a.status==='Yakunlangan'?'status-completed':'status-cancelled'} ml-2">${a.status==='Kutilmoqda'?'Kutilmoqda':a.status==='Yakunlangan'?'Yakunlangan':'Bekor qilingan'}</span></div><p class="text-label-md text-on-surface-variant">${a.specialty||''}</p><p class="text-label-md text-on-surface-variant/60 mt-0.5">📅 ${a.appointment_date?a.appointment_date.slice(0,10):''} ⏰ ${a.appointment_time||''}</p></div></div>`).join('')}catch(e){document.getElementById('appointmentsList').innerHTML='<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'}
+  try{const data=await api('GET','/api/tma/my-appointments');const el=document.getElementById('appointmentsList');const items=data?.appointments||[];if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">event_busy</span><div class="fs-14" style="color:var(--on-surface-variant)">Sizda qabullar yo\'q</div></div>';return}el.innerHTML=items.map((a,i)=>`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:48px;height:48px;border-radius:1rem;background:var(--primary-fixed);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary)">event</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-14 fw-600">${a.doctor_name||'Shifokor'}</div><span class="status-badge ${a.status==='Kutilmoqda'?'status-pending':a.status==='Yakunlangan'?'status-completed':'status-cancelled'}" style="margin-left:8px;flex-shrink:0">${a.status==='Kutilmoqda'?'Kutilmoqda':a.status==='Yakunlangan'?'Yakunlangan':'Bekor qilingan'}</span></div><div class="fs-12" style="color:var(--on-surface-variant)">${a.specialty||''}</div><div class="fs-12" style="color:var(--on-surface-variant);opacity:0.6;margin-top:2px">📅 ${a.appointment_date?a.appointment_date.slice(0,10):''} ⏰ ${a.appointment_time||''}</div></div></div>`).join('')}catch(e){document.getElementById('appointmentsList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
 
 async function loadConsultations(){
-  try{const data=await api('GET','/api/tma/consultations');const list=document.getElementById('consultationsList');const items=data?.consultations||[];if(items.length===0){list.innerHTML='<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">stethoscope</span><p class="text-body-md text-on-surface-variant">Tashxislar mavjud emas</p></div>';return}list.innerHTML=items.map((c,i)=>{const j=tryParseJson(c.data_json);const d=j?.diagnosis||j?.tashxis||'',r=j?.recommendations||j?.tavsiyalar||'',m=j?.medicines||j?.medication||[];return`<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm anim-in" style="animation-delay:${i*0.06}s"><div class="flex items-start gap-4 cursor-pointer" onclick="showConsultationDetail(this.parentElement)"><div class="w-12 h-12 rounded-2xl overflow-hidden bg-surface-container flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-primary text-2xl">stethoscope</span></div><div class="flex-1 min-w-0"><div class="flex justify-between items-start"><h4 class="text-body-md font-semibold">${c.doctor_name||'Shifokor'}</h4><span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full ml-2 whitespace-nowrap">${fmtDate(c.created_at)}</span></div>${d?'<p class="text-body-md font-medium mt-0.5">📋 '+d+'</p>':''}${r?'<p class="text-label-md text-on-surface-variant mt-0.5 line-clamp-1">💊 '+r.slice(0,80)+(r.length>80?'...':'')+'</p>':''}${m.length>0?'<p class="text-label-md text-on-surface-variant/60 mt-0.5">💊 '+m.map(x=>x.name||x).join(', ')+'</p>':''}</div><span class="material-symbols-outlined text-outline/40 mt-1">expand_more</span></div><div class="consultation-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--tg-theme-secondary-bg-color,#e2e8f0)"><p class="text-body-md whitespace-pre-wrap text-on-surface-variant">${c.raw_text||''}</p>${j&&Object.keys(j).length>0?'<div class="mt-2 text-label-md text-on-surface-variant/60"><pre style="white-space:pre-wrap">'+JSON.stringify(j,null,2)+'</pre></div>':''}</div></div>`}).join('')}catch(e){document.getElementById('consultationsList').innerHTML='<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'}
+  try{const data=await api('GET','/api/tma/consultations');const el=document.getElementById('consultationsList');const items=data?.consultations||[];if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">stethoscope</span><div class="fs-14" style="color:var(--on-surface-variant)">Tashxislar mavjud emas</div></div>';return}el.innerHTML=items.map((c,i)=>{const j=tryParseJson(c.data_json);const d=j?.diagnosis||j?.tashxis||'',r=j?.recommendations||j?.tavsiyalar||'',m=j?.medicines||j?.medication||[];return`<div style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06);anim-in" class="anim-in"><div class="d-flex items-start gap-4 cursor-pointer" onclick="toggleCons(this)"><div class="d-flex items-center justify-center" style="width:48px;height:48px;border-radius:1rem;background:var(--surface-container);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary);font-size:24px">stethoscope</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-14 fw-600">${c.doctor_name||'Shifokor'}</div><span class="fs-10" style="color:var(--on-surface-variant);background:var(--surface-container);padding:2px 8px;border-radius:9999px;margin-left:8px;white-space:nowrap;flex-shrink:0">${fmtDate(c.created_at)}</span></div>${d?'<div class="fs-14 fw-600" style="margin-top:2px">📋 '+d+'</div>':''}${r?'<div class="fs-12" style="color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">💊 '+r.slice(0,80)+(r.length>80?'...':'')+'</div>':''}${m.length>0?'<div class="fs-12" style="color:var(--on-surface-variant);opacity:0.6;margin-top:2px">💊 '+m.map(x=>x.name||x).join(', ')+'</div>':''}</div><span class="material-symbols-outlined" style="color:var(--outline);opacity:0.4;margin-top:4px">expand_more</span></div><div class="cons-detail d-none" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(226,232,240,0.8)"><div class="fs-14" style="white-space:pre-wrap;color:var(--on-surface-variant)">${c.raw_text||''}</div>${j&&Object.keys(j).length>0?'<div class="fs-12" style="color:var(--on-surface-variant);opacity:0.6;margin-top:8px"><pre style="white-space:pre-wrap">'+JSON.stringify(j,null,2)+'</pre></div>':''}</div></div>`}).join('')}catch(e){document.getElementById('consultationsList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
-function showConsultationDetail(el){const d=el.querySelector('.consultation-detail');const i=el.querySelector('.material-symbols-outlined:last-child');if(!d)return;const o=d.style.display!=='none';d.style.display=o?'none':'block';if(i)i.textContent=o?'expand_more':'expand_less'}
+function toggleCons(el){const d=el.parentElement.querySelector('.cons-detail');const i=el.querySelector('.material-symbols-outlined:last-child');if(!d)return;const o=!d.classList.contains('d-none');d.classList.toggle('d-none');if(i)i.textContent=o?'expand_more':'expand_less'}
 
 async function loadReminders(){
-  try{const data=await api('GET','/api/tma/reminders');const list=document.getElementById('remindersList');const items=data?.data||[];if(items.length===0){list.innerHTML='<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">alarm_off</span><p class="text-body-md text-on-surface-variant">Faol eslatmalar yo\'q</p></div>';return}list.innerHTML=items.map(r=>`<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex items-center gap-4 anim-in"><div class="w-12 h-12 rounded-2xl bg-secondary-container flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-secondary-container">medication</span></div><div class="flex-1 min-w-0"><h4 class="text-body-md font-semibold">${r.medicine_name}</h4><p class="text-label-md text-on-surface-variant">${r.dosage||'1 marta'}${r.reminder_time?' · '+r.reminder_time:''}</p></div><button class="w-9 h-9 rounded-xl bg-error-container/30 flex items-center justify-center active-tap shrink-0" onclick="deleteReminder('${r.id}')"><span class="material-symbols-outlined text-error text-lg">delete</span></button></div>`).join('')}catch(e){document.getElementById('remindersList').innerHTML='<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'}
+  try{const data=await api('GET','/api/tma/reminders');const el=document.getElementById('remindersList');const items=data?.data||[];if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">alarm_off</span><div class="fs-14" style="color:var(--on-surface-variant)">Faol eslatmalar yo\'q</div></div>';return}el.innerHTML=items.map(r=>`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:48px;height:48px;border-radius:1rem;background:var(--secondary-container);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--on-secondary-container)">medication</span></div><div class="flex-1 min-w-0"><div class="fs-14 fw-600">${r.medicine_name}</div><div class="fs-12" style="color:var(--on-surface-variant)">${r.dosage||'1 marta'}${r.reminder_time?' · '+r.reminder_time:''}</div></div><button class="active-tap" style="width:36px;height:36px;border-radius:12px;background:rgba(186,26,26,0.3);border:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center" onclick="deleteReminder('${r.id}')"><span class="material-symbols-outlined" style="color:var(--error);font-size:18px">delete</span></button></div>`).join('')}catch(e){document.getElementById('remindersList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
 
 async function addReminder(){
