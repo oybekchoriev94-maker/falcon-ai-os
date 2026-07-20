@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-store";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
   Users,
@@ -17,8 +18,10 @@ import {
   Share2,
   LogOut,
   Menu,
-  X,
   ChevronLeft,
+  Sun,
+  Moon,
+  HeartPulse,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,7 +38,8 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
+  { href: "/doctor", label: "Shifokor paneli", icon: HeartPulse, roles: ["doctor"] },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/patients", label: "Bemorlar", icon: Users, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/reception", label: "Navbat", icon: ClipboardList, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/wards", label: "Palatalar", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor"] },
@@ -49,10 +53,14 @@ const navItems = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -93,8 +101,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <div className="flex h-14 items-center gap-3 border-b border-border px-4">
           <div className={cn("flex items-center gap-3", collapsed && "justify-center w-full")}>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-              F
+            <div className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+              <HeartPulse className="size-4" />
             </div>
             {!collapsed && (
               <span className="font-semibold text-sm tracking-tight">Falcon AI OS</span>
@@ -120,9 +128,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
                     isActive
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary/10 text-primary shadow-sm"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     collapsed && "justify-center px-2"
                   )}
@@ -170,6 +178,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Menu className="size-5" />
           </Button>
           <div className="flex-1" />
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            </Button>
+          )}
         </header>
 
         <main className="flex-1 overflow-auto p-4 md:p-6">

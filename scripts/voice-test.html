@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head><meta charset="UTF-8"><title>Ovoz testi</title>
+<style>
+body{font-family:sans-serif;max-width:600px;margin:50px auto;padding:20px;text-align:center}
+button{padding:20px 40px;font-size:18px;border-radius:12px;border:none;cursor:pointer;margin:10px}
+#record{background:#dc2626;color:white}
+#stop{background:#6b7280;color:white}
+#status{margin:20px 0;padding:15px;border-radius:8px;background:#f3f4f6}
+#result{white-space:pre-wrap;text-align:left;background:#1f2937;color:#34d399;padding:20px;border-radius:8px;margin-top:20px;display:none}
+.spinner{display:none;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #3498db;border-radius:50%;animation:spin 1s linear infinite;margin:20px auto}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+</style></head>
+<body>
+<h1>Falcon AI OS — Ovoz testi</h1>
+<p>O'zbek tilida gapiring va natijani ko'ring</p>
+<div id="status">Token olinyapti...</div>
+<button id="record" onclick="startRecord()">🔴 Yozish</button>
+<button id="stop" onclick="stopRecord()" disabled>⏹ To'xtatish</button>
+<div class="spinner" id="spinner"></div>
+<div id="result"></div>
+<script>
+async function getToken() {
+  const r = await fetch('http://167.233.44.193:3000/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'admin1234'})});
+  const d = await r.json();
+  return d.token;
+}
+let mediaRecorder, audioChunks = [], token = '';
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    token = await getToken();
+    document.getElementById('status').textContent = '✅ Tayyor (mikrofon ruxsatini bering)';
+  } catch(e) {
+    document.getElementById('status').textContent = '❌ Token olishda xatolik';
+  }
+});
+async function startRecord() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: {sampleRate:16000,channelCount:1}});
+    mediaRecorder = new MediaRecorder(stream, {mimeType:'audio/webm'});
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = sendAudio;
+    mediaRecorder.start();
+    document.getElementById('status').textContent = '🔴 Gapiring...';
+    document.getElementById('record').disabled = true;
+    document.getElementById('stop').disabled = false;
+  } catch(e) {
+    document.getElementById('status').textContent = '❌ Mikrofon xatosi: ' + e.message + ' (HTTPS yoki localhost kerak)';
+  }
+}
+function stopRecord() {
+  mediaRecorder.stop();
+  mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  document.getElementById('status').textContent = '⏳ Yuborilyapti...';
+  document.getElementById('stop').disabled = true;
+  document.getElementById('spinner').style.display = 'block';
+}
+async function sendAudio() {
+  const blob = new Blob(audioChunks, {type:'audio/webm'});
+  const reader = new FileReader();
+  reader.onloadend = async () => {
+    const b64 = reader.result.split(',')[1];
+    try {
+      const res = await fetch('http://167.233.44.193:3000/api/ai/transcribe', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify({audio_base64:b64,language:'uz'})
+      });
+      const data = await res.json();
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('result').style.display = 'block';
+      if(data.success) {
+        document.getElementById('result').textContent = '📝 Natija:\n' + data.text;
+        document.getElementById('status').textContent = '✅ Tayyor';
+      } else {
+        document.getElementById('result').textContent = '❌ Xatolik:\n' + JSON.stringify(data, null, 2);
+        document.getElementById('status').textContent = '❌ Xatolik';
+      }
+    } catch(e) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('result').style.display = 'block';
+      document.getElementById('result').textContent = '❌ Tarmoq xatosi:\n' + e.message;
+    }
+  };
+  reader.readAsDataURL(blob);
+}
+</script>
+</body></html>
