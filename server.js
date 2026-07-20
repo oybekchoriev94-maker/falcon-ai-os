@@ -85,6 +85,7 @@ function serverError(res, err, status = 500) {
 
 const app = express();
 
+app.set('trust proxy', true);
 app.use(compression());
 app.use(pinoHttpMiddleware());
 app.use(helmet({

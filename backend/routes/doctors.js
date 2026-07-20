@@ -179,12 +179,12 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // ============================================================
 
   // GET /api/reception/voice-register — ovozli ro'yxatdan o'tkazish (faqat POST)
-  router.get('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin'), (req, res) => {
+  router.get('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), (req, res) => {
     res.status(405).json({ error: 'POST method ishlatilsin' });
   });
 
   // POST /api/reception/voice-register — ovozli ro'yxatdan o'tkazish
-  router.post('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin'), upload.single('audio'), async (req, res) => {
+  router.post('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), upload.single('audio'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
       const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
@@ -220,7 +220,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   });
 
   // POST /api/reception/confirm — receptionist tomonidan qabulni tasdiqlash
-  router.post('/reception/confirm', authMiddleware, checkRole('receptionist', 'admin'), validate(schemas.receptionConfirm), async (req, res) => {
+  router.post('/reception/confirm', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), validate(schemas.receptionConfirm), async (req, res) => {
     try {
       const { patient_name, phone, doctor_name, department, notes, appointment_time, status } = req.body;
       // Agar status berilgan bo'lsa, queue statusini yangilash
