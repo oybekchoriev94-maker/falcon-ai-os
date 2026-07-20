@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tashxislar - Medical Mini App</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-container": "#ceee93",
+                    "secondary-fixed-dim": "#b3d17a",
+                    "background": "#f7f9fb",
+                    "secondary-fixed": "#ceee93",
+                    "primary-container": "#2563eb",
+                    "inverse-on-surface": "#eff1f3",
+                    "primary": "#004ac6",
+                    "on-primary-container": "#eeefff",
+                    "inverse-surface": "#2d3133",
+                    "on-error": "#ffffff",
+                    "on-tertiary-fixed-variant": "#3f465c",
+                    "on-background": "#191c1e",
+                    "primary-fixed": "#dbe1ff",
+                    "on-primary-fixed": "#00174b",
+                    "on-tertiary-container": "#eef0ff",
+                    "outline-variant": "#c3c6d7",
+                    "surface-variant": "#e0e3e5",
+                    "on-surface": "#191c1e",
+                    "surface-container-low": "#f2f4f6",
+                    "on-secondary-container": "#536d22",
+                    "on-primary": "#ffffff",
+                    "on-tertiary": "#ffffff",
+                    "surface-tint": "#0053db",
+                    "surface-container": "#eceef0",
+                    "error": "#ba1a1a",
+                    "error-container": "#ffdad6",
+                    "outline": "#737686",
+                    "tertiary-container": "#656d84",
+                    "on-surface-variant": "#434655",
+                    "tertiary-fixed-dim": "#bec6e0",
+                    "on-tertiary-fixed": "#131b2e",
+                    "surface-dim": "#d8dadc",
+                    "surface": "#f7f9fb",
+                    "secondary": "#4d661c",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#364e03",
+                    "surface-bright": "#f7f9fb",
+                    "tertiary": "#4d556b",
+                    "surface-container-high": "#e6e8ea",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-secondary": "#ffffff",
+                    "inverse-primary": "#b4c5ff",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary-fixed": "#dae2fd",
+                    "on-secondary-fixed": "#131f00",
+                    "surface-container-highest": "#e0e3e5"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "section-margin": "2rem",
+                    "element-gap": "1rem",
+                    "gutter": "1rem",
+                    "container-padding": "1.25rem",
+                    "radius-inner": "0.75rem"
+            },
+            "fontFamily": {
+                    "label-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-lg-mobile": ["Inter"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .expandable-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .card-expanded .expandable-content {
+            max-height: 500px;
+        }
+        .card-expanded .chevron-icon {
+            transform: rotate(180deg);
+        }
+        .safe-bottom { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- Top App Bar -->
+<header class="fixed top-0 left-0 w-full z-50 bg-background flex justify-between items-center px-container-padding py-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="A professional medical patient profile avatar for a healthcare application, featuring a friendly young male user against a soft, clean studio background with natural lighting, following a minimalist corporate aesthetic with soft blue tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuARB1yXJezhbHA6Pq1NjxRUPbeN-0hdVlX2DUZS6_GwzYjzlOGAxJ4H_WXw5w12eSXuL1j9PV12upmqFtu8L0RUZQfXB4B12ax6MrEup5PceGLLCO6YBndcA7_O-gTiL52p6Y-V5Cd6oBq_spo1XH1y5TIFEL9nx0fYk3WmsVvC6VlzjoA_MUtAWJbAqNl22Xc751NE9PiHx_Qs_gWUeWpN0jkIoD1p_5ZwdCAUtYMjwtaEmkC6o4o77A"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Xayrli tong,</p>
+<h1 class="text-headline-md font-headline-md text-on-background">Sajibur Rahman</h1>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-low hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-primary">notifications</span>
+</button>
+</header>
+<main class="pt-24 px-container-padding safe-bottom">
+<!-- Section Header -->
+<div class="mb-6">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-background mb-2">Mening tashxislarim</h2>
+<p class="text-body-md font-body-md text-on-surface-variant">Barcha tibbiy xulosalar va shifokor tavsiyalari bir joyda.</p>
+</div>
+<!-- Search & Filter -->
+<div class="flex gap-2 mb-8">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-lowest border-none rounded-xl py-3 pl-10 pr-4 text-body-md focus:ring-2 focus:ring-primary-container shadow-sm" placeholder="Tashxisni izlash..." type="text"/>
+</div>
+<button class="bg-primary text-on-primary w-12 h-12 flex items-center justify-center rounded-xl shadow-md active:scale-95 transition-transform">
+<span class="material-symbols-outlined">tune</span>
+</button>
+</div>
+<!-- Diagnoses List (Asymmetric Bento-ish Layout) -->
+<div class="space-y-4">
+<!-- Diagnosis Card 1 -->
+<div class="diagnosis-card bg-surface-container-lowest rounded-2xl p-5 shadow-[0px_4px_12px_rgba(37,99,235,0.05)] border border-surface-variant/30 transition-all cursor-pointer" onclick="this.classList.toggle('card-expanded')">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]">cardiology</span>
+</div>
+<div>
+<h3 class="text-body-lg font-bold text-on-surface">O'tkir kardiologik tekshiruv</h3>
+<p class="text-label-md font-label-md text-primary">Dr. Alixonov — Kardiolog</p>
+</div>
+</div>
+<span class="text-label-md font-label-md text-outline">18 Noy, 2023</span>
+</div>
+<div class="bg-surface-container-low/50 rounded-xl p-3 mb-3">
+<p class="text-label-md font-label-md text-on-surface-variant uppercase tracking-wider mb-1">Shifokor yozgan tashxis</p>
+<p class="text-body-md font-body-md text-on-surface font-semibold">Sinus ritmi, yurak urishi biroz tezlashgan (Taxikardiya belgisi).</p>
+</div>
+<div class="expandable-content">
+<div class="pt-2 border-t border-surface-variant/30 mt-4">
+<p class="text-label-md font-label-md text-on-surface-variant uppercase tracking-wider mb-2">Tavsiyalar</p>
+<ul class="space-y-2">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">check_circle</span>
+<span class="text-body-md font-body-md">Kuniga kamida 8 soat uxlash va dam olish.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">check_circle</span>
+<span class="text-body-md font-body-md">Tuz iste'molini kuniga 5 grammgacha kamaytirish.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">check_circle</span>
+<span class="text-body-md font-body-md">Magniy B6 preparatini 1 oy davomida qabul qilish.</span>
+</li>
+</ul>
+<button class="w-full mt-5 py-3 bg-secondary-container text-on-secondary-container rounded-xl font-label-md flex items-center justify-center gap-2 hover:bg-secondary-fixed transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+                            To'liq xulosani yuklab olish
+                        </button>
+</div>
+</div>
+<div class="flex justify-center mt-2">
+<span class="material-symbols-outlined chevron-icon text-outline transition-transform duration-300">expand_more</span>
+</div>
+</div>
+<!-- Diagnosis Card 2 (Highlight Style) -->
+<div class="diagnosis-card bg-primary-container text-on-primary-container rounded-2xl p-5 shadow-lg border border-primary relative overflow-hidden" onclick="this.classList.toggle('card-expanded')">
+<div class="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
+<div class="flex justify-between items-start mb-4 relative z-10">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[28px] text-white">description</span>
+</div>
+<div>
+<h3 class="text-body-lg font-bold">Umumiy qon tahlili</h3>
+<p class="text-label-md font-label-md text-primary-fixed">Markaziy Labaratoriya</p>
+</div>
+</div>
+<span class="text-label-md font-label-md opacity-80">12 Noy, 2023</span>
+</div>
+<div class="bg-white/10 rounded-xl p-3 mb-3 relative z-10">
+<p class="text-label-md font-label-md opacity-70 uppercase tracking-wider mb-1">Xulosa</p>
+<p class="text-body-md font-body-md font-semibold text-white">Gemositopeniya belgilari yo'q. Gemoglobin miqdori normada.</p>
+</div>
+<div class="expandable-content relative z-10">
+<div class="pt-2 border-t border-white/20 mt-4">
+<p class="text-label-md font-label-md opacity-70 uppercase tracking-wider mb-2">Tavsiyalar</p>
+<p class="text-body-md font-body-md">Sog'lom ovqatlanishda davom eting. 6 oydan keyin profilaktik tekshiruvdan o'tish tavsiya etiladi.</p>
+<div class="flex gap-2 mt-4">
+<button class="flex-1 py-3 bg-white text-primary rounded-xl font-label-md transition-all active:scale-95">Ko'rish</button>
+<button class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center"><span class="material-symbols-outlined">share</span></button>
+</div>
+</div>
+</div>
+<div class="flex justify-center mt-2 relative z-10">
+<span class="material-symbols-outlined chevron-icon transition-transform duration-300">expand_more</span>
+</div>
+</div>
+<!-- Diagnosis Card 3 -->
+<div class="diagnosis-card bg-surface-container-lowest rounded-2xl p-5 shadow-[0px_4px_12px_rgba(37,99,235,0.05)] border border-surface-variant/30 transition-all cursor-pointer" onclick="this.classList.toggle('card-expanded')">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-xl bg-secondary-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[28px]">dermatology</span>
+</div>
+<div>
+<h3 class="text-body-lg font-bold text-on-surface">Teri holati tahlili</h3>
+<p class="text-label-md font-label-md text-primary">Dr. Karimova — Dermatolog</p>
+</div>
+</div>
+<span class="text-label-md font-label-md text-outline">05 Noy, 2023</span>
+</div>
+<div class="bg-surface-container-low/50 rounded-xl p-3 mb-3">
+<p class="text-label-md font-label-md text-on-surface-variant uppercase tracking-wider mb-1">Shifokor yozgan tashxis</p>
+<p class="text-body-md font-body-md text-on-surface font-semibold">Mavsumiy allergik dermatit, engil shakli.</p>
+</div>
+<div class="expandable-content">
+<div class="pt-2 border-t border-surface-variant/30 mt-4">
+<p class="text-label-md font-label-md text-on-surface-variant uppercase tracking-wider mb-2">Tavsiyalar</p>
+<ul class="space-y-2">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">check_circle</span>
+<span class="text-body-md font-body-md">Gipoallergen parhezga rioya qilish.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-secondary text-sm mt-0.5">check_circle</span>
+<span class="text-body-md font-body-md">Namlantiruvchi kremlardan foydalanish.</span>
+</li>
+</ul>
+</div>
+</div>
+<div class="flex justify-center mt-2">
+<span class="material-symbols-outlined chevron-icon text-outline transition-transform duration-300">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Floating Stats/Banner -->
+<div class="mt-8 bg-secondary-container rounded-3xl p-6 relative overflow-hidden flex items-center justify-between">
+<div class="relative z-10">
+<h4 class="text-headline-md font-headline-md text-on-secondary-container">Salomatlik tahlili</h4>
+<p class="text-body-md font-body-md text-on-secondary-container/80 mb-4">Sizning ko'rsatkichlaringiz 15% ga yaxshilandi</p>
+<button class="bg-on-secondary-container text-secondary-container px-6 py-2 rounded-full font-label-md">Batafsil</button>
+</div>
+<div class="w-32 h-32 relative z-0 opacity-20 -mr-6">
+<span class="material-symbols-outlined text-[120px]">monitoring</span>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe bg-surface-container-lowest shadow-lg rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-label-md font-label-md">Asosiy</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">format_list_numbered</span>
+<span class="text-label-md font-label-md">Navbat</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="text-label-md font-label-md">Qabullar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1 transition-all" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">description</span>
+<span class="text-label-md font-label-md">Tashxislar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">notification_add</span>
+<span class="text-label-md font-label-md">Eslatmalar</span>
+</a>
+</nav>
+<script>
+        // Simple ripple effect or micro-interactions can go here
+        document.querySelectorAll('.diagnosis-card').forEach(card => {
+            card.addEventListener('mousedown', () => {
+                card.style.transform = 'scale(0.98)';
+            });
+            card.addEventListener('mouseup', () => {
+                card.style.transform = 'scale(1)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'scale(1)';
+            });
+        });
+    </script>
+</body></html>

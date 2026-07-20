@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+
+<html lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Navbat - Medical App</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-container": "#ceee93",
+                    "secondary-fixed-dim": "#b3d17a",
+                    "background": "#f7f9fb",
+                    "secondary-fixed": "#ceee93",
+                    "primary-container": "#2563eb",
+                    "inverse-on-surface": "#eff1f3",
+                    "primary": "#004ac6",
+                    "on-primary-container": "#eeefff",
+                    "inverse-surface": "#2d3133",
+                    "on-error": "#ffffff",
+                    "on-tertiary-fixed-variant": "#3f465c",
+                    "on-background": "#191c1e",
+                    "primary-fixed": "#dbe1ff",
+                    "on-primary-fixed": "#00174b",
+                    "on-tertiary-container": "#eef0ff",
+                    "outline-variant": "#c3c6d7",
+                    "surface-variant": "#e0e3e5",
+                    "on-surface": "#191c1e",
+                    "surface-container-low": "#f2f4f6",
+                    "on-secondary-container": "#536d22",
+                    "on-primary": "#ffffff",
+                    "on-tertiary": "#ffffff",
+                    "surface-tint": "#0053db",
+                    "surface-container": "#eceef0",
+                    "error": "#ba1a1a",
+                    "error-container": "#ffdad6",
+                    "outline": "#737686",
+                    "tertiary-container": "#656d84",
+                    "on-surface-variant": "#434655",
+                    "tertiary-fixed-dim": "#bec6e0",
+                    "on-tertiary-fixed": "#131b2e",
+                    "surface-dim": "#d8dadc",
+                    "surface": "#f7f9fb",
+                    "secondary": "#4d661c",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#364e03",
+                    "surface-bright": "#f7f9fb",
+                    "tertiary": "#4d556b",
+                    "surface-container-high": "#e6e8ea",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-secondary": "#ffffff",
+                    "inverse-primary": "#b4c5ff",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary-fixed": "#dae2fd",
+                    "on-secondary-fixed": "#131f00",
+                    "surface-container-highest": "#e0e3e5"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "section-margin": "2rem",
+                    "element-gap": "1rem",
+                    "gutter": "1rem",
+                    "container-padding": "1.25rem",
+                    "radius-inner": "0.75rem"
+            },
+            "fontFamily": {
+                    "label-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-lg-mobile": ["Inter"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(0.98); }
+        }
+        .animate-pulse-soft {
+            animation: pulse-soft 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- Top App Bar -->
+<header class="bg-background dark:bg-background flex justify-between items-center px-container-padding py-4 w-full sticky top-0 z-50">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="A professional close-up studio portrait of a friendly user for a healthcare application profile. The lighting is soft and high-key, emphasizing a clean and clinical yet compassionate atmosphere. The background is a soft, neutral off-white, maintaining a minimalist aesthetic consistent with a modern medical user interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6wB1CeM8ukDg_v7KdR3tvA5iWI3ZMsv5ZaK9UxEgkA-TtIoE3a4Sait9n_MhGfAVmLG3XkoWKtPFaMVJ83NhvXugUab9nI7cJKQqpmyOYDjwkOuMBcC6LYZvq1wVdEKMUHizEL54pJ3xCbCPL78KL6zsf_aU0I_A2c7I8-w00qpJR5JHunO9-hvzoG4FEjQTev9jlUBiV3e1W5lGXBtfntWcoFSvBqzJ05k6BfVh7rrOC4iSEwaUR7w"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Xayrli tong,</p>
+<h1 class="text-headline-md font-headline-md text-on-background">Foydalanuvchi</h1>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors relative">
+<span class="material-symbols-outlined text-primary">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-background"></span>
+</button>
+</header>
+<main class="px-container-padding space-y-6">
+<!-- Header Section -->
+<section class="pt-2">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Sizning navbatingiz</h2>
+<p class="text-body-md font-body-md text-on-surface-variant mt-1">Hozirgi vaqtda klinikamizdagi holatingiz</p>
+</section>
+<!-- Main Queue Card (Bento Style) -->
+<div class="grid grid-cols-1 gap-4">
+<!-- Large Status Card -->
+<div class="bg-primary p-6 rounded-[2rem] text-on-primary shadow-xl relative overflow-hidden animate-pulse-soft">
+<!-- Abstract Background Pattern -->
+<div class="absolute top-0 right-0 -mr-12 -mt-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+<div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-secondary-container/20 rounded-full blur-2xl"></div>
+<div class="relative z-10 flex flex-col items-center text-center">
+<span class="text-label-md font-label-md uppercase tracking-widest text-primary-fixed/80 mb-2">Navbatdagi o'rni</span>
+<div class="text-[80px] font-bold leading-none mb-2">4</div>
+<div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 rounded-full backdrop-blur-md">
+<span class="material-symbols-outlined text-[18px]">hourglass_empty</span>
+<span class="text-label-md font-label-md">Kutilmoqda</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<!-- Time Estimate Card -->
+<div class="bg-surface-container-lowest p-5 rounded-[1.5rem] shadow-sm border border-outline-variant/30 flex flex-col justify-between">
+<div class="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-on-secondary-container">schedule</span>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Taxminiy vaqt</p>
+<p class="text-headline-md font-headline-md text-on-surface">~15 daqiqa</p>
+</div>
+</div>
+<!-- Doctor Info Card -->
+<div class="bg-surface-container-lowest p-5 rounded-[1.5rem] shadow-sm border border-outline-variant/30 flex flex-col justify-between">
+<div class="w-10 h-10 rounded-xl bg-primary-fixed flex items-center justify-center mb-4 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional medical doctor portrait for a hospital application. The doctor, a man in his late 30s with glasses and a white coat, looks confident and welcoming. The style is clean, corporate, and minimalist with soft lighting and a blue-toned background to evoke trust and security." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCCIbPxCtaqboPUGBnLxgMYtYUdjvcJJsHqxhTYW9DOGzA7jH-WGYaj7WtCZs_45A3zdK1d0SPENuRofshvMH-CbFwJDUh9Wv4l9jhOrKu-Ivpa9K1C1LbaQBP2NVYPAQAF17LwL7ZjkeWMLnFJ3W63TYJR696LJ4-iObn1b6GfxeEwsLz0LdMdfRjKeMFQUcdYZZbNm09ijVtx4XFUd0EFXRCOpCZj1jzCyyHcEdD5MmxLFm-PmcfAAg"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Shifokor</p>
+<p class="text-label-md font-label-md text-on-surface truncate">Dr. Crawford</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Progress Timeline -->
+<section class="bg-white p-5 rounded-[1.5rem] shadow-sm">
+<h3 class="text-label-md font-label-md text-on-surface-variant mb-4 uppercase tracking-wider">Navbat jarayoni</h3>
+<div class="space-y-4">
+<!-- Step 1 (Done) -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full bg-secondary text-white flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'wght' 700;">check</span>
+</div>
+<div class="w-0.5 h-full bg-secondary-container min-h-[20px]"></div>
+</div>
+<div>
+<p class="text-body-md font-semibold text-on-surface">Ro'yxatdan o'tildi</p>
+<p class="text-label-md font-label-md text-on-surface-variant">09:15</p>
+</div>
+</div>
+<!-- Step 2 (Active) -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full border-2 border-primary bg-background flex items-center justify-center shrink-0">
+<div class="w-2 h-2 rounded-full bg-primary animate-ping"></div>
+</div>
+<div class="w-0.5 h-full bg-surface-container-high min-h-[20px]"></div>
+</div>
+<div>
+<p class="text-body-md font-semibold text-primary">Kutilmoqda</p>
+<p class="text-label-md font-label-md text-on-surface-variant">Sizdan oldin 3 kishi bor</p>
+</div>
+</div>
+<!-- Step 3 (Pending) -->
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full bg-surface-container-high shrink-0"></div>
+</div>
+<div>
+<p class="text-body-md font-semibold text-on-surface-variant">Qabul</p>
+<p class="text-label-md font-label-md text-outline">Kutilayotgan vaqt: 09:45</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Action Buttons -->
+<div class="flex flex-col gap-3 pt-4">
+<button class="w-full bg-primary text-on-primary py-4 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md">
+<span class="material-symbols-outlined">refresh</span>
+                Yangilash
+            </button>
+<button class="w-full bg-error-container text-on-error-container py-4 rounded-xl font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all">
+<span class="material-symbols-outlined">close</span>
+                Bekor qilish
+            </button>
+</div>
+<!-- Help Section -->
+<div class="bg-secondary-fixed/20 p-4 rounded-xl flex items-center gap-4">
+<span class="material-symbols-outlined text-secondary text-[32px]">info</span>
+<p class="text-label-md font-label-md text-on-secondary-fixed-variant">Navbat kelganda Telegram orqali bildirishnoma yuboramiz. Iltimos, yaqin orada bo'ling.</p>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe bg-surface-container-lowest shadow-lg rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-label-md font-label-md mt-1">Asosiy</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1 transition-all" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">format_list_numbered</span>
+<span class="text-label-md font-label-md mt-1">Navbat</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="text-label-md font-label-md mt-1">Qabullar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="text-label-md font-label-md mt-1">Tashxislar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">notification_add</span>
+<span class="text-label-md font-label-md mt-1">Eslatma</span>
+</a>
+</nav>
+<script>
+        // Simple interactive feedback
+        document.querySelectorAll('button, a').forEach(el => {
+            el.addEventListener('click', () => {
+                // Haptic simulation if available or just visual click state
+                el.style.opacity = '0.8';
+                setTimeout(() => el.style.opacity = '1', 150);
+            });
+        });
+    </script>
+</body></html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Qabullar - Medical Mini-App</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#ceee93",
+                        "secondary-fixed-dim": "#b3d17a",
+                        "background": "#f7f9fb",
+                        "secondary-fixed": "#ceee93",
+                        "primary-container": "#2563eb",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary": "#004ac6",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "on-background": "#191c1e",
+                        "primary-fixed": "#dbe1ff",
+                        "on-primary-fixed": "#00174b",
+                        "on-tertiary-container": "#eef0ff",
+                        "outline-variant": "#c3c6d7",
+                        "surface-variant": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#536d22",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface-tint": "#0053db",
+                        "surface-container": "#eceef0",
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "outline": "#737686",
+                        "tertiary-container": "#656d84",
+                        "on-surface-variant": "#434655",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "on-tertiary-fixed": "#131b2e",
+                        "surface-dim": "#d8dadc",
+                        "surface": "#f7f9fb",
+                        "secondary": "#4d661c",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed-variant": "#364e03",
+                        "surface-bright": "#f7f9fb",
+                        "tertiary": "#4d556b",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#dae2fd",
+                        "on-secondary-fixed": "#131f00",
+                        "surface-container-highest": "#e0e3e5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section-margin": "2rem",
+                        "element-gap": "1rem",
+                        "gutter": "1rem",
+                        "container-padding": "1.25rem",
+                        "radius-inner": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- Top App Bar -->
+<header class="flex justify-between items-center px-container-padding py-4 w-full bg-background sticky top-0 z-40">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="A high-quality studio portrait of a friendly young healthcare patient in a minimalist setting. The lighting is soft and professional, reflecting a clean light-mode aesthetic. The composition is focused on the face, projecting a sense of security and health. The background is a subtle, neutral clinical white with soft shadows." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKyRE6d74PC8tG1iRoRWvpIOUXq_uxCsSgawpeg4Hei2Q7QWbgVeRMitlZuUcsbzyLfV-dXl08qk9UAXCsc3Hr28lMgFPgIYtODHMwXl1dKVqiGNPcAOgFyRqLaZChrZE70WvIorX2EaudS-mr2VSu2n8wFLOYe4NWStXjbfRY-KEKNGC9SsgWofoWQ2vSqlffEZf_R4p6iyye7E2UhvM1nnwjldhEp9zDIH7_jnGumxOdDDk2YaCtLg"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Xush kelibsiz!</p>
+<h1 class="text-headline-md font-headline-md text-on-background">Sajibur Rahman</h1>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-primary">notifications</span>
+</button>
+</header>
+<main class="px-container-padding space-y-8 mt-4">
+<!-- Shifokorga yozilish Section -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h2 class="text-headline-md font-headline-md">Shifokorga yozilish</h2>
+<button class="text-primary text-label-md font-label-md">Hammasi</button>
+</div>
+<!-- Categories Chips -->
+<div class="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+<button class="px-4 py-2 bg-primary-container text-on-primary-container rounded-full text-label-md font-label-md whitespace-nowrap transition-all scale-100 active:scale-95">Barchasi</button>
+<button class="px-4 py-2 bg-surface-container-highest text-on-surface-variant rounded-full text-label-md font-label-md whitespace-nowrap transition-all hover:bg-surface-container-high active:scale-95">Kardiologiya</button>
+<button class="px-4 py-2 bg-surface-container-highest text-on-surface-variant rounded-full text-label-md font-label-md whitespace-nowrap transition-all hover:bg-surface-container-high active:scale-95">Dermatologiya</button>
+<button class="px-4 py-2 bg-surface-container-highest text-on-surface-variant rounded-full text-label-md font-label-md whitespace-nowrap transition-all hover:bg-surface-container-high active:scale-95">Nevrologiya</button>
+</div>
+<!-- Doctor Booking Bento Grid -->
+<div class="grid grid-cols-1 gap-4">
+<div class="glass-card rounded-xl p-4 shadow-sm border border-outline-variant flex flex-col gap-4 relative overflow-hidden">
+<div class="flex gap-4">
+<div class="w-20 h-20 rounded-xl overflow-hidden bg-surface-container shrink-0">
+<img class="w-full h-full object-cover" data-alt="A professional medical headshot of a friendly male cardiologist in a modern clinical setting. He is wearing a white lab coat and a stethoscope. The lighting is bright and optimistic, fitting a corporate modern aesthetic with soft blue tones and pristine whites. The background shows a hint of a high-end medical office." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt1nokXa_gISd_VmNweGYvUTChq-UDkwgX82_a-5BsV8hwhLsxKcdXjDcOTzQCoG1fBW0akvHAM6GJNImA38H6YovZ6JkUoe_Z-3Vb840wHUCNlMaWWD6WXzEyos9JwDTd4mfEVocO_KEWAzT3ZZ0jeixWyMyBV7HZo3uhR6UoQHkvbdpOiZTXJswLmcuhRf-oQ693a3bhZ47O3AgM4FrDAMFZwcbTjxyCoSjR0N7tJUYIDrYq_esyKA"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="text-body-lg font-headline-md">Dr. Ali Khan</h3>
+<p class="text-label-md font-label-md text-primary">Kardiolog</p>
+</div>
+<div class="flex items-center gap-1 bg-secondary-container px-2 py-0.5 rounded-full">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="text-label-md font-label-md text-on-secondary-container">4.9</span>
+</div>
+</div>
+<div class="mt-2 flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span class="text-label-md font-label-md">Toshkent, Markaz</span>
+</div>
+</div>
+</div>
+<!-- Time Slot Picker -->
+<div class="space-y-3">
+<p class="text-label-md font-label-md text-on-surface-variant">Vaqtni tanlang:</p>
+<div class="flex gap-2 overflow-x-auto hide-scrollbar">
+<button class="px-4 py-2 border border-primary text-primary rounded-lg text-label-md font-label-md whitespace-nowrap bg-primary-fixed">09:00</button>
+<button class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md whitespace-nowrap">10:30</button>
+<button class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md whitespace-nowrap">13:00</button>
+<button class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md whitespace-nowrap">15:30</button>
+<button class="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md whitespace-nowrap">16:45</button>
+</div>
+</div>
+<button class="w-full py-3 bg-primary text-on-primary rounded-xl text-body-lg font-headline-md shadow-lg shadow-primary/20 transition-all active:scale-[0.98]">
+                        Band qilish
+                    </button>
+</div>
+</div>
+</section>
+<!-- Qabullar tarixi Section -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h2 class="text-headline-md font-headline-md">Qabullar tarixi</h2>
+<button class="text-on-surface-variant text-label-md font-label-md flex items-center gap-1">
+                    Saralash <span class="material-symbols-outlined text-[18px]">filter_list</span>
+</button>
+</div>
+<div class="space-y-3">
+<!-- History Item 1 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant flex items-center gap-4 hover:shadow-md transition-shadow">
+<div class="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-secondary">check_circle</span>
+</div>
+<div class="flex-1">
+<h4 class="text-body-lg font-headline-md text-on-background">Dr. Kamola Fayziyeva</h4>
+<p class="text-label-md font-label-md text-on-surface-variant">Nevropatolog • Umumiy ko'rik</p>
+</div>
+<div class="text-right">
+<p class="text-body-md font-headline-md text-on-background">12 May</p>
+<p class="text-label-md font-label-md text-on-surface-variant">14:30</p>
+</div>
+</div>
+<!-- History Item 2 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant flex items-center gap-4 hover:shadow-md transition-shadow">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-outline">history</span>
+</div>
+<div class="flex-1">
+<h4 class="text-body-lg font-headline-md text-on-background">Dr. Otabek Sobirov</h4>
+<p class="text-label-md font-label-md text-on-surface-variant">Stomatolog • Maslahat</p>
+</div>
+<div class="text-right">
+<p class="text-body-md font-headline-md text-on-background">28 Apr</p>
+<p class="text-label-md font-label-md text-on-surface-variant">10:00</p>
+</div>
+</div>
+<!-- History Item 3 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant flex items-center gap-4 hover:shadow-md transition-shadow">
+<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-outline">history</span>
+</div>
+<div class="flex-1">
+<h4 class="text-body-lg font-headline-md text-on-background">Dr. Zilola Rasulova</h4>
+<p class="text-label-md font-label-md text-on-surface-variant">Terapevt • Retsept yangilash</p>
+</div>
+<div class="text-right">
+<p class="text-body-md font-headline-md text-on-background">15 Mar</p>
+<p class="text-label-md font-label-md text-on-surface-variant">11:15</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Nav Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe bg-surface-container-lowest shadow-lg rounded-t-xl">
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-label-md font-label-md mt-1">Asosiy</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">format_list_numbered</span>
+<span class="text-label-md font-label-md mt-1">Navbat</span>
+</button>
+<button class="flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1 active:scale-90 duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">calendar_today</span>
+<span class="text-label-md font-label-md mt-1">Qabullar</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">description</span>
+<span class="text-label-md font-label-md mt-1">Tashxislar</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">notification_add</span>
+<span class="text-label-md font-label-md mt-1">Eslatmalar</span>
+</button>
+</nav>
+<script>
+        // Micro-interactions for buttons
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('touchstart', function() {
+                this.classList.add('opacity-80', 'scale-95');
+            });
+            btn.addEventListener('touchend', function() {
+                this.classList.remove('opacity-80', 'scale-95');
+            });
+        });
+
+        // Simple animation for chips selection
+        const chips = document.querySelectorAll('.hide-scrollbar button');
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                chips.forEach(c => {
+                    c.classList.remove('bg-primary-container', 'text-on-primary-container');
+                    c.classList.add('bg-surface-container-highest', 'text-on-surface-variant');
+                });
+                chip.classList.add('bg-primary-container', 'text-on-primary-container');
+                chip.classList.remove('bg-surface-container-highest', 'text-on-surface-variant');
+            });
+        });
+
+        // Time slot selection
+        const timeSlots = document.querySelectorAll('.hide-scrollbar .border');
+        timeSlots.forEach(slot => {
+            slot.addEventListener('click', () => {
+                timeSlots.forEach(s => {
+                    s.classList.remove('bg-primary-fixed', 'border-primary', 'text-primary');
+                    s.classList.add('border-outline-variant', 'text-on-surface-variant');
+                });
+                slot.classList.add('bg-primary-fixed', 'border-primary', 'text-primary');
+                slot.classList.remove('border-outline-variant', 'text-on-surface-variant');
+            });
+        });
+    </script>
+</body></html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+
+<html class="light" lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Vitality - Ro'yxatdan o'tish</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #f7f9fb;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        input:focus {
+            outline: none;
+            border-color: #004ac6;
+            box-shadow: 0 0 0 2px rgba(0, 74, 198, 0.1);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#f7f9fb",
+                        "surface-dim": "#d8dadc",
+                        "on-surface-variant": "#434655",
+                        "background": "#f7f9fb",
+                        "on-surface": "#191c1e",
+                        "primary": "#004ac6",
+                        "primary-container": "#2563eb",
+                        "secondary-container": "#ceee93",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#737686",
+                        "on-primary": "#ffffff",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "1rem",
+                        "section-margin": "2rem",
+                        "element-gap": "1rem",
+                        "radius-inner": "0.75rem",
+                        "container-padding": "1.25rem"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col items-center">
+<!-- Suppressed Shell: Navigation is hidden for transactional registration screen -->
+<main class="w-full max-w-md px-container-padding flex-1 flex flex-col justify-center py-8">
+<!-- Header Section -->
+<div class="text-center mb-8 relative">
+<div class="absolute -top-12 left-1/2 -translate-x-1/2 w-64 h-64 opacity-20 pointer-events-none">
+
+</div>
+<div class="inline-flex items-center justify-center w-16 h-16 bg-primary-container rounded-xl mb-6 shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-on-primary text-4xl" style="font-variation-settings: 'FILL' 1;">health_and_safety</span>
+</div>
+<h1 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface mb-2">Xush kelibsiz!</h1>
+<p class="text-body-md text-on-surface-variant">Vitality platformasida ro'yxatdan o'ting va sog'lig'ingizni nazorat qiling.</p>
+</div>
+<!-- Registration Form -->
+<form class="space-y-5" onsubmit="return false;">
+<!-- Name Input Group -->
+<div class="space-y-1.5">
+<label class="text-label-md font-label-md text-on-surface-variant ml-1" for="full_name">Ism va Familiya</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">person</span>
+<input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="full_name" placeholder="Masalan: Aziz Rahimov" type="text"/>
+</div>
+</div>
+<!-- Date of Birth Group -->
+<div class="space-y-1.5">
+<label class="text-label-md font-label-md text-on-surface-variant ml-1" for="dob">Tug'ilgan yil, oy, kun</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">calendar_today</span>
+<input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="dob" type="date"/>
+</div>
+</div>
+<!-- Phone Number Group -->
+<div class="space-y-1.5">
+<label class="text-label-md font-label-md text-on-surface-variant ml-1" for="phone">Telefon raqami</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">call</span>
+<input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="phone" placeholder="+998 90 123 45 67" type="tel"/>
+</div>
+</div>
+<!-- Policy Checkbox -->
+<div class="flex items-start gap-3 py-2">
+<div class="mt-0.5">
+<input class="rounded border-outline/30 text-primary focus:ring-primary w-5 h-5" id="terms" type="checkbox"/>
+</div>
+<label class="text-label-md text-on-surface-variant leading-tight" for="terms">
+                    Men <a class="text-primary font-semibold" href="#">foydalanish shartlari</a> va <a class="text-primary font-semibold" href="#">maxfiylik siyosatiga</a> roziman.
+                </label>
+</div>
+<!-- CTA Buttons -->
+<div class="pt-4 space-y-4">
+<button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md text-headline-md shadow-md active:scale-95 transition-all" type="submit">
+                    Ro'yxatdan o'tish
+                </button>
+<div class="flex items-center gap-2 py-2">
+<div class="h-[1px] flex-1 bg-outline/20"></div>
+<span class="text-label-md text-outline">yoki</span>
+<div class="h-[1px] flex-1 bg-outline/20"></div>
+</div>
+<a class="w-full block text-center py-3.5 border border-primary/20 bg-white text-primary rounded-xl font-headline-md text-headline-md active:bg-surface-container-low transition-colors" href="#">
+                    Kirish
+                </a>
+</div>
+</form>
+<!-- Illustration / Background Context -->
+<div class="mt-12 flex justify-center">
+<div class="relative w-full max-w-[280px] h-48 rounded-2xl overflow-hidden shadow-xl border border-white">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary-container/20"></div>
+<img class="w-full h-full object-cover" data-alt="A clean, minimalist 3D illustration of a friendly digital doctor avatar wearing a white lab coat and stethoscope, floating in a bright clinical office environment with soft blue and green lighting. The style is modern, professional, and compassionate, matching a healthcare mobile app aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4CM5_sCCc-9x7BJzk7HIwamYVBRrjolSIJUu3dPxhSY-Kxww_C06PU7o7sc4Q04sf5RHJl5jqX-Th0u7YV30jSyYDpNHNRtRJMfXdr2slw5mY-AdvOueD7lkznStg7AlUZprnc6VMWAlEFgAwbhInwYhpSY5fi_prlxD9Vm9i5WfB3rn8bsHSIdxh2zb8w3p7XX7jY2xIrpwWlI6fr9dUPdv8vaHVFQc3tbRA6Js3kJwApSzu9_P-qA"/>
+<div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/20 to-transparent">
+<p class="text-white text-label-md font-semibold text-center italic">"Sizning sog'lig'ingiz — bizning ustuvorligimiz."</p>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Security Badge -->
+<footer class="w-full py-6 flex flex-col items-center gap-2 opacity-60">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">lock</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Xavfsiz ulanish</span>
+</div>
+<p class="text-[10px] text-center px-8">© 2024 Vitality Healthcare. Barcha huquqlar himoyalangan.</p>
+</footer>
+<script>
+        // Simple input formatting for phone number
+        const phoneInput = document.getElementById('phone');
+        phoneInput.addEventListener('focus', function() {
+            if (!this.value) this.value = '+998 ';
+        });
+
+        // Interactive validation feedback (visual only)
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.addEventListener('blur', function() {
+                if(this.value.length > 0) {
+                    this.classList.add('border-primary/40');
+                } else {
+                    this.classList.remove('border-primary/40');
+                }
+            });
+        });
+
+        // Button Ripple/Press Effect
+        document.querySelectorAll('button, a').forEach(el => {
+            el.addEventListener('mousedown', function() {
+                this.style.opacity = '0.8';
+                this.style.transform = 'scale(0.98)';
+            });
+            el.addEventListener('mouseup', function() {
+                this.style.opacity = '1';
+                this.style.transform = 'scale(1)';
+            });
+            el.addEventListener('mouseleave', function() {
+                this.style.opacity = '1';
+                this.style.transform = 'scale(1)';
+            });
+        });
+    </script>
+</body></html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+
+<html lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>Health Mini App - Asosiy</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#ceee93",
+                        "secondary-fixed-dim": "#b3d17a",
+                        "background": "#f7f9fb",
+                        "secondary-fixed": "#ceee93",
+                        "primary-container": "#2563eb",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary": "#004ac6",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "on-background": "#191c1e",
+                        "primary-fixed": "#dbe1ff",
+                        "on-primary-fixed": "#00174b",
+                        "on-tertiary-container": "#eef0ff",
+                        "outline-variant": "#c3c6d7",
+                        "surface-variant": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#536d22",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface-tint": "#0053db",
+                        "surface-container": "#eceef0",
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "outline": "#737686",
+                        "tertiary-container": "#656d84",
+                        "on-surface-variant": "#434655",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "on-tertiary-fixed": "#131b2e",
+                        "surface-dim": "#d8dadc",
+                        "surface": "#f7f9fb",
+                        "secondary": "#4d661c",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed-variant": "#364e03",
+                        "surface-bright": "#f7f9fb",
+                        "tertiary": "#4d556b",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#dae2fd",
+                        "on-secondary-fixed": "#131f00",
+                        "surface-container-highest": "#e0e3e5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section-margin": "2rem",
+                        "element-gap": "1rem",
+                        "gutter": "1rem",
+                        "container-padding": "1.25rem",
+                        "radius-inner": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .custom-scroll-hide::-webkit-scrollbar { display: none; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .active-tap:active { transform: scale(0.95); transition: transform 0.1s ease; }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-40 bg-background/80 backdrop-blur-md flex justify-between items-center px-container-padding py-4 w-full">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="A professional studio portrait of a friendly young man with short dark hair, wearing a casual light blue shirt, set against a soft grey background. The lighting is clean and bright, characteristic of a high-end corporate application profile photo with a welcoming and trustworthy medical context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCukf6B7LTopf_b6JE6tPdFxEYpPZTdyN1zq5pqDODY8a9aU1-wV1dUJ7ISe-Gf2lGLcmuhHi48IkIOQ3hLFvNT114KNdCNPJ8TlVDQ625Njtjq0J2ib1ouiyYIfkX0JCbggyONAbUZy44cIxAxYR64lV4lM9LRblycr9n5C4HrDwcTbIf2SMBmyj6r62AszLhDIaN9E8Ysa5OEt1DOr54wZOuDmkfqAZkZaQG9emx068tvZnFuEtIHsQ"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Xayrli tong,</p>
+<h1 class="text-headline-md font-headline-md text-on-background leading-tight">Sajibur Rahman</h1>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors active:opacity-80 active:scale-95">
+<span class="material-symbols-outlined text-primary">notifications</span>
+</button>
+</header>
+<main class="pt-24 px-container-padding space-y-6">
+<!-- Welcome Hero Section (Inspiration: Mobile 1) -->
+<section class="relative overflow-hidden rounded-3xl bg-primary p-6 text-on-primary-container shadow-xl">
+<div class="relative z-10 space-y-4">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile leading-tight">O'zingizni bugun <br/>qanday his qilyapsiz?</h2>
+<div class="flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-full px-4 py-2 w-fit">
+<span class="material-symbols-outlined text-[18px]">search</span>
+<span class="text-label-md font-label-md">Shifokor yoki xizmatni qidiring</span>
+</div>
+</div>
+<div class="absolute right-[-20px] bottom-[-20px] opacity-20">
+<span class="material-symbols-outlined text-[120px]" style="font-variation-settings: 'FILL' 1;">medical_services</span>
+</div>
+</section>
+<!-- Bugungi Navbat (Current Position Card) -->
+<section>
+<div class="flex items-center justify-between mb-3">
+<h3 class="text-headline-md font-headline-md">Bugungi navbat</h3>
+<button class="text-primary text-label-md font-label-md">Hammasi</button>
+</div>
+<div class="bg-secondary-container p-5 rounded-3xl shadow-sm border border-secondary-fixed flex items-center justify-between">
+<div class="space-y-1">
+<p class="text-label-md font-label-md text-on-secondary-container/70 uppercase tracking-wider">Sizning raqamingiz</p>
+<div class="flex items-baseline gap-1">
+<span class="text-[40px] font-bold text-on-secondary-container">08</span>
+<span class="text-body-md text-on-secondary-container/80">/ 15 ta qoldi</span>
+</div>
+<div class="mt-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]">schedule</span>
+<span class="text-label-md font-label-md">Taxminiy vaqt: 10:45</span>
+</div>
+</div>
+<div class="w-16 h-16 bg-white rounded-2xl flex flex-col items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-primary text-[32px]">diversity_3</span>
+</div>
+</div>
+</section>
+<!-- Statistika (Health Metrics Bento) -->
+<section>
+<h3 class="text-headline-md font-headline-md mb-3">Statistika</h3>
+<div class="grid grid-cols-2 gap-4">
+<!-- Steps -->
+<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
+<div class="flex items-center gap-2 text-secondary">
+<span class="material-symbols-outlined text-[20px]">directions_walk</span>
+<span class="text-label-md font-label-md">Qadamlar</span>
+</div>
+<div class="space-y-1">
+<p class="text-headline-md font-headline-md">6,432</p>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-[64%]"></div>
+</div>
+<p class="text-label-md font-label-md text-on-surface-variant">Maqsad: 10k</p>
+</div>
+</div>
+<!-- Sleep -->
+<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[20px]">bedtime</span>
+<span class="text-label-md font-label-md">Uyqu</span>
+</div>
+<div class="space-y-1">
+<p class="text-headline-md font-headline-md">7s 20m</p>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[85%]"></div>
+</div>
+<p class="text-label-md font-label-md text-on-surface-variant">Yaxshi sifat</p>
+</div>
+</div>
+<!-- Heart Rate -->
+<div class="col-span-2 bg-white p-4 rounded-3xl border border-outline-variant/30 shadow-sm flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-error-container/30 flex items-center justify-center text-error">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">favorite</span>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Yurak urishi</p>
+<p class="text-headline-md font-headline-md">72 <span class="text-body-md font-normal text-on-surface-variant">bpm</span></p>
+</div>
+</div>
+<div class="h-10 w-24">
+<!-- Tiny Sparkline Mockup -->
+<div class="flex items-end gap-1 h-full">
+<div class="w-1 bg-error/20 h-[40%] rounded-full"></div>
+<div class="w-1 bg-error/40 h-[60%] rounded-full"></div>
+<div class="w-1 bg-error/60 h-[80%] rounded-full"></div>
+<div class="w-1 bg-error h-[100%] rounded-full"></div>
+<div class="w-1 bg-error/70 h-[50%] rounded-full"></div>
+<div class="w-1 bg-error/40 h-[30%] rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Oxirgi Tashxislar -->
+<section>
+<div class="flex items-center justify-between mb-3">
+<h3 class="text-headline-md font-headline-md">Oxirgi tashxislar</h3>
+<button class="text-primary text-label-md font-label-md">Barchasi</button>
+</div>
+<div class="space-y-3">
+<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex gap-4 active-tap cursor-pointer">
+<div class="w-14 h-14 rounded-2xl overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="Close up photo of a female doctor with glasses and a stethoscope, smiling professionally. She has short blonde hair and is wearing a crisp white laboratory coat. Soft, high-key studio lighting with a neutral clinical background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_ePVdD4XyZJVPawGtIL0P0e3mOX3WDqEDZdq0gHRyanXfzGpPeDOAc0rjpQ5cvGJQA1T9OHhyl6k7zyQ9CozJZxavEV_myNvF0yMG-8tqnMRFFMXMumtoYC-bTDHmQkw-PydE4hqRL3TMNr0kd8WBarvoJ7H7XeucLSdTzKfO0iPfyI-gHbRNRr4XH4unXkp3S7fHj7Y7aFME4brch6jQwdVCcj1TapsJBTy98MYDIzd4dwZ0ThVdbA"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="text-body-lg font-bold">Dr. Aziza Karimova</h4>
+<span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">24-Iyun</span>
+</div>
+<p class="text-label-md font-label-md text-primary mb-1">Terapevt</p>
+<p class="text-body-md text-on-surface-variant line-clamp-1">Umumiy shamollash belgilari, dam olish va ko'p suyuqlik...</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex gap-4 active-tap cursor-pointer">
+<div class="w-14 h-14 rounded-2xl overflow-hidden bg-surface-container">
+<img class="w-full h-full object-cover" data-alt="A portrait of a male specialist doctor in his 40s, wearing a stethoscope and a blue medical uniform. He has a friendly, reassuring expression. The image is bright and professional, set in a clean modern hospital environment with soft depth of field." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeif8lw7akPCJIpV9H_MPucjHss6XvngGZLPiv9KfT3tVzNDd4OQnRQGK87OEcVPeW0G4Ecod1MqGpc9APZ_tfvcfilUus9YlfiFsiUWQ5dzf7XtVmQLYPq0scr9MPO4OBZtmuADuQ0C7-ebWtePOFu0VP4-3anuxygTLAMbgIIUNaF1oQVRvG6yB9awiU149xq9eQCfNytbul8t8O4I9dXaKpwJxQflEoijecgO_Y_Wwt6kiw8UHa8Q"/>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<h4 class="text-body-lg font-bold">Dr. Jasur Umarov</h4>
+<span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">12-May</span>
+</div>
+<p class="text-label-md font-label-md text-primary mb-1">Kardiolog</p>
+<p class="text-body-md text-on-surface-variant line-clamp-1">Yurak ritmi barqaror, profilaktika uchun tahlillar...</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe shadow-lg bg-surface-container-lowest rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1 active-tap" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="text-label-md font-label-md mt-1">Asosiy</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active-tap" href="#">
+<span class="material-symbols-outlined">format_list_numbered</span>
+<span class="text-label-md font-label-md mt-1">Navbat</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active-tap" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="text-label-md font-label-md mt-1">Qabullar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active-tap" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="text-label-md font-label-md mt-1">Tashxislar</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-3 py-1 hover:bg-surface-container-high transition-all active-tap" href="#">
+<span class="material-symbols-outlined">notification_add</span>
+<span class="text-label-md font-label-md mt-1">Eslatmalar</span>
+</a>
+</nav>
+<!-- FAB (Floating Action Button) - Contextual for Booking -->
+<button class="fixed bottom-24 right-6 w-14 h-14 bg-primary text-on-primary rounded-2xl shadow-xl flex items-center justify-center active-tap z-40">
+<span class="material-symbols-outlined text-[32px]">add</span>
+</button>
+<script>
+        // Simple Interaction Logic
+        document.querySelectorAll('.active-tap').forEach(el => {
+            el.addEventListener('touchstart', () => {
+                el.style.transform = 'scale(0.96)';
+            });
+            el.addEventListener('touchend', () => {
+                el.style.transform = 'scale(1)';
+            });
+        });
+
+        // Atmospheric micro-interaction for the health metrics
+        const bars = document.querySelectorAll('.h-full.bg-secondary, .h-full.bg-primary');
+        bars.forEach(bar => {
+            const targetWidth = bar.style.width;
+            bar.style.width = '0';
+            setTimeout(() => {
+                bar.style.transition = 'width 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+                bar.style.width = targetWidth;
+            }, 300);
+        });
+    </script>
+</body></html>

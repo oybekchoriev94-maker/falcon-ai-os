@@ -1,340 +1,376 @@
 <!DOCTYPE html>
 <html lang="uz">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Bemor Kabineti</title>
-  <script src="https://telegram.org/js/telegram-webapp.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { inter: ['Inter', 'sans-serif'] }
-        }
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>Bemor Kabineti</title>
+<script src="https://telegram.org/js/telegram-webapp.js"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        secondary: "#4d661c", "secondary-container": "#ceee93", "secondary-fixed": "#ceee93", "secondary-fixed-dim": "#b3d17a",
+        "on-secondary": "#ffffff", "on-secondary-container": "#536d22", "on-secondary-fixed": "#131f00", "on-secondary-fixed-variant": "#364e03",
+        primary: "#004ac6", "primary-container": "#2563eb", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+        "on-primary": "#ffffff", "on-primary-container": "#eeefff", "on-primary-fixed": "#00174b", "on-primary-fixed-variant": "#003ea8",
+        background: "#f7f9fb", surface: "#f7f9fb", "surface-dim": "#d8dadc", "surface-bright": "#f7f9fb",
+        "surface-container-lowest": "#ffffff", "surface-container-low": "#f2f4f6", "surface-container": "#eceef0",
+        "surface-container-high": "#e6e8ea", "surface-container-highest": "#e0e3e5",
+        "on-surface": "#191c1e", "on-surface-variant": "#434655",
+        "inverse-surface": "#2d3133", "inverse-on-surface": "#eff1f3",
+        outline: "#737686", "outline-variant": "#c3c6d7",
+        error: "#ba1a1a", "error-container": "#ffdad6", "on-error": "#ffffff", "on-error-container": "#93000a",
+        tertiary: "#4d556b", "tertiary-container": "#656d84",
+      },
+      borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", "2xl": "1rem", "3xl": "1.5rem", full: "9999px" },
+      spacing: { gutter: "1rem", "element-gap": "1rem", "section-margin": "2rem", "radius-inner": "0.75rem", "container-padding": "1.25rem" },
+      fontFamily: { "headline-lg": ["Inter"], "headline-md": ["Inter"], "headline-lg-mobile": ["Inter"], "body-lg": ["Inter"], "body-md": ["Inter"], "label-md": ["Inter"] },
+      fontSize: {
+        "headline-lg": ["28px", { lineHeight: "34px", letterSpacing: "-0.02em", fontWeight: "700" }],
+        "headline-md": ["20px", { lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "600" }],
+        "headline-lg-mobile": ["24px", { lineHeight: "30px", fontWeight: "700" }],
+        "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+        "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+        "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "600" }]
       }
     }
-  </script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Inter', -apple-system, sans-serif;
-      background: var(--tg-theme-bg-color, #f8fafc);
-      color: var(--tg-theme-text-color, #1e293b);
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    .tg-header {
-      background: var(--tg-theme-header-bg-color, linear-gradient(135deg, #1a365d, #0f172a));
-      position: sticky; top: 0; z-index: 50;
-    }
-    .tg-btn {
-      background: var(--tg-theme-button-color, #2563eb);
-      color: var(--tg-theme-button-text-color, #ffffff);
-      border: none; border-radius: 12px; font-weight: 600; cursor: pointer;
-      transition: all .2s;
-    }
-    .tg-btn:active { transform: scale(.97); opacity: .9; }
-    .tg-btn-secondary {
-      background: var(--tg-theme-secondary-bg-color, #f1f5f9);
-      color: var(--tg-theme-text-color, #1e293b);
-      border: none; border-radius: 12px; font-weight: 500; cursor: pointer;
-    }
-    .tg-card {
-      background: var(--tg-theme-section-bg-color, #ffffff);
-      border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
-    }
-    .tg-input {
-      width: 100%; padding: 12px 16px; border-radius: 12px;
-      border: 1.5px solid var(--tg-theme-secondary-bg-color, #e2e8f0);
-      background: var(--tg-theme-bg-color, #fff);
-      color: var(--tg-theme-text-color, #1e293b);
-      font-size: 14px; outline: none; transition: border .2s;
-    }
-    .tg-input:focus { border-color: var(--tg-theme-button-color, #2563eb); }
-    .nav-tab {
-      cursor: pointer; transition: all .2s; position: relative;
-      border-radius: 8px; min-width: 72px;
-    }
-    .nav-tab:hover { background: var(--tg-theme-secondary-bg-color, #f1f5f9); }
-    .tab-active { color: var(--tg-theme-button-color, #2563eb); font-weight: 600; }
-    .tab-active::after {
-      content: ''; position: absolute; bottom: 0; left: 25%; width: 50%;
-      height: 3px; background: var(--tg-theme-button-color, #2563eb);
-      border-radius: 3px 3px 0 0;
-    }
-    .status-pending { background: #fef3c7; color: #92400e; }
-    .status-completed { background: #d1fae5; color: #065f46; }
-    .status-cancelled { background: #fee2e2; color: #991b1b; }
-    .status-active { background: #dbeafe; color: #1e40af; }
-    .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
-    .anim-in { animation: fadeUp .35s ease both; }
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    .toast {
-      position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
-      z-index: 999; background: var(--tg-theme-destructive-text-color, #1e293b);
-      color: #fff; padding: 12px 24px; border-radius: 12px; font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,.15); display: none;
-      max-width: 90%; text-align: center;
-    }
-    .toast-success { background: #059669; }
-    .toast-error { background: #dc2626; }
-    .queue-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-    .queue-dot.waiting { background: #f59e0b; }
-    .queue-dot.active { background: #3b82f6; animation: pulse 1.5s infinite; }
-    .queue-dot.completed { background: #10b981; }
-    .queue-dot.cancelled { background: #ef4444; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-    #splash {
-      position: fixed; inset: 0; z-index: 9999;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: var(--tg-theme-bg-color, #f8fafc);
-      transition: opacity .4s ease;
-    }
-    #splash.hidden { opacity: 0; pointer-events: none; }
-    .spinner { width: 40px; height: 40px; border: 4px solid var(--tg-theme-secondary-bg-color, #e2e8f0); border-top-color: var(--tg-theme-button-color, #2563eb); border-radius: 50%; animation: spin .8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spinner-sm { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
-    .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
-    .modal-content { background: var(--tg-theme-section-bg-color, #fff); border-radius: 20px; padding: 24px; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto; }
-  </style>
+  }
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; background: #f7f9fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; display: inline-block; vertical-align: middle; }
+.glass-card { background: rgba(255,255,255,0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.active-tap:active { transform: scale(0.95); transition: transform .1s ease; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.anim-in { animation: fadeUp .35s ease both; }
+@keyframes pulse-soft { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .85; transform: scale(.98); } }
+.animate-pulse-soft { animation: pulse-soft 3s ease-in-out infinite; }
+.toast {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 999;
+  padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.15); display: none; max-width: 90%; text-align: center;
+}
+.toast-success { background: #2563eb; color: #fff; }
+.toast-error { background: #dc2626; color: #fff; }
+.queue-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.queue-dot.waiting { background: #f59e0b; }
+.queue-dot.in_progress { background: #2563eb; animation: pulse-soft 1.5s infinite; }
+.queue-dot.active { background: #2563eb; }
+.queue-dot.completed { background: #10b981; }
+.queue-dot.cancelled { background: #ef4444; }
+.status-badge { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.status-pending { background: #fef3c7; color: #92400e; }
+.status-completed { background: #d1fae5; color: #065f46; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
+.status-active { background: #dbeafe; color: #1e40af; }
+.spinner-sm { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f7f9fb; transition: opacity .4s ease; }
+#splash.hidden { opacity: 0; pointer-events: none; }
+.spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin .8s linear infinite; }
+</style>
 </head>
-<body>
+<body class="bg-background text-on-surface min-h-screen pb-28">
 
-<div id="splash">
-  <div class="spinner mb-4"></div>
-  <p class="text-sm opacity-60">Yuklanmoqda...</p>
-</div>
-
+<div id="splash"><div class="spinner mb-4"></div><p class="text-sm opacity-60">Yuklanmoqda...</p></div>
 <div id="toast" class="toast"></div>
 
-<!-- REGISTRATION SCREEN -->
+<!-- ===== REGISTRATION SCREEN ===== -->
 <div id="screen-register" style="display:none">
-  <div class="tg-header p-5 pt-8 text-white">
-    <h1 class="text-xl font-bold">Bemor Kabineti</h1>
-    <p class="text-sm opacity-80 mt-1">Ro'yxatdan o'tish</p>
-  </div>
-  <div class="p-4">
-    <div class="tg-card p-5 anim-in">
-      <div class="text-center mb-5">
-        <span class="material-icons-round text-5xl mb-2" style="color:var(--tg-theme-button-color,#2563eb)">person_add</span>
-        <p class="text-sm opacity-60">Telegram profilingiz orqali klinika tizimiga ro'yxatdan o'ting</p>
+  <main class="w-full max-w-md mx-auto px-container-padding flex-1 flex flex-col justify-center min-h-screen py-8">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-container rounded-xl mb-6 shadow-lg shadow-primary/20">
+        <span class="material-symbols-outlined text-on-primary text-4xl" style="font-variation-settings:'FILL'1">health_and_safety</span>
       </div>
-      <div class="space-y-3">
-        <input class="tg-input" id="regFirstName" placeholder="Ism *" required>
-        <input class="tg-input" id="regLastName" placeholder="Familiya">
-        <input class="tg-input" id="regPhone" type="text" inputmode="tel" placeholder="Telefon *" required>
-        <input class="tg-input" id="regBirthDate" type="date" placeholder="Tug'ilgan sana">
-        <button class="tg-btn w-full py-3 text-base mt-2" onclick="registerPatient()">
-          <span class="material-icons-round text-lg align-middle">how_to_reg</span> Ro'yxatdan o'tish
+      <h1 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface mb-2">Xush kelibsiz!</h1>
+      <p class="text-body-md text-on-surface-variant">Klinika platformasida ro'yxatdan o'ting va sog'lig'ingizni nazorat qiling.</p>
+    </div>
+    <div class="space-y-4">
+      <div class="space-y-1.5">
+        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regFirstName">Ism</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">person</span>
+          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="regFirstName" placeholder="Ismingiz" required>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regLastName">Familiya</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">badge</span>
+          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="regLastName" placeholder="Familiyangiz">
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regPhone">Telefon raqami</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">call</span>
+          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md placeholder:text-outline/50 transition-all focus:border-primary focus:ring-0" id="regPhone" type="text" inputmode="tel" placeholder="+998 90 123 45 67" required>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <label class="text-label-md font-label-md text-on-surface-variant ml-1" for="regBirthDate">Tug'ilgan sana</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">calendar_today</span>
+          <input class="w-full pl-12 pr-4 py-3.5 bg-surface-container-lowest border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="regBirthDate" type="date">
+        </div>
+      </div>
+      <div class="pt-2">
+        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md text-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" onclick="registerPatient()">
+          <span class="material-symbols-outlined text-on-primary">how_to_reg</span> Ro'yxatdan o'tish
         </button>
       </div>
     </div>
-  </div>
+    <footer class="w-full py-6 flex flex-col items-center gap-2 opacity-60 mt-8">
+      <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">lock</span><span class="text-[10px] font-bold uppercase tracking-widest">Xavfsiz ulanish</span></div>
+      <p class="text-[10px] text-center px-8">© 2025 Falcon Med AI. Barcha huquqlar himoyalangan.</p>
+    </footer>
+  </main>
 </div>
 
-<!-- MAIN APP -->
+<!-- ===== MAIN SCREEN ===== -->
 <div id="screen-main" style="display:none">
-  <!-- HEADER -->
-  <div class="tg-header p-4 pt-6">
-    <div class="flex items-center justify-between">
+  <!-- TOP APP BAR -->
+  <header class="bg-background/80 backdrop-blur-md flex justify-between items-center px-container-padding py-4 w-full sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed bg-surface-container flex items-center justify-center">
+        <span class="material-symbols-outlined text-primary text-xl">person</span>
+      </div>
       <div>
-        <h1 class="text-xl font-bold" id="greeting">Assalomu alaykum</h1>
-        <p class="text-sm opacity-80 mt-0.5" id="patientInfo">Bemor kabineti</p>
-      </div>
-      <div class="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center">
-        <span class="material-icons-round text-2xl">person</span>
+        <p class="text-label-md font-label-md text-on-surface-variant" id="greetingLabel">Xayrli kun,</p>
+        <h1 class="text-headline-md font-headline-md text-on-background leading-tight" id="greeting">Bemor</h1>
       </div>
     </div>
-  </div>
+    <button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors">
+      <span class="material-symbols-outlined text-primary">notifications</span>
+    </button>
+  </header>
 
-  <!-- TABS -->
-  <div class="flex justify-around px-4 pt-3 pb-1 border-b" style="border-color:var(--tg-theme-secondary-bg-color,#e2e8f0)">
-    <div class="nav-tab tab-active py-2 px-3 text-center" data-tab="dashboard" onclick="switchTab('dashboard')">
-      <span class="material-icons-round text-xl block mx-auto mb-0.5">dashboard</span>
-      <span class="text-[11px]">Asosiy</span>
-    </div>
-    <div class="nav-tab py-2 px-3 text-center" data-tab="queue" onclick="switchTab('queue')">
-      <span class="material-icons-round text-xl block mx-auto mb-0.5">format_list_numbered</span>
-      <span class="text-[11px]">Navbat</span>
-    </div>
-    <div class="nav-tab py-2 px-3 text-center" data-tab="appointments" onclick="switchTab('appointments')">
-      <span class="material-icons-round text-xl block mx-auto mb-0.5">event</span>
-      <span class="text-[11px]">Qabullar</span>
-    </div>
-    <div class="nav-tab py-2 px-3 text-center" data-tab="consultations" onclick="switchTab('consultations')">
-      <span class="material-icons-round text-xl block mx-auto mb-0.5">stethoscope</span>
-      <span class="text-[11px]">Tashxislar</span>
-    </div>
-    <div class="nav-tab py-2 px-3 text-center" data-tab="reminders" onclick="switchTab('reminders')">
-      <span class="material-icons-round text-xl block mx-auto mb-0.5">medication</span>
-      <span class="text-[11px]">Eslatma</span>
-    </div>
-  </div>
+  <!-- CONTENT TABS -->
+  <main class="px-container-padding space-y-6 pt-2 pb-4">
 
-  <!-- TAB: DASHBOARD -->
-  <div id="tab-dashboard" class="tab-content px-4 pt-4 pb-24">
-    <div class="grid grid-cols-2 gap-3 mb-4">
-      <div class="tg-card p-4 anim-in">
-        <span class="material-icons-round text-2xl mb-1.5" style="color:var(--tg-theme-button-color,#2563eb)">format_list_numbered</span>
-        <p class="text-2xl font-bold" id="statQueue">0</p>
-        <p class="text-xs opacity-60">Navbatdagi</p>
-      </div>
-      <div class="tg-card p-4 anim-in" style="animation-delay:.08s">
-        <span class="material-icons-round text-2xl mb-1.5" style="color:var(--tg-theme-button-color,#2563eb)">event</span>
-        <p class="text-2xl font-bold" id="statAppointments">0</p>
-        <p class="text-xs opacity-60">Kelgusi qabullar</p>
-      </div>
-    </div>
-
-    <div class="tg-card p-4 mb-4 anim-in" style="animation-delay:.12s">
-      <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-        <span class="material-icons-round text-lg" style="color:var(--tg-theme-button-color,#2563eb)">access_time</span>
-        Bugungi navbat
-      </h3>
-      <div id="todayQueue">
-        <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
-      </div>
-    </div>
-
-    <div class="tg-card p-4 mb-4 anim-in" style="animation-delay:.16s">
-      <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-        <span class="material-icons-round text-lg" style="color:var(--tg-theme-button-color,#2563eb)">history</span>
-        Oxirgi tashxislar
-      </h3>
-      <div id="recentConsultations">
-        <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-3 anim-in" style="animation-delay:.2s">
-      <button class="tg-btn-secondary p-4 flex items-center gap-2 justify-center text-sm" onclick="switchTab('appointments')">
-        <span class="material-icons-round text-lg">event</span> Yozilish
-      </button>
-      <button class="tg-btn p-4 flex items-center gap-2 justify-center text-sm" onclick="switchTab('reminders')">
-        <span class="material-icons-round text-lg">add_alarm</span> Eslatma
-      </button>
-    </div>
-  </div>
-
-  <!-- TAB: QUEUE -->
-  <div id="tab-queue" class="tab-content px-4 pt-4 pb-24" style="display:none">
-    <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">format_list_numbered</span>
-      Bugungi navbat
-    </h3>
-    <div id="queueList">
-      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
-    </div>
-  </div>
-
-  <!-- TAB: APPOINTMENTS -->
-  <div id="tab-appointments" class="tab-content px-4 pt-4 pb-24" style="display:none">
-    <div class="tg-card p-4 mb-4">
-      <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-        <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">add_circle</span>
-        Shifokorga yozilish
-      </h3>
-      <div class="space-y-3">
-        <select class="tg-input" id="bookDoctor">
-          <option value="">Shifokorni tanlang</option>
-        </select>
-        <input class="tg-input" id="bookDate" type="date">
-        <select class="tg-input" id="bookSlot">
-          <option value="">Vaqtni tanlang</option>
-        </select>
-        <button class="tg-btn w-full py-3" onclick="bookAppointment()">
-          <span class="material-icons-round text-lg align-middle">event_available</span> Yozilish
-        </button>
-      </div>
-    </div>
-
-    <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">event_note</span>
-      Mening qabullarim
-    </h3>
-    <div id="appointmentsList">
-      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
-    </div>
-  </div>
-
-  <!-- TAB: CONSULTATIONS -->
-  <div id="tab-consultations" class="tab-content px-4 pt-4 pb-24" style="display:none">
-    <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">stethoscope</span>
-      Tashxis va hisobotlar
-    </h3>
-    <div id="consultationsList">
-      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
-    </div>
-  </div>
-
-  <!-- TAB: REMINDERS -->
-  <div id="tab-reminders" class="tab-content px-4 pt-4 pb-24" style="display:none">
-    <div class="tg-card p-4 mb-4">
-      <h3 class="font-semibold mb-4 flex items-center gap-2 text-sm">
-        <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">add_circle</span>
-        Yangi eslatma
-      </h3>
-      <div class="space-y-3">
-        <input class="tg-input" id="medName" placeholder="Dori nomi">
-        <div class="flex gap-2">
-          <input class="tg-input flex-1" id="medDosage" placeholder="Miqdor (mg/dona)">
-          <input class="tg-input w-32" id="medTime" type="time">
+    <!-- TAB: DASHBOARD (Asosiy) -->
+    <div id="tab-dashboard" class="tab-content space-y-6">
+      <section class="relative overflow-hidden rounded-3xl bg-primary p-6 text-on-primary shadow-xl">
+        <div class="relative z-10 space-y-4">
+          <h2 class="text-headline-lg-mobile font-headline-lg-mobile leading-tight" id="dashboardGreeting">O'zingizni bugun qanday his qilyapsiz?</h2>
+          <div class="flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-full px-4 py-2 w-fit text-sm">
+            <span class="material-symbols-outlined text-[18px]">search</span>
+            <span>Shifokor yoki xizmatni qidiring</span>
+          </div>
         </div>
-        <button class="tg-btn w-full py-3" onclick="addReminder()">
-          <span class="material-icons-round text-lg align-middle">check</span> Saqlash
+        <div class="absolute right-[-20px] bottom-[-20px] opacity-20">
+          <span class="material-symbols-outlined text-[120px]" style="font-variation-settings:'FILL'1">medical_services</span>
+        </div>
+      </section>
+
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-headline-md font-headline-md">Bugungi navbat</h3>
+          <button class="text-primary text-label-md font-label-md" onclick="switchTab('queue')">Hammasi</button>
+        </div>
+        <div id="todayQueue" class="bg-secondary-container p-5 rounded-3xl shadow-sm border border-secondary-fixed">
+          <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
+            <div class="flex items-center gap-2 text-secondary">
+              <span class="material-symbols-outlined text-[20px]">format_list_numbered</span>
+              <span class="text-label-md font-label-md">Navbat</span>
+            </div>
+            <p class="text-headline-md font-headline-md" id="statQueue">0</p>
+          </div>
+          <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex flex-col gap-3">
+            <div class="flex items-center gap-2 text-primary">
+              <span class="material-symbols-outlined text-[20px]">event</span>
+              <span class="text-label-md font-label-md">Qabullar</span>
+            </div>
+            <p class="text-headline-md font-headline-md" id="statAppointments">0</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-headline-md font-headline-md">Oxirgi tashxislar</h3>
+          <button class="text-primary text-label-md font-label-md" onclick="switchTab('consultations')">Barchasi</button>
+        </div>
+        <div id="recentConsultations" class="space-y-3">
+          <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+        </div>
+      </section>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/30 shadow-sm flex items-center gap-3 active-tap cursor-pointer" onclick="switchTab('appointments')">
+          <span class="material-symbols-outlined text-primary">event</span>
+          <span class="text-label-md font-label-md">Yozilish</span>
+        </button>
+        <button class="bg-primary-container text-on-primary p-4 rounded-3xl shadow-md flex items-center gap-3 active-tap cursor-pointer" onclick="switchTab('reminders')">
+          <span class="material-symbols-outlined">add_alarm</span>
+          <span class="text-label-md font-label-md">Eslatma</span>
         </button>
       </div>
     </div>
 
-    <h3 class="font-semibold mb-3 flex items-center gap-2 text-sm">
-      <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">alarm</span>
-      Faol eslatmalar
-    </h3>
-    <div id="remindersList">
-      <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+    <!-- TAB: QUEUE (Navbat) -->
+    <div id="tab-queue" class="tab-content space-y-6" style="display:none">
+      <section class="pt-2">
+        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Sizning navbatingiz</h2>
+        <p class="text-body-md font-body-md text-on-surface-variant mt-1">Klinikadagi hozirgi holatingiz</p>
+      </section>
+      <div id="queueList" class="space-y-4">
+        <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+      </div>
     </div>
-  </div>
+
+    <!-- TAB: APPOINTMENTS (Qabullar) -->
+    <div id="tab-appointments" class="tab-content space-y-6" style="display:none">
+      <section class="pt-2">
+        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Shifokorga yozilish</h2>
+        <p class="text-body-md text-on-surface-variant mt-1">Yangi vaqt band qilish</p>
+      </section>
+      <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Shifokor</label>
+          <select class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookDoctor">
+            <option value="">Shifokorni tanlang</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Sana</label>
+          <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookDate" type="date">
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Vaqt</label>
+          <select class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="bookSlot">
+            <option value="">Vaqtni tanlang</option>
+          </select>
+        </div>
+        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" onclick="bookAppointment()">
+          <span class="material-symbols-outlined">event_available</span> Yozilish
+        </button>
+      </div>
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-headline-md font-headline-md">Mening qabullarim</h3>
+        </div>
+        <div id="appointmentsList" class="space-y-3">
+          <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB: CONSULTATIONS (Tashxislar) -->
+    <div id="tab-consultations" class="tab-content space-y-6" style="display:none">
+      <section class="pt-2">
+        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Tashxis va hisobotlar</h2>
+        <p class="text-body-md text-on-surface-variant mt-1">Shifokor yozgan barcha tashxislar</p>
+      </section>
+      <div id="consultationsList" class="space-y-3">
+        <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+      </div>
+    </div>
+
+    <!-- TAB: REMINDERS (Eslatmalar) -->
+    <div id="tab-reminders" class="tab-content space-y-6" style="display:none">
+      <section class="pt-2">
+        <h2 class="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Dori eslatmalari</h2>
+        <p class="text-body-md text-on-surface-variant mt-1">Dorilarni vaqtida olishni unutmang</p>
+      </section>
+      <div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-label-md font-label-md text-on-surface-variant ml-1">Dori nomi</label>
+          <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medName" placeholder="Mas: Paratsetamol">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label class="text-label-md font-label-md text-on-surface-variant ml-1">Miqdor</label>
+            <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medDosage" placeholder="500mg">
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-label-md font-label-md text-on-surface-variant ml-1">Vaqt</label>
+            <input class="w-full px-4 py-3.5 bg-surface-container-low border border-outline/20 rounded-xl text-body-md transition-all focus:border-primary focus:ring-0" id="medTime" type="time">
+          </div>
+        </div>
+        <button class="w-full bg-primary-container text-on-primary py-4 rounded-xl font-headline-md shadow-md active:scale-95 transition-all flex items-center justify-center gap-2" onclick="addReminder()">
+          <span class="material-symbols-outlined">check</span> Saqlash
+        </button>
+      </div>
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-headline-md font-headline-md">Faol eslatmalar</h3>
+        </div>
+        <div id="remindersList" class="space-y-3">
+          <p class="text-sm opacity-50 py-4 text-center">Yuklanmoqda...</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- BOTTOM NAV -->
+  <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe shadow-xl bg-surface-container-lowest rounded-t-[1.25rem] border-t border-outline-variant/20">
+    <button class="nav-tab flex flex-col items-center justify-center text-primary bg-secondary-container rounded-xl px-3 py-1.5 active-tap" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">dashboard</span>
+      <span class="text-[10px] font-semibold mt-0.5">Asosiy</span>
+    </button>
+    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="queue" onclick="switchTab('queue')">
+      <span class="material-symbols-outlined">format_list_numbered</span>
+      <span class="text-[10px] font-semibold mt-0.5">Navbat</span>
+    </button>
+    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="appointments" onclick="switchTab('appointments')">
+      <span class="material-symbols-outlined">calendar_today</span>
+      <span class="text-[10px] font-semibold mt-0.5">Qabullar</span>
+    </button>
+    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="consultations" onclick="switchTab('consultations')">
+      <span class="material-symbols-outlined">description</span>
+      <span class="text-[10px] font-semibold mt-0.5">Tashxislar</span>
+    </button>
+    <button class="nav-tab flex flex-col items-center justify-center text-on-surface-variant px-3 py-1.5 hover:bg-surface-container-high transition-all active-tap" data-tab="reminders" onclick="switchTab('reminders')">
+      <span class="material-symbols-outlined">notification_add</span>
+      <span class="text-[10px] font-semibold mt-0.5">Eslatmalar</span>
+    </button>
+  </nav>
+
+  <!-- FAB -->
+  <button class="fixed bottom-[88px] right-5 w-14 h-14 bg-primary-container text-on-primary rounded-2xl shadow-xl flex items-center justify-center active-tap z-40" onclick="switchTab('appointments')">
+    <span class="material-symbols-outlined text-[32px]">add</span>
+  </button>
 </div>
 
 <script>
-const API = '';  // relative — served from same origin
+const API = '';
 let tg = null, telegramId = '', userName = '', registered = false, patientData = null;
 
-// ===== Splash =====
 function hideSplash() { document.getElementById('splash').classList.add('hidden'); }
 function showScreen(id) {
   ['register','main'].forEach(s => document.getElementById('screen-'+s).style.display = s === id ? 'block' : 'none');
 }
 
-// ===== Toast =====
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast toast-'+type; t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 2500);
 }
 
-// ===== Init Telegram =====
-try {
-  tg = window.Telegram?.WebApp;
-  if (tg) { tg.expand(); tg.ready(); }
-} catch(e) {}
+try { tg = window.Telegram?.WebApp; if (tg) { tg.expand(); tg.ready(); } } catch(e) {}
 
 const initDataRaw = tg?.initData || '';
 const initData = tg?.initDataUnsafe || {};
 telegramId = initData?.user?.id?.toString() || '';
 userName = initData?.user?.first_name || 'Bemor';
-if (!telegramId) {
-  const params = new URLSearchParams(window.location.search);
-  telegramId = params.get('telegram_id') || '';
-}
+if (!telegramId) { const p = new URLSearchParams(window.location.search); telegramId = p.get('telegram_id') || ''; }
 if (!telegramId) telegramId = 'demo_user';
 
-// API helper with Telegram auth
 async function api(method, path, body) {
   const opts = { method, headers: {} };
   if (initDataRaw) opts.headers['x-telegram-init-data'] = initDataRaw;
@@ -344,7 +380,6 @@ async function api(method, path, body) {
   return r.json();
 }
 
-// ===== Init App =====
 async function init() {
   try {
     updateGreeting();
@@ -356,6 +391,7 @@ async function init() {
     if (data?.registered && data?.patient) {
       registered = true; patientData = data.patient;
       showScreen('main'); loadDashboard(); loadDoctors();
+      document.getElementById('greetingLabel').textContent = 'Xush kelibsiz,';
     } else {
       showScreen('register');
       document.getElementById('regFirstName').value = userName || '';
@@ -367,43 +403,53 @@ async function init() {
 function updateGreeting() {
   const h = new Date().getHours();
   const g = h < 12 ? 'Xayrli tong' : h < 18 ? 'Xayrli kun' : 'Xayrli kech';
-  document.getElementById('greeting').textContent = `${g}, ${userName}`;
+  document.getElementById('greeting').textContent = userName;
+  const lbl = document.getElementById('greetingLabel');
+  if (lbl) lbl.textContent = g + ',';
 }
 
-// ===== Registration =====
 async function registerPatient() {
-  const btn = document.querySelector('#screen-register .tg-btn');
+  const btn = document.querySelector('#screen-register .tg-btn, #screen-register .bg-primary-container');
   try {
     const first_name = document.getElementById('regFirstName').value.trim();
     const phone = document.getElementById('regPhone').value.trim();
     if (!first_name) return showToast('Ismni kiriting', 'error');
     if (!phone) return showToast('Telefon raqamni kiriting', 'error');
-
-    btn.disabled = true; btn.innerHTML = '<span class="spinner-sm inline-block mr-2"></span> Yuklanmoqda...';
-
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-sm"></span> Yuklanmoqda...';
     const data = await api('POST', '/api/tma/register-patient', {
       telegram_id: telegramId, first_name,
       last_name: document.getElementById('regLastName').value.trim(),
       phone, birth_date: document.getElementById('regBirthDate').value || null
     });
-
     if (data?.success) {
       patientData = data.patient; registered = true;
       showScreen('main'); loadDashboard(); loadDoctors();
+      document.getElementById('greetingLabel').textContent = 'Xush kelibsiz,';
     } else {
       showToast(data?.error || 'Xatolik yuz berdi', 'error');
     }
-  } catch(e) { showToast('Xatolik: '+e.message, 'error'); }
-  finally { btn.disabled = false; btn.innerHTML = '<span class="material-icons-round text-lg align-middle">how_to_reg</span> Ro\'yxatdan o\'tish'; }
+    btn.disabled = false; btn.innerHTML = origHtml;
+  } catch(e) { showToast('Xatolik: '+e.message, 'error'); btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined text-on-primary">how_to_reg</span> Ro\'yxatdan o\'tish'; }
 }
 
-// ===== Tab Switching =====
 function switchTab(tab) {
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('tab-active'));
+  document.querySelectorAll('.nav-tab').forEach(el => {
+    el.classList.remove('text-primary', 'bg-secondary-container', 'rounded-xl');
+    el.classList.add('text-on-surface-variant');
+  });
   document.getElementById('tab-'+tab).style.display = 'block';
-  const nav = document.querySelector(`[data-tab="${tab}"]`);
-  if (nav) nav.classList.add('tab-active');
+  const nav = document.querySelector(`.nav-tab[data-tab="${tab}"]`);
+  if (nav) {
+    nav.classList.remove('text-on-surface-variant');
+    nav.classList.add('text-primary', 'bg-secondary-container', 'rounded-xl');
+    nav.querySelector('.material-symbols-outlined').style.fontVariationSettings = "'FILL' 1";
+  }
+  document.querySelectorAll('.nav-tab .material-symbols-outlined').forEach(ic => {
+    if (ic.closest('.nav-tab') !== nav) ic.style.fontVariationSettings = "'FILL' 0";
+  });
   if (tab === 'dashboard') loadDashboard();
   else if (tab === 'queue') loadQueue();
   else if (tab === 'appointments') { loadAppointments(); loadDoctors(); }
@@ -411,106 +457,93 @@ function switchTab(tab) {
   else if (tab === 'reminders') loadReminders();
 }
 
-// ===== DASHBOARD =====
 async function loadDashboard() {
   try {
     const [queueData, appData, consData] = await Promise.all([
-      api('GET', '/api/tma/my-queue'),
-      api('GET', '/api/tma/my-appointments'),
-      api('GET', '/api/tma/consultations')
+      api('GET', '/api/tma/my-queue'), api('GET', '/api/tma/my-appointments'), api('GET', '/api/tma/consultations')
     ]);
-    const queue = queueData?.queue || [];
-    const apps = appData?.appointments || [];
-    const cons = consData?.consultations || [];
-
-    document.getElementById('statQueue').textContent = queue.filter(q => q.status === 'waiting' || q.status === 'active').length;
+    const queue = queueData?.queue || [], apps = appData?.appointments || [], cons = consData?.consultations || [];
+    document.getElementById('statQueue').textContent = queue.filter(q => q.status === 'waiting' || q.status === 'active' || q.status === 'in_progress').length;
     document.getElementById('statAppointments').textContent = apps.filter(a => a.status !== 'Yakunlangan' && a.status !== 'Bekor qilingan').length;
-
-    // Today's queue
+    document.getElementById('dashboardGreeting').textContent = `${patientData?.first_name || userName}, o'zingizni bugun qanday his qilyapsiz?`;
     const todayQ = document.getElementById('todayQueue');
     if (queue.length === 0) {
-      todayQ.innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Bugungi navbat yo\'q</p>';
+      todayQ.innerHTML = '<div class="flex items-center justify-between"><div class="space-y-1"><p class="text-label-md font-label-md text-on-secondary-container/70 uppercase tracking-wider">Sizning navbatingiz</p><p class="text-body-md text-on-secondary-container/80">Hozircha navbat yo\'q</p></div><div class="w-14 h-14 bg-white rounded-2xl flex flex-col items-center justify-center shadow-inner"><span class="material-symbols-outlined text-primary text-[28px]">diversity_3</span></div></div>';
     } else {
-      todayQ.innerHTML = queue.slice(0, 3).map(q => `
-        <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-          <span class="queue-dot ${q.status}"></span>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium">${q.department || 'Qabul'}</p>
-            <p class="text-xs opacity-50">${q.doctor_name || 'Shifokor'} ${q.appointment_time ? '· '+q.appointment_time : ''}</p>
-          </div>
-          <span class="status-badge ${statusClass(q.status)}">${statusLabel(q.status)}</span>
-        </div>
-      `).join('');
+      const q = queue[0];
+      todayQ.innerHTML = `<div class="space-y-1"><p class="text-label-md font-label-md text-on-secondary-container/70 uppercase tracking-wider">Sizning navbatingiz</p><div class="flex items-baseline gap-1"><span class="text-[40px] font-bold text-on-secondary-container">${q.queue_number || '—'}</span><span class="text-body-md text-on-secondary-container/80">/ ${statusLabel(q.status)}</span></div><div class="mt-2 flex items-center gap-2"><span class="material-symbols-outlined text-primary text-[18px]">schedule</span><span class="text-label-md font-label-md">${q.doctor_name || q.department || 'Qabul'} ${q.appointment_time ? '· '+q.appointment_time.slice(0,5) : ''}</span></div></div><div class="w-14 h-14 bg-white rounded-2xl flex flex-col items-center justify-center shadow-inner"><span class="material-symbols-outlined text-primary text-[28px]">diversity_3</span></div>`;
     }
-
-    // Recent consultations
     const recentC = document.getElementById('recentConsultations');
     if (cons.length === 0) {
-      recentC.innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Hali tashxislar yo\'q</p>';
+      recentC.innerHTML = '<div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><p class="text-body-md text-on-surface-variant">Hali tashxislar yo\'q</p></div>';
     } else {
-      recentC.innerHTML = cons.slice(0, 3).map(c => {
-        const data = tryParseJson(c.data_json);
-        const diag = data?.diagnosis || data?.tashxis || '';
-        return `<div class="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
-          <span class="material-icons-round text-lg mt-0.5" style="color:var(--tg-theme-button-color,#2563eb)">stethoscope</span>
+      recentC.innerHTML = cons.slice(0, 3).map((c, i) => {
+        const d = tryParseJson(c.data_json);
+        const diag = d?.diagnosis || d?.tashxis || '';
+        return `<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex gap-4 active-tap cursor-pointer anim-in" style="animation-delay:${i*0.08}s">
+          <div class="w-14 h-14 rounded-2xl overflow-hidden bg-surface-container flex items-center justify-center"><span class="material-symbols-outlined text-primary text-2xl">stethoscope</span></div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium truncate">${c.doctor_name || 'Shifokor'}</p>
-            ${diag ? '<p class="text-xs opacity-60 truncate">'+diag+'</p>' : ''}
+            <div class="flex justify-between items-start">
+              <h4 class="text-body-lg font-bold truncate">${c.doctor_name || 'Shifokor'}</h4>
+              <span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full ml-2 whitespace-nowrap">${fmtDate(c.created_at)}</span>
+            </div>
+            ${diag ? '<p class="text-body-md text-on-surface-variant line-clamp-1 mt-0.5">'+diag+'</p>' : '<p class="text-body-md text-on-surface-variant/50 mt-0.5">Tahlil qilingan</p>'}
           </div>
-          <span class="text-xs opacity-40">${fmtDate(c.created_at)}</span>
         </div>`;
       }).join('');
     }
-
-    document.getElementById('patientInfo').textContent =
-      `${patientData?.first_name || ''} ${patientData?.last_name || ''} • ${queue.filter(q => q.status === 'waiting').length} ta navbat`;
   } catch(e) {
     document.getElementById('statQueue').textContent = '0';
     document.getElementById('statAppointments').textContent = '0';
   }
 }
 
-// ===== QUEUE =====
 async function loadQueue() {
   try {
     const data = await api('GET', '/api/tma/my-queue');
     const list = document.getElementById('queueList');
     const items = data?.queue || [];
     if (items.length === 0) {
-      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">format_list_numbered</span><p class="text-sm opacity-50">Navbatda turgan bemorlar yo\'q</p></div>';
+      list.innerHTML = '<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">format_list_numbered</span><p class="text-body-md text-on-surface-variant">Navbatda turgan bemorlar yo\'q</p></div>';
       return;
     }
-    list.innerHTML = items.map((q, i) => `
-      <div class="tg-card p-4 mb-3 anim-in" style="animation-delay:${i*0.06}s">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-2">
-            <span class="queue-dot ${q.status}" style="width:12px;height:12px"></span>
-            <span class="font-medium">${q.department || 'Qabul'}</span>
+    list.innerHTML = items.map((q, i) => {
+      if (i === 0) {
+        return `<div class="bg-primary p-6 rounded-[2rem] text-on-primary shadow-xl relative overflow-hidden animate-pulse-soft">
+          <div class="absolute top-0 right-0 -mr-12 -mt-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+          <div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-secondary-container/20 rounded-full blur-2xl"></div>
+          <div class="relative z-10 flex flex-col items-center text-center">
+            <span class="text-label-md font-label-md uppercase tracking-widest text-primary-fixed/80 mb-2">Navbatdagi o'rni</span>
+            <div class="text-[80px] font-bold leading-none mb-2">${q.queue_number || '—'}</div>
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 rounded-full backdrop-blur-md">
+              <span class="material-symbols-outlined text-[18px]">${q.status === 'waiting' ? 'hourglass_empty' : q.status === 'in_progress' || q.status === 'active' ? 'hearing' : 'check_circle'}</span>
+              <span class="text-label-md font-label-md">${statusLabel(q.status)}</span>
+            </div>
           </div>
-          <span class="status-badge ${statusClass(q.status)}">${statusLabel(q.status)}</span>
+        </div>`;
+      }
+      return `<div class="bg-surface-container-lowest p-5 rounded-[1.5rem] shadow-sm border border-outline-variant/30 flex items-center gap-4 anim-in" style="animation-delay:${i*0.06}s">
+        <div class="w-10 h-10 rounded-xl ${q.status === 'completed' ? 'bg-secondary-container' : 'bg-primary-fixed'} flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-sm ${q.status === 'completed' ? 'text-on-secondary-container' : 'text-primary'}">${q.status === 'completed' ? 'check' : q.status === 'cancelled' ? 'close' : 'schedule'}</span>
         </div>
-        <div class="flex items-center justify-between text-sm">
-          <span class="opacity-60">${q.doctor_name || 'Shifokor'}</span>
-          <span class="opacity-40">${q.appointment_time ? '· '+q.appointment_time : ''}</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-body-md font-semibold">${q.department || 'Qabul'}</p>
+          <p class="text-label-md text-on-surface-variant">${q.doctor_name || ''} ${q.appointment_time ? '· '+q.appointment_time.slice(0,5) : ''}</p>
         </div>
-      </div>
-    `).join('');
-  } catch(e) {
-    document.getElementById('queueList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
-  }
+        <span class="status-badge ${statusClass(q.status)}">${statusLabel(q.status)}</span>
+      </div>`;
+    }).join('');
+  } catch(e) { document.getElementById('queueList').innerHTML = '<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'; }
 }
 
-// ===== APPOINTMENTS (Book) =====
 async function loadDoctors() {
   try {
     const data = await api('GET', '/api/appointments/doctors');
     const sel = document.getElementById('bookDoctor');
     const docs = data?.doctors || [];
-    sel.innerHTML = '<option value="">Shifokorni tanlang</option>' +
-      docs.map(d => `<option value="${d.id}">${d.first_name + ' ' + (d.last_name || '')} — ${d.specialty || d.specialization || ''}</option>`).join('');
+    sel.innerHTML = '<option value="">Shifokorni tanlang</option>'+docs.map(d => `<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('');
   } catch(e) {}
 }
-
 document.getElementById('bookDoctor').addEventListener('change', async function() {
   const date = document.getElementById('bookDate').value;
   if (this.value && date) await loadSlots(this.value, date);
@@ -519,37 +552,25 @@ document.getElementById('bookDate').addEventListener('change', async function() 
   const doc = document.getElementById('bookDoctor').value;
   if (doc && this.value) await loadSlots(doc, this.value);
 });
-
 async function loadSlots(doctorId, date) {
   try {
     const data = await api('GET', `/api/appointments/slots?doctor_id=${doctorId}&date=${date}`);
     const sel = document.getElementById('bookSlot');
     const slots = data?.slots || [];
-    sel.innerHTML = '<option value="">Vaqtni tanlang</option>' +
-      slots.filter(s => s.available).map(s => `<option value="${s.time}">${s.time}</option>`).join('');
+    sel.innerHTML = '<option value="">Vaqtni tanlang</option>'+slots.filter(s => s.available).map(s => `<option value="${s.time}">${s.time}</option>`).join('');
   } catch(e) {}
 }
-
 async function bookAppointment() {
-  const doctor_id = document.getElementById('bookDoctor').value;
-  const date = document.getElementById('bookDate').value;
-  const time = document.getElementById('bookSlot').value;
+  const doctor_id = document.getElementById('bookDoctor').value, date = document.getElementById('bookDate').value, time = document.getElementById('bookSlot').value;
   if (!doctor_id) return showToast('Shifokorni tanlang', 'error');
   if (!date) return showToast('Sanani tanlang', 'error');
   if (!time) return showToast('Vaqtni tanlang', 'error');
-
   const data = await api('POST', '/api/tma/book', {
-    doctor_id, patient_name: `${patientData?.first_name || ''} ${patientData?.last_name || ''}`.trim() || userName,
+    doctor_id, patient_name: `${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,
     telegram_id: telegramId, date, time
   });
-
-  if (data?.success) {
-    showToast('Navbat tasdiqlandi!');
-    document.getElementById('bookSlot').value = '';
-    loadAppointments();
-  } else {
-    showToast(data?.error || 'Xatolik', 'error');
-  }
+  if (data?.success) { showToast('Navbat tasdiqlandi!'); document.getElementById('bookSlot').value = ''; loadAppointments(); }
+  else { showToast(data?.error || 'Xatolik', 'error'); }
 }
 
 async function loadAppointments() {
@@ -557,135 +578,92 @@ async function loadAppointments() {
     const data = await api('GET', '/api/tma/my-appointments');
     const list = document.getElementById('appointmentsList');
     const items = data?.appointments || [];
-    if (items.length === 0) {
-      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">event_busy</span><p class="text-sm opacity-50">Sizda qabullar yo\'q</p></div>';
-      return;
-    }
-    list.innerHTML = items.map((a, i) => `
-      <div class="tg-card p-4 mb-3 anim-in" style="animation-delay:${i*0.06}s">
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="font-medium">${a.doctor_name || 'Shifokor'}</span>
-          <span class="status-badge ${appStatusClass(a.status)}">${appStatusLabel(a.status)}</span>
+    if (items.length === 0) { list.innerHTML = '<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">event_busy</span><p class="text-body-md text-on-surface-variant">Sizda qabullar yo\'q</p></div>'; return; }
+    list.innerHTML = items.map((a, i) => `<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex items-center gap-4 anim-in" style="animation-delay:${i*0.06}s">
+      <div class="w-12 h-12 rounded-2xl bg-primary-fixed flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-primary">event</span></div>
+      <div class="flex-1 min-w-0">
+        <div class="flex justify-between items-start">
+          <h4 class="text-body-md font-semibold">${a.doctor_name || 'Shifokor'}</h4>
+          <span class="status-badge ${appStatusClass(a.status)} ml-2">${appStatusLabel(a.status)}</span>
         </div>
-        <p class="text-xs opacity-50">${a.specialty || ''}</p>
-        <div class="flex items-center gap-3 mt-2 text-xs opacity-60">
-          <span>📅 ${a.appointment_date ? a.appointment_date.slice(0,10) : ''}</span>
-          <span>⏰ ${a.appointment_time || ''}</span>
-        </div>
+        <p class="text-label-md text-on-surface-variant">${a.specialty || ''}</p>
+        <p class="text-label-md text-on-surface-variant/60 mt-0.5">📅 ${a.appointment_date?a.appointment_date.slice(0,10):''} ⏰ ${a.appointment_time||''}</p>
       </div>
-    `).join('');
-  } catch(e) {
-    document.getElementById('appointmentsList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
-  }
+    </div>`).join('');
+  } catch(e) { document.getElementById('appointmentsList').innerHTML = '<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'; }
 }
 
-// ===== CONSULTATIONS =====
 async function loadConsultations() {
   try {
     const data = await api('GET', '/api/tma/consultations');
     const list = document.getElementById('consultationsList');
     const items = data?.consultations || [];
-    if (items.length === 0) {
-      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">stethoscope</span><p class="text-sm opacity-50">Tashxislar mavjud emas</p></div>';
-      return;
-    }
+    if (items.length === 0) { list.innerHTML = '<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">stethoscope</span><p class="text-body-md text-on-surface-variant">Tashxislar mavjud emas</p></div>'; return; }
     list.innerHTML = items.map((c, i) => {
       const json = tryParseJson(c.data_json);
-      const diag = json?.diagnosis || json?.tashxis || '';
-      const rec = json?.recommendations || json?.tavsiyalar || '';
-      const meds = json?.medicines || json?.medication || [];
-      return `<div class="tg-card p-4 mb-3 anim-in" style="animation-delay:${i*0.06}s" onclick="showConsultationDetail(this)">
-        <div class="flex items-start justify-between mb-2">
-          <div>
-            <span class="font-medium">${c.doctor_name || 'Shifokor'}</span>
-            <span class="text-xs opacity-40 ml-2">${fmtDate(c.created_at)}</span>
+      const diag = json?.diagnosis||json?.tashxis||''; const rec = json?.recommendations||json?.tavsiyalar||''; const meds = json?.medicines||json?.medication||[];
+      return `<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm anim-in" style="animation-delay:${i*0.06}s" onclick="showConsultationDetail(this)">
+        <div class="flex items-start gap-4 cursor-pointer">
+          <div class="w-12 h-12 rounded-2xl overflow-hidden bg-surface-container flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-primary text-2xl">stethoscope</span></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-start">
+              <h4 class="text-body-md font-semibold">${c.doctor_name || 'Shifokor'}</h4>
+              <span class="text-[10px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full ml-2 whitespace-nowrap">${fmtDate(c.created_at)}</span>
+            </div>
+            ${diag ? '<p class="text-body-md font-medium mt-0.5">📋 '+diag+'</p>' : ''}
+            ${rec ? '<p class="text-label-md text-on-surface-variant mt-0.5 line-clamp-1">💊 '+rec.slice(0,80)+(rec.length>80?'...':'')+'</p>' : ''}
+            ${meds.length > 0 ? '<p class="text-label-md text-on-surface-variant/60 mt-0.5">💊 '+meds.map(m=>m.name||m).join(', ')+'</p>' : ''}
           </div>
-          <span class="material-icons-round text-lg opacity-30">expand_more</span>
+          <span class="material-symbols-outlined text-outline/40 mt-1">expand_more</span>
         </div>
-        ${diag ? '<p class="text-sm font-medium mb-1">📋 '+diag+'</p>' : ''}
-        ${rec ? '<p class="text-xs opacity-60">💊 '+rec.slice(0,100)+(rec.length>100?'...':'')+'</p>' : ''}
-        ${meds.length > 0 ? '<p class="text-xs opacity-50 mt-1">💊 '+meds.map(m => m.name || m).join(', ')+'</p>' : ''}
-        <div class="consultation-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--tg-theme-secondary-bg-color,#e2e8f0)">
-          <p class="text-xs whitespace-pre-wrap">${c.raw_text || ''}</p>
-          ${json && Object.keys(json).length > 0 ? '<div class="mt-2 text-xs opacity-70"><pre style="white-space:pre-wrap">'+JSON.stringify(json, null, 2)+'</pre></div>' : ''}
+        <div class="consultation-detail" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--tg-theme-secondary-bg-color,#e2e8f0)">
+          <p class="text-body-md whitespace-pre-wrap text-on-surface-variant">${c.raw_text||''}</p>
+          ${json&&Object.keys(json).length>0?'<div class="mt-2 text-label-md text-on-surface-variant/60"><pre style="white-space:pre-wrap">'+JSON.stringify(json,null,2)+'</pre></div>':''}
         </div>
       </div>`;
     }).join('');
-  } catch(e) {
-    document.getElementById('consultationsList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
-  }
+  } catch(e) { document.getElementById('consultationsList').innerHTML = '<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'; }
 }
-
 function showConsultationDetail(el) {
-  const detail = el.querySelector('.consultation-detail');
-  const icon = el.querySelector('.material-icons-round');
-  if (!detail) return;
-  const isOpen = detail.style.display !== 'none';
-  detail.style.display = isOpen ? 'none' : 'block';
-  if (icon) icon.textContent = isOpen ? 'expand_more' : 'expand_less';
+  const detail = el.querySelector('.consultation-detail'); const icon = el.querySelector('.material-symbols-outlined:last-child');
+  if (!detail) return; const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block'; if (icon) icon.textContent = isOpen ? 'expand_more' : 'expand_less';
 }
 
-// ===== REMINDERS =====
 async function loadReminders() {
   try {
     const data = await api('GET', '/api/tma/reminders');
     const list = document.getElementById('remindersList');
     const items = data?.data || [];
-    if (items.length === 0) {
-      list.innerHTML = '<div class="tg-card p-8 text-center"><span class="material-icons-round text-4xl mb-2 opacity-30">alarm_off</span><p class="text-sm opacity-50">Faol eslatmalar yo\'q</p></div>';
-      return;
-    }
-    list.innerHTML = items.map(r => `
-      <div class="tg-card p-4 mb-3 flex items-center gap-3 anim-in">
-        <div class="w-11 h-11 rounded-full flex items-center justify-center" style="background:var(--tg-theme-secondary-bg-color,#f1f5f9)">
-          <span class="material-icons-round" style="color:var(--tg-theme-button-color,#2563eb)">medication</span>
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="font-medium text-sm">${r.medicine_name}</p>
-          <p class="text-xs opacity-50">${r.dosage || '1 marta'} ${r.reminder_time ? '· '+r.reminder_time : ''}</p>
-        </div>
-        <button class="p-2 rounded-full hover:bg-red-50 transition" onclick="deleteReminder('${r.id}')">
-          <span class="material-icons-round text-red-400">delete</span>
-        </button>
+    if (items.length === 0) { list.innerHTML = '<div class="bg-surface-container-lowest p-8 rounded-3xl border border-outline-variant/30 shadow-sm text-center"><span class="material-symbols-outlined text-5xl mb-3 opacity-30 text-outline">alarm_off</span><p class="text-body-md text-on-surface-variant">Faol eslatmalar yo\'q</p></div>'; return; }
+    list.innerHTML = items.map(r => `<div class="bg-surface-container-lowest p-4 rounded-3xl border border-outline-variant/20 shadow-sm flex items-center gap-4 anim-in">
+      <div class="w-12 h-12 rounded-2xl bg-secondary-container flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-secondary-container">medication</span></div>
+      <div class="flex-1 min-w-0">
+        <h4 class="text-body-md font-semibold">${r.medicine_name}</h4>
+        <p class="text-label-md text-on-surface-variant">${r.dosage||'1 marta'} ${r.reminder_time?'· '+r.reminder_time:''}</p>
       </div>
-    `).join('');
-  } catch(e) {
-    document.getElementById('remindersList').innerHTML = '<p class="text-sm opacity-50 py-4 text-center">Xatolik yuz berdi</p>';
-  }
+      <button class="w-9 h-9 rounded-xl bg-error-container/30 flex items-center justify-center active-tap shrink-0" onclick="deleteReminder('${r.id}')"><span class="material-symbols-outlined text-error text-lg">delete</span></button>
+    </div>`).join('');
+  } catch(e) { document.getElementById('remindersList').innerHTML = '<p class="text-body-md text-on-surface-variant py-4 text-center">Xatolik yuz berdi</p>'; }
 }
 
 async function addReminder() {
-  const name = document.getElementById('medName').value.trim();
-  const time = document.getElementById('medTime').value;
+  const name = document.getElementById('medName').value.trim(), time = document.getElementById('medTime').value;
   if (!name) return showToast('Dori nomini kiriting', 'error');
   if (!time) return showToast('Vaqtni tanlang', 'error');
-
   const data = await api('POST', '/api/tma/reminders', {
-    telegram_id: telegramId,
-    medicine_name: name,
-    dosage: document.getElementById('medDosage').value.trim(),
-    reminder_time: time
+    telegram_id: telegramId, medicine_name: name,
+    dosage: document.getElementById('medDosage').value.trim(), reminder_time: time
   });
-  if (data?.success) {
-    showToast('Eslatma qo\'shildi');
-    document.getElementById('medName').value = '';
-    document.getElementById('medDosage').value = '';
-    document.getElementById('medTime').value = '';
-    loadReminders();
-  } else {
-    showToast(data?.error || 'Xatolik', 'error');
-  }
+  if (data?.success) { showToast('Eslatma qo\'shildi'); document.getElementById('medName').value=''; document.getElementById('medDosage').value=''; document.getElementById('medTime').value=''; loadReminders(); }
+  else { showToast(data?.error||'Xatolik', 'error'); }
 }
 
 async function deleteReminder(id) {
-  await fetch(API + '/api/tma/reminders/' + id, { method: 'DELETE',
-    headers: { 'x-telegram-id': telegramId }
-  });
-  showToast('Eslatma o\'chirildi');
-  loadReminders();
+  await fetch(API + '/api/tma/reminders/' + id, { method: 'DELETE', headers: { 'x-telegram-id': telegramId } });
+  showToast('Eslatma o\'chirildi'); loadReminders();
 }
 
-// ===== Helpers =====
 function statusClass(s) {
   if (s === 'waiting') return 'status-pending';
   if (s === 'active' || s === 'in_progress') return 'status-active';
@@ -710,15 +688,18 @@ function appStatusLabel(s) {
 }
 function fmtDate(d) {
   if (!d) return '';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'short' });
+  return new Date(d).toLocaleDateString('uz-UZ',{day:'numeric',month:'short'});
 }
 function tryParseJson(s) {
   if (!s) return null;
   try { return typeof s === 'string' ? JSON.parse(s) : s; } catch(e) { return null; }
 }
 
-// ===== Start =====
+document.querySelectorAll('.active-tap').forEach(el => {
+  el.addEventListener('touchstart', () => { el.style.transform = 'scale(0.96)'; });
+  el.addEventListener('touchend', () => { el.style.transform = 'scale(1)'; });
+});
+
 init();
 </script>
 <script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script>

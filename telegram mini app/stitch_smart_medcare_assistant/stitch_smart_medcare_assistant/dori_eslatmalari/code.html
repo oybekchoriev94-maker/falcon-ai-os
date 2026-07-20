@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html class="light" lang="uz"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Eslatmalar - Medical Mini-App</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#ceee93",
+                        "secondary-fixed-dim": "#b3d17a",
+                        "background": "#f7f9fb",
+                        "secondary-fixed": "#ceee93",
+                        "primary-container": "#2563eb",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary": "#004ac6",
+                        "on-primary-container": "#eeefff",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "on-background": "#191c1e",
+                        "primary-fixed": "#dbe1ff",
+                        "on-primary-fixed": "#00174b",
+                        "on-tertiary-container": "#eef0ff",
+                        "outline-variant": "#c3c6d7",
+                        "surface-variant": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#536d22",
+                        "on-primary": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface-tint": "#0053db",
+                        "surface-container": "#eceef0",
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "outline": "#737686",
+                        "tertiary-container": "#656d84",
+                        "on-surface-variant": "#434655",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "on-tertiary-fixed": "#131b2e",
+                        "surface-dim": "#d8dadc",
+                        "surface": "#f7f9fb",
+                        "secondary": "#4d661c",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed-variant": "#364e03",
+                        "surface-bright": "#f7f9fb",
+                        "tertiary": "#4d556b",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#dae2fd",
+                        "on-secondary-fixed": "#131f00",
+                        "surface-container-highest": "#e0e3e5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section-margin": "2rem",
+                        "element-gap": "1rem",
+                        "gutter": "1rem",
+                        "container-padding": "1.25rem",
+                        "radius-inner": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "30px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .custom-shadow {
+            box-shadow: 0px 4px 12px rgba(37, 99, 235, 0.05);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col">
+<!-- Top App Bar -->
+<header class="bg-background dark:bg-background flex justify-between items-center px-container-padding py-4 w-full sticky top-0 z-40">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-fixed overflow-hidden flex items-center justify-center">
+<img class="w-full h-full object-cover" data-alt="A professional close-up portrait of a user with a friendly expression, set against a clean, softly lit medical office background. The lighting is bright and high-key, emphasizing a modern light-mode aesthetic with a crisp focus on the person's features." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvVK2l_PYFWz3RuogD4L9APHK_aUJtw50kqN3AllU-vrmYKTrMtSHGH0sC6EwGG7KvAnqfTF6cN4HJM6qYp-6vh3q_Dhsdshte82Kle70l3HPdLCOLUeYRGh69ILZVDWHK-kup7Lw6fATUfxzkes1rzUfmrseZVXCTlNr5NJtCnvQPAyZ8v5tvfhANNmHRExtYeQX7e-B_ZGhau2v8ndd8n3DLGGT3PYTjTP3WOgft1Sv7ymKQAX69Cg"/>
+</div>
+<div class="flex flex-col">
+<span class="text-label-md font-label-md text-on-surface-variant">Xayrli tong,</span>
+<h1 class="text-headline-md font-headline-md text-on-background">Sajibur Rahman</h1>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-low dark:hover:bg-surface-container-highest transition-colors active:opacity-80 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed" data-icon="notifications">notifications</span>
+</button>
+</header>
+<main class="flex-1 px-container-padding pb-32">
+<!-- Hero Section -->
+<section class="mt-4 mb-8">
+<div class="relative overflow-hidden rounded-3xl bg-primary-container p-6 text-on-primary-container min-h-[160px] flex flex-col justify-center">
+<!-- Atmospheric background element -->
+<div class="absolute top-[-20%] right-[-10%] w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+<div class="relative z-10">
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile mb-2">Dori eslatmalari</h2>
+<p class="text-body-md opacity-90 max-w-[200px]">Sog'lig'ingizni vaqtida nazorat qiling va dorilarni o'z vaqtida iching.</p>
+</div>
+<div class="absolute right-4 bottom-0 w-32 h-32 opacity-20">
+<span class="material-symbols-outlined text-[120px]" data-icon="medication">medication</span>
+</div>
+</div>
+</section>
+<!-- Medication List Section -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h3 class="text-headline-md font-headline-md text-on-background">Bugungi ro'yxat</h3>
+<span class="text-label-md font-label-md text-primary">3 ta qoldi</span>
+</div>
+<!-- Reminder Cards (Bento style / Asymmetric) -->
+<div class="grid grid-cols-1 gap-4">
+<!-- Card 1 -->
+<div class="glass-card custom-shadow p-5 rounded-3xl border border-white/40 flex items-center justify-between group transition-all hover:scale-[1.02]">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 rounded-2xl bg-secondary-container/30 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-3xl" data-icon="pill">pill</span>
+</div>
+<div>
+<h4 class="text-body-lg font-bold text-on-surface">Paratsetamol</h4>
+<p class="text-body-md text-on-surface-variant">500mg • Ovqatdan keyin</p>
+<div class="flex items-center gap-1 mt-1 text-primary">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+<span class="text-label-md font-label-md">08:00</span>
+</div>
+</div>
+</div>
+<button class="px-4 py-2 rounded-xl bg-error/10 text-error text-label-md font-label-md hover:bg-error/20 active:scale-90 duration-150 transition-all">
+                        O'chirish
+                    </button>
+</div>
+<!-- Card 2 (Active/Upcoming highlight) -->
+<div class="bg-white border-2 border-primary custom-shadow p-5 rounded-3xl flex items-center justify-between relative overflow-hidden group transition-all hover:scale-[1.02]">
+<div class="absolute top-0 right-0 p-2">
+<div class="bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold">NAVBATDAGI</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-3xl" data-icon="fluid_med">fluid_med</span>
+</div>
+<div>
+<h4 class="text-body-lg font-bold text-on-surface">Vitamin C</h4>
+<p class="text-body-md text-on-surface-variant">10ml • Suyuqlik</p>
+<div class="flex items-center gap-1 mt-1 text-primary">
+<span class="material-symbols-outlined text-sm" data-icon="schedule" style="font-variation-settings: 'FILL' 1;">schedule</span>
+<span class="text-label-md font-label-md">13:30</span>
+</div>
+</div>
+</div>
+<button class="px-4 py-2 rounded-xl bg-error/10 text-error text-label-md font-label-md hover:bg-error/20 active:scale-90 duration-150 transition-all">
+                        O'chirish
+                    </button>
+</div>
+<!-- Card 3 -->
+<div class="glass-card custom-shadow p-5 rounded-3xl border border-white/40 flex items-center justify-between group transition-all hover:scale-[1.02]">
+<div class="flex items-center gap-4">
+<div class="w-14 h-14 rounded-2xl bg-secondary-container/30 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-3xl" data-icon="vaccines">vaccines</span>
+</div>
+<div>
+<h4 class="text-body-lg font-bold text-on-surface">Amoksitsillin</h4>
+<p class="text-body-md text-on-surface-variant">250mg • Kuniga 2 mahal</p>
+<div class="flex items-center gap-1 mt-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+<span class="text-label-md font-label-md">20:00</span>
+</div>
+</div>
+</div>
+<button class="px-4 py-2 rounded-xl bg-error/10 text-error text-label-md font-label-md hover:bg-error/20 active:scale-90 duration-150 transition-all">
+                        O'chirish
+                    </button>
+</div>
+</div>
+</section>
+<!-- Stats Section -->
+<section class="mt-8">
+<div class="bg-secondary-container/20 rounded-3xl p-6 border border-secondary-container/30">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-body-lg font-bold text-on-surface">Kunlik muvaffaqiyat</h3>
+<span class="text-headline-md font-headline-md text-secondary">66%</span>
+</div>
+<div class="w-full h-3 bg-white rounded-full overflow-hidden">
+<div class="h-full bg-secondary rounded-full" style="width: 66%"></div>
+</div>
+<p class="text-label-md font-label-md text-on-secondary-container mt-3">Yana bitta dori qoldi!</p>
+</div>
+</section>
+</main>
+<!-- FAB: Dori qo'shish -->
+<div class="fixed bottom-24 right-6 z-50">
+<button class="flex items-center gap-2 bg-primary text-white px-6 py-4 rounded-3xl shadow-2xl hover:bg-primary-container active:scale-90 transition-all duration-150">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+<span class="font-bold">Dori qo'shish</span>
+</button>
+</div>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 pb-safe shadow-lg bg-surface-container-lowest dark:bg-inverse-surface rounded-t-xl">
+<!-- Asosiy -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant px-3 py-1 hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-label-md font-label-md">Asosiy</span>
+</a>
+<!-- Navbat -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant px-3 py-1 hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="format_list_numbered">format_list_numbered</span>
+<span class="text-label-md font-label-md">Navbat</span>
+</a>
+<!-- Qabullar -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant px-3 py-1 hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_today">calendar_today</span>
+<span class="text-label-md font-label-md">Qabullar</span>
+</a>
+<!-- Tashxislar -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-surface-variant px-3 py-1 hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-all active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="text-label-md font-label-md">Tashxislar</span>
+</a>
+<!-- Eslatmalar (Active) -->
+<a class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed bg-secondary-container dark:bg-secondary-fixed-dim rounded-xl px-3 py-1 active:scale-90 duration-150 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="notification_add" style="font-variation-settings: 'FILL' 1;">notification_add</span>
+<span class="text-label-md font-label-md">Eslatmalar</span>
+</a>
+</nav>
+<script>
+        // Simple interactive effect for checkboxes/switches
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('touchstart', () => {
+                btn.style.transform = 'scale(0.95)';
+            });
+            btn.addEventListener('touchend', () => {
+                btn.style.transform = 'scale(1)';
+            });
+        });
+    </script>
+</body></html>
