@@ -349,11 +349,11 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     try {
       const tenantId = req.tenant_id;
       const doctors = await q(
-        "SELECT id, first_name, last_name, 'doctor' as role, created_at FROM doctors WHERE tenant_id = $1 AND face_descriptor IS NOT NULL ORDER BY created_at DESC",
+        "SELECT id, first_name, last_name, 'doctor' as role, created_at FROM doctors WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
         [tenantId]
       );
       const patients = await q(
-        "SELECT id, first_name, last_name, 'patient' as role, created_at FROM patients WHERE tenant_id = $1 AND face_descriptor IS NOT NULL ORDER BY created_at DESC",
+        "SELECT id, first_name, last_name, 'patient' as role, created_at FROM patients WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
         [tenantId]
       );
       const registrations = [
