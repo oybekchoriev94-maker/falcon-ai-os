@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 
@@ -12,11 +13,36 @@ COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "int8")
 
 model: WhisperModel | None = None
 
+def download_model():
+    from huggingface_hub import snapshot_download
+    dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
+    if os.path.exists(os.path.join(dest, "model.bin")):
+        print(f"Model already cached at {dest}")
+        return dest
+    print(f"Downloading {MODEL_NAME} to {dest}...", flush=True)
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    path = snapshot_download(
+        MODEL_NAME,
+        cache_dir=MODEL_DIR,
+        local_dir=dest,
+        local_dir_use_symlinks=False,
+        resume_download=True,
+        ignore_patterns=["*.h5", "*.ot"],
+    )
+    print(f"Model downloaded to {path}", flush=True)
+    return path
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model
-    print(f"Loading {MODEL_NAME} on {DEVICE} ({COMPUTE_TYPE})...", flush=True)
-    model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE, download_root=MODEL_DIR)
+    model_path = download_model()
+    print(f"Loading model from {model_path} on {DEVICE} ({COMPUTE_TYPE})...", flush=True)
+    model = WhisperModel(
+        model_path,
+        device=DEVICE,
+        compute_type=COMPUTE_TYPE,
+        download_root=None,
+    )
     print("STT model ready", flush=True)
     yield
     model = None
@@ -58,4 +84,8 @@ async def transcribe(
 
 if __name__ == "__main__":
     import uvicorn
+    if "--download-only" in sys.argv:
+        download_model()
+        print("Download complete")
+        sys.exit(0)
     uvicorn.run(app, host="0.0.0.0", port=8081)
