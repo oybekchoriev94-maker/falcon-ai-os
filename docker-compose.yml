@@ -57,10 +57,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://falconmedai.uz
     ports: ["3001:3001"]
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://falconmedai.uz/api
+      NEXT_PUBLIC_API_URL: https://falconmedai.uz
     depends_on:
       - app
 
