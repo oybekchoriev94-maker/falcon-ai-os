@@ -1,4 +1,4 @@
-http://0.0.0.0 {
+falconmedai.uz {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
     handle @api {
         reverse_proxy http://app:3000
@@ -14,5 +14,16 @@ http://0.0.0.0 {
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         -Server
+    }
+}
+
+http://167.233.44.193 {
+    @api path /api/* /metrics /healthz /readyz /livez /api-docs
+    handle @api {
+        reverse_proxy http://app:3000
+    }
+
+    handle {
+        reverse_proxy http://frontend:3001
     }
 }
