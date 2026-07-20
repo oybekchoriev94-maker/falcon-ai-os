@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="uz">
+<!-- v3 -->
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
@@ -447,8 +448,6 @@ async function deleteReminder(id){await fetch(API+'/api/tma/reminders/'+id,{meth
 
 function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('uz-UZ',{day:'numeric',month:'short'})}
 function tryParseJson(s){if(!s)return null;try{return typeof s==='string'?JSON.parse(s):s}catch(e){return null}}
-
-document.querySelectorAll('.active-tap').forEach(el=>{el.addEventListener('touchstart',()=>{el.style.transform='scale(0.96)'});el.addEventListener('touchend',()=>{el.style.transform='scale(1)'})});
 
 init();
 </script>
