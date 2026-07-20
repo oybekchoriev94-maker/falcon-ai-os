@@ -3,7 +3,7 @@
 // RTX 5070 → whisper-large-v3-turbo @ http://localhost:8081
 // ============================================================
 
-const WHISPER_URL = 'http://localhost:8081';
+const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8081';
 
 function groqKey() { return (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== '***') ? process.env.GROQ_API_KEY : ''; }
 function isLocal() { return process.env.LOCAL_ONLY !== 'false'; }

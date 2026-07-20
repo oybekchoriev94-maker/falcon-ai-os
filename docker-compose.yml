@@ -23,6 +23,24 @@ services:
       timeout: 5s
       retries: 5
 
+  stt:
+    <<: *common
+    build: ./stt-service
+    ports: ["8081:8081"]
+    environment:
+      MODEL_NAME: sardorb3k/agiuz-stt-v4-ct2
+      MODEL_DIR: /cache
+      DEVICE: cpu
+      COMPUTE_TYPE: int8
+    volumes:
+      - stt-cache:/cache
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/v1/audio/transcriptions"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   app:
     <<: *common
     build: .
@@ -45,12 +63,16 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOG_LEVEL: info
+      LOCAL_ONLY: "true"
+      WHISPER_URL: http://stt:8081
     volumes:
       - falcon-backup:/backup
       - falcon-logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
+      stt:
+        condition: service_started
 
   frontend:
     <<: *common
@@ -85,6 +107,7 @@ volumes:
   falcon-logs:
   caddy-data:
   caddy-config:
+  stt-cache:
 
 networks:
   falcon:
