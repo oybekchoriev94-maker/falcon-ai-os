@@ -217,8 +217,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
            photo_base64 ? `photo:${photo_base64.substring(0, 100)}...` : '']
         );
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [null, `${first_name} ${last_name || ''}`, 'patient_register_simple', 1.0, 'yes', id, null]
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [tenantId, null, `${first_name} ${last_name || ''}`, 'patient_register_simple', 1.0, 'yes', id, null]
         );
         const patient = await qGet(
           'SELECT id, first_name, last_name, phone, created_at FROM patients WHERE id = $1', [id]
