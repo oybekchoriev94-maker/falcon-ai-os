@@ -308,6 +308,28 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     }
   });
 
+  // GET /registrations — face ro'yxatdan o'tganlar (doctor + patient)
+  router.get('/registrations', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = req.tenant_id;
+      const doctors = await q(
+        "SELECT id, first_name, last_name, 'doctor' as role, created_at FROM doctors WHERE tenant_id = $1 AND face_descriptor IS NOT NULL ORDER BY created_at DESC",
+        [tenantId]
+      );
+      const patients = await q(
+        "SELECT id, first_name, last_name, 'patient' as role, created_at FROM patients WHERE tenant_id = $1 AND face_descriptor IS NOT NULL ORDER BY created_at DESC",
+        [tenantId]
+      );
+      const registrations = [
+        ...doctors.map(d => ({ id: d.id, person_name: `${d.first_name} ${d.last_name || ''}`.trim(), role: d.role, created_at: d.created_at })),
+        ...patients.map(p => ({ id: p.id, person_name: `${p.first_name} ${p.last_name || ''}`.trim(), role: p.role, created_at: p.created_at })),
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      res.json({ success: true, total: registrations.length, registrations });
+    } catch (e) {
+      safeError(res, e);
+    }
+  });
+
   // GET /patients — search/list patients
   router.get('/patients', authMiddleware, async (req, res) => {
     try {
