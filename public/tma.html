@@ -96,6 +96,7 @@
     #splash.hidden { opacity: 0; pointer-events: none; }
     .spinner { width: 40px; height: 40px; border: 4px solid var(--tg-theme-secondary-bg-color, #e2e8f0); border-top-color: var(--tg-theme-button-color, #2563eb); border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-sm { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
     .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
     .modal-content { background: var(--tg-theme-section-bg-color, #fff); border-radius: 20px; padding: 24px; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto; }
@@ -125,7 +126,7 @@
       <div class="space-y-3">
         <input class="tg-input" id="regFirstName" placeholder="Ism *" required>
         <input class="tg-input" id="regLastName" placeholder="Familiya">
-        <input class="tg-input" id="regPhone" type="tel" placeholder="Telefon *" required>
+        <input class="tg-input" id="regPhone" type="text" inputmode="tel" placeholder="Telefon *" required>
         <input class="tg-input" id="regBirthDate" type="date" placeholder="Tug'ilgan sana">
         <button class="tg-btn w-full py-3 text-base mt-2" onclick="registerPatient()">
           <span class="material-icons-round text-lg align-middle">how_to_reg</span> Ro'yxatdan o'tish
@@ -345,28 +346,21 @@ async function api(method, path, body) {
 
 // ===== Init App =====
 async function init() {
-  updateGreeting();
-
-  // Sync user first
-  await api('POST', '/api/tma/user/sync', {
-    telegram_id: telegramId,
-    first_name: userName,
-    username: initData?.user?.username || '',
-    patient_name: ''
-  });
-
-  // Check if patient registered
-  const data = await api('GET', '/api/tma/my-data');
-  if (data?.registered && data?.patient) {
-    registered = true;
-    patientData = data.patient;
-    showScreen('main');
-    loadDashboard();
-    loadDoctors();
-  } else {
-    showScreen('register');
-    document.getElementById('regFirstName').value = userName || '';
-  }
+  try {
+    updateGreeting();
+    await api('POST', '/api/tma/user/sync', {
+      telegram_id: telegramId, first_name: userName,
+      username: initData?.user?.username || '', patient_name: ''
+    });
+    const data = await api('GET', '/api/tma/my-data');
+    if (data?.registered && data?.patient) {
+      registered = true; patientData = data.patient;
+      showScreen('main'); loadDashboard(); loadDoctors();
+    } else {
+      showScreen('register');
+      document.getElementById('regFirstName').value = userName || '';
+    }
+  } catch(e) { showToast('Ulanish xatosi: '+e.message, 'error'); }
   hideSplash();
 }
 
@@ -378,29 +372,29 @@ function updateGreeting() {
 
 // ===== Registration =====
 async function registerPatient() {
-  const first_name = document.getElementById('regFirstName').value.trim();
-  const phone = document.getElementById('regPhone').value.trim();
-  if (!first_name) return showToast('Ismni kiriting', 'error');
-  if (!phone) return showToast('Telefon raqamni kiriting', 'error');
+  const btn = document.querySelector('#screen-register .tg-btn');
+  try {
+    const first_name = document.getElementById('regFirstName').value.trim();
+    const phone = document.getElementById('regPhone').value.trim();
+    if (!first_name) return showToast('Ismni kiriting', 'error');
+    if (!phone) return showToast('Telefon raqamni kiriting', 'error');
 
-  const data = await api('POST', '/api/tma/register-patient', {
-    telegram_id: telegramId,
-    first_name,
-    last_name: document.getElementById('regLastName').value.trim(),
-    phone,
-    birth_date: document.getElementById('regBirthDate').value || null
-  });
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-sm inline-block mr-2"></span> Yuklanmoqda...';
 
-  if (data?.success) {
-    showToast('Muvaffaqiyatli ro\'yxatdan o\'tdingiz!');
-    patientData = data.patient;
-    registered = true;
-    showScreen('main');
-    loadDashboard();
-    loadDoctors();
-  } else {
-    showToast(data?.error || 'Xatolik yuz berdi', 'error');
-  }
+    const data = await api('POST', '/api/tma/register-patient', {
+      telegram_id: telegramId, first_name,
+      last_name: document.getElementById('regLastName').value.trim(),
+      phone, birth_date: document.getElementById('regBirthDate').value || null
+    });
+
+    if (data?.success) {
+      patientData = data.patient; registered = true;
+      showScreen('main'); loadDashboard(); loadDoctors();
+    } else {
+      showToast(data?.error || 'Xatolik yuz berdi', 'error');
+    }
+  } catch(e) { showToast('Xatolik: '+e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = '<span class="material-icons-round text-lg align-middle">how_to_reg</span> Ro\'yxatdan o\'tish'; }
 }
 
 // ===== Tab Switching =====
