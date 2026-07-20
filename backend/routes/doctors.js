@@ -189,11 +189,26 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
       if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
       const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
       if (error) return res.status(500).json({ success: false, error });
-      const result = await llm(
-        'Siz reception uchun ma\'lumot yig\'uvchi AI asistentsiz. Ovozli matndan bemor ismi, telefoni, shifokor mutaxassisligi yoki ismi va vaqtini ajratib, faqat JSON formatda qaytaring: {"patient_name":"...", "phone":"...", "doctor":"...", "time":"..."}',
+      if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
+      const raw = await llm(
+        `Siz reception uchun ma'lumot yig'uvchi AI asistentsiz.
+Ovozli matndan bemor ma'lumotlarini ajratib, faqat JSON formatda qaytaring.
+Maydonlar:
+- patient_name: bemor ismi
+- phone: telefon raqami (agar bo'lmasa "")
+- doctor_specialty: shifokor mutaxassisligi yoki ismi
+- department: bo'lim (Terapiya, Kardiologiya, Nevrologiya, Pediatriya, Xirurgiya, Stomatologiya yoki "")
+- preferred_time: vaqt (agar aytilgan bo'lsa, masalan "14:30")
+- notes: qo'shimcha ma'lumot (agar bo'lmasa "")
+
+JSON format:
+{"patient_name":"...", "phone":"...", "doctor_specialty":"...", "department":"...", "preferred_time":"...", "notes":"..."}`,
         text
       );
-      res.json({ success: true, transcription: text, data: result });
+      const extraction = (typeof raw === 'object' && raw !== null && !raw.error)
+        ? raw
+        : { patient_name: '', phone: '', doctor_specialty: '', department: '', preferred_time: '', notes: text };
+      res.json({ success: true, transcript: text, extraction });
     } catch (e) { safeError(res, e); }
   });
 
@@ -214,8 +229,8 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
         [aptId, patient_name, phone || '', doctor_name || '', department || 'therapy', notes || '']);
       // Queue
       const maxQ = await qGet("SELECT COALESCE(MAX(queue_number),0) + 1 as n FROM patient_queue WHERE status='waiting'");
-      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, department, appointment_time) VALUES ($1, $2, $3, $4, $5, $6)",
-        [maxQ.n, patient_name, phone || '', doctor_name || '', department || '', appointment_time || null]);
+      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, department, appointment_time, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        [maxQ.n, patient_name, phone || '', doctor_name || '', department || '', appointment_time || null, req.tenant_id]);
       // Doctor analytics
       if (doctor_name) {
         const period = new Date().toISOString().slice(0, 10);
