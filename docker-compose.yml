@@ -28,7 +28,7 @@ services:
     build: ./stt-service
     ports: ["8081:8081"]
     environment:
-      MODEL_NAME: sardorb3k/agiuz-stt-v4-ct2
+      MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
