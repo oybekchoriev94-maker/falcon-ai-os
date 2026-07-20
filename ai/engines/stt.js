@@ -17,6 +17,7 @@ function makeForm(audioBuffer, filename, opts) {
   form.append('file', blob, filename);
   form.append('response_format', 'json');
   form.append('language', opts.language || 'uz');
+  form.append('prompt', opts.prompt || "O'zbek tilidagi matn, o'zbek lotin alifbosi, tibbiyot bilan bog'liq");
   if (opts.temperature !== undefined) form.append('temperature', String(opts.temperature));
   return form;
 }

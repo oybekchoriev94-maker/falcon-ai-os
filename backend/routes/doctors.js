@@ -192,20 +192,29 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
       if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
       const raw = await llm(
         `Siz reception uchun ma'lumot yig'uvchi AI asistentsiz.
-Berilgan matnni o'zbek lotin alifbosiga to'g'rilang (turkcha belgilar va so'zlarni o'zbekcha variantiga almashtiring: ö→o', ü→u', ğ→g', ş→sh, ç→ch, ý→y, ı→i, â→a, ê→e, î→i).
-Keyin bemor ma'lumotlarini ajratib oling.
+VAZIFA 1 — Matnni o'zbek lotin alifbosiga to'g'rilang:
+  • ö, õ → o'
+  • ü → u'
+  • ğ, ģ → g'
+  • ş → sh
+  • ç → ch
+  • ý → y
+  • ı → i
+  • â → a,  ê → e,  î → i
+  • Turkcha so'zlarni o'zbekcha variantiga almashtiring (çünki→chunki, yapmak→qilmoq, gitmek→ketmoq, hasta→bemor, doktor→shifokor, vb)
 
-FAQAT JSON formatda qaytaring:
+VAZIFA 2 — Bemor ma'lumotlarini ajratib, faqat JSON qaytaring:
 {
-  "fixed_text": "...",  // to'g'rilangan o'zbekcha matn
-  "patient_name": "...",  // bemor ismi
-  "phone": "...",  // telefon raqami (agar yo'q bo'lsa "")
-  "doctor_specialty": "...",  // shifokor mutaxassisligi yoki ismi
-  "department": "...",  // bo'lim (Terapiya, Kardiologiya, Nevrologiya, Pediatriya, Xirurgiya, Stomatologiya yoki "")
-  "preferred_time": "...",  // vaqt (agar aytilgan bo'lsa, masalan "14:30")
-  "notes": "..."  // qo'shimcha ma'lumot
+  "fixed_text": "...",
+  "patient_name": "...",
+  "phone": "...",
+  "doctor_specialty": "...",
+  "department": "...",
+  "preferred_time": "...",
+  "notes": "..."
 }`,
-        text
+        text,
+        { temperature: 0.0 }
       );
       const transcript = (typeof raw === 'object' && raw !== null && raw.fixed_text) ? raw.fixed_text : text;
       const extraction = (typeof raw === 'object' && raw !== null && !raw.error)
