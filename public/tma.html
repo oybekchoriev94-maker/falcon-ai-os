@@ -383,7 +383,7 @@ function switchTab(tab){
     if(target)target.style.display='block';
     const nav=document.querySelector(`.nav-tab[data-tab="${tab}"]`);
     if(nav){nav.style.background='var(--secondary-container)';nav.style.color='var(--primary)'}
-    if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors()}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
+    if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors();const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt)}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
   }catch(e){console.error('switchTab error:',e)}
 }
 
@@ -418,10 +418,12 @@ async function loadQueue(){
 async function loadDoctors(){
   try{const data=await api('GET','/api/appointments/doctors');const sel=document.getElementById('bookDoctor');sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')}catch(e){}
 }
-document.getElementById('bookDoctor').addEventListener('change',async function(){const dt=document.getElementById('bookDate').value;if(this.value&&dt)await loadSlots(this.value,dt)});
-document.getElementById('bookDate').addEventListener('change',async function(){const dr=document.getElementById('bookDoctor').value;if(dr&&this.value)await loadSlots(dr,this.value)});
+['bookDoctor','bookDate'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',function(){const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value;if(dr&&dt)loadSlots(dr,dt)});
+});
 async function loadSlots(doctorId,date){
-  try{const data=await api('GET',`/api/appointments/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');sel.innerHTML='<option value="">Vaqtni tanlang</option>'+(data?.slots||[]).filter(s=>s.available).map(s=>`<option value="${s.time}">${s.time}</option>`).join('')}catch(e){}
+  try{const data=await api('GET',`/api/appointments/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');if(!sel)return;sel.innerHTML='<option value="">Vaqtni tanlang</option>'+(data?.slots||[]).filter(s=>s.available).map(s=>`<option value="${s.time}">${s.time}</option>`).join('')}catch(e){}
 }
 async function bookAppointment(){
   const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
