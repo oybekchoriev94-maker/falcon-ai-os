@@ -249,7 +249,7 @@ button:disabled{opacity:0.6;cursor:not-allowed}
           <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Vaqt</div>
           <select id="bookSlot" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Vaqtni tanlang</option></select>
         </div>
-        <button class="active-tap" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s" onclick="bookAppointment()">
+        <button class="active-tap" id="bookBtn" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s">
           <span class="material-symbols-outlined" style="vertical-align:middle;margin-right:4px">event_available</span> Yozilish
         </button>
       </div>
@@ -289,7 +289,7 @@ button:disabled{opacity:0.6;cursor:not-allowed}
             <input id="medTime" type="time" style="width:100%;padding:14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)">
           </div>
         </div>
-        <button class="active-tap" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1)" onclick="addReminder()">
+        <button class="active-tap" id="addReminderBtn" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1)">
           <span class="material-symbols-outlined" style="vertical-align:middle;margin-right:4px">check</span> Saqlash
         </button>
       </div>
@@ -301,25 +301,25 @@ button:disabled{opacity:0.6;cursor:not-allowed}
   </div>
 
   <!-- BOTTOM NAV -->
-  <div class="nav-wrap">
+  <div class="nav-wrap" id="navWrap">
     <div class="d-flex justify-around items-center">
-      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="dashboard" onclick="switchTab('dashboard')" style="border:none;background:var(--secondary-container);padding:6px 12px;cursor:pointer;color:var(--primary)">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="dashboard" style="border:none;background:var(--secondary-container);padding:6px 12px;cursor:pointer;color:var(--primary);touch-action:manipulation">
         <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">dashboard</span>
         <span class="fs-10 fw-600" style="margin-top:2px">Asosiy</span>
       </button>
-      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="queue" onclick="switchTab('queue')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="queue" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant);touch-action:manipulation">
         <span class="material-symbols-outlined">format_list_numbered</span>
         <span class="fs-10 fw-600" style="margin-top:2px">Navbat</span>
       </button>
-      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="appointments" onclick="switchTab('appointments')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="appointments" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant);touch-action:manipulation">
         <span class="material-symbols-outlined">calendar_today</span>
         <span class="fs-10 fw-600" style="margin-top:2px">Qabullar</span>
       </button>
-      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="consultations" onclick="switchTab('consultations')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="consultations" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant);touch-action:manipulation">
         <span class="material-symbols-outlined">description</span>
         <span class="fs-10 fw-600" style="margin-top:2px">Tashxislar</span>
       </button>
-      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="reminders" onclick="switchTab('reminders')" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant)">
+      <button class="nav-tab d-flex flex-col items-center justify-center active-tap" data-tab="reminders" style="border:none;background:transparent;padding:6px 12px;cursor:pointer;color:var(--on-surface-variant);touch-action:manipulation">
         <span class="material-symbols-outlined">notification_add</span>
         <span class="fs-10 fw-600" style="margin-top:2px">Eslatmalar</span>
       </button>
@@ -327,7 +327,7 @@ button:disabled{opacity:0.6;cursor:not-allowed}
   </div>
 
   <!-- FAB -->
-  <button class="active-tap" onclick="switchTab('appointments')" style="position:fixed;bottom:calc(80px + env(safe-area-inset-bottom,16px));right:20px;width:56px;height:56px;border-radius:1rem;background:var(--primary-container);border:none;box-shadow:0 8px 24px rgba(0,0,0,.2);cursor:pointer;z-index:40;display:flex;align-items:center;justify-content:center">
+  <button class="active-tap" id="fabBtn" style="position:fixed;bottom:calc(80px + env(safe-area-inset-bottom,16px));right:20px;width:56px;height:56px;border-radius:1rem;background:var(--primary-container);border:none;box-shadow:0 8px 24px rgba(0,0,0,.2);cursor:pointer;z-index:40;display:flex;align-items:center;justify-content:center;touch-action:manipulation">
     <span class="material-symbols-outlined" style="color:#fff;font-size:32px;font-variation-settings:'FILL'1">add</span>
   </button>
 </div>
@@ -354,11 +354,13 @@ async function api(method,path,body){
 async function init(){
   try{
     updateGreeting();
-    await api('POST','/api/tma/user/sync',{telegram_id:telegramId,first_name:userName,username:initData?.user?.username||'',patient_name:''});
-    const data=await api('GET','/api/tma/my-data');
-    if(data?.registered&&data?.patient){registered=true;patientData=data.patient;document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
+    try{
+      await api('POST','/api/tma/user/sync',{telegram_id:telegramId,first_name:userName,username:initData?.user?.username||'',patient_name:''});
+      const data=await api('GET','/api/tma/my-data');
+      if(data?.registered&&data?.patient){registered=true;patientData=data.patient;document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
+    }catch(e){console.warn('Sync error:',e)}
     showScreen('main');loadDashboard();loadDoctors();
-  }catch(e){showToast('Ulanish xatosi: '+e.message,'error')}
+  }catch(e){showToast('Xatolik: '+e.message,'error')}
   hideSplash()
 }
 
@@ -371,15 +373,18 @@ function updateGreeting(){
 
 
 function switchTab(tab){
-  ['dashboard','queue','appointments','consultations','reminders'].forEach(t=>{
-    const el=document.getElementById('tab-'+t);
-    if(el)el.style.display='none';
-  });
-  document.querySelectorAll('.nav-tab').forEach(el=>{el.style.background='transparent';el.style.color='var(--on-surface-variant)'});
-  document.getElementById('tab-'+tab).style.display='block';
-  const nav=document.querySelector(`.nav-tab[data-tab="${tab}"]`);
-  if(nav){nav.style.background='var(--secondary-container)';nav.style.color='var(--primary)'}
-  if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors()}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
+  try{
+    ['dashboard','queue','appointments','consultations','reminders'].forEach(t=>{
+      const el=document.getElementById('tab-'+t);
+      if(el)el.style.display='none';
+    });
+    document.querySelectorAll('.nav-tab').forEach(el=>{el.style.background='transparent';el.style.color='var(--on-surface-variant)'});
+    const target=document.getElementById('tab-'+tab);
+    if(target)target.style.display='block';
+    const nav=document.querySelector(`.nav-tab[data-tab="${tab}"]`);
+    if(nav){nav.style.background='var(--secondary-container)';nav.style.color='var(--primary)'}
+    if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors()}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
+  }catch(e){console.error('switchTab error:',e)}
 }
 
 async function loadDashboard(){
@@ -449,6 +454,13 @@ async function deleteReminder(id){await fetch(API+'/api/tma/reminders/'+id,{meth
 function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('uz-UZ',{day:'numeric',month:'short'})}
 function tryParseJson(s){if(!s)return null;try{return typeof s==='string'?JSON.parse(s):s}catch(e){return null}}
 
+document.getElementById('navWrap').addEventListener('click',function(e){
+  const btn=e.target.closest('.nav-tab');
+  if(btn&&btn.dataset.tab)switchTab(btn.dataset.tab);
+});
+document.getElementById('fabBtn').addEventListener('click',function(){switchTab('appointments')});
+var bk=document.getElementById('bookBtn');if(bk)bk.addEventListener('click',bookAppointment);
+var ar=document.getElementById('addReminderBtn');if(ar)ar.addEventListener('click',addReminder);
 init();
 </script>
 <script>if(window.self!==window.top)document.body.classList.add('in-iframe')</script>
