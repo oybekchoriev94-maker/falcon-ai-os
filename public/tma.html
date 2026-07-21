@@ -429,7 +429,7 @@ async function bookAppointment(){
     const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
     if(!dr)return showToast('Shifokorni tanlang','error');if(!dt)return showToast('Sanani tanlang','error');if(!tm)return showToast('Vaqtni tanlang','error');
     const data=await api('POST','/api/tma/book',{doctor_id:dr,patient_name:`${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,telegram_id:telegramId,date:dt,time:tm});
-    if(data?.success){showToast('Navbat tasdiqlandi!');document.getElementById('bookSlot').value='';loadAppointments()}else showToast(data?.error||'Xatolik','error')
+    if(data?.success){showToast('Navbat tasdiqlandi!');const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt);loadAppointments()}else showToast(data?.error||'Xatolik','error')
   }catch(e){console.error('bookAppointment error:',e);showToast('Yozilishda xatolik','error')}
 }
 
@@ -447,12 +447,14 @@ async function loadReminders(){
 }
 
 async function addReminder(){
-  const n=document.getElementById('medName').value.trim(),t=document.getElementById('medTime').value;
-  if(!n)return showToast('Dori nomini kiriting','error');if(!t)return showToast('Vaqtni tanlang','error');
-  const data=await api('POST','/api/tma/reminders',{telegram_id:telegramId,medicine_name:n,dosage:document.getElementById('medDosage').value.trim(),reminder_time:t});
-  if(data?.success){showToast('Eslatma qo\'shildi');document.getElementById('medName').value='';document.getElementById('medDosage').value='';document.getElementById('medTime').value='';loadReminders()}else showToast(data?.error||'Xatolik','error')
+  try{
+    const n=document.getElementById('medName').value.trim(),t=document.getElementById('medTime').value;
+    if(!n)return showToast('Dori nomini kiriting','error');if(!t)return showToast('Vaqtni tanlang','error');
+    const data=await api('POST','/api/tma/reminders',{telegram_id:telegramId,medicine_name:n,dosage:document.getElementById('medDosage').value.trim(),reminder_time:t});
+    if(data?.success){showToast('Eslatma qo\'shildi');document.getElementById('medName').value='';document.getElementById('medDosage').value='';document.getElementById('medTime').value='';loadReminders()}else showToast(data?.error||'Xatolik','error')
+  }catch(e){showToast('Xatolik yuz berdi','error')}
 }
-async function deleteReminder(id){await fetch(API+'/api/tma/reminders/'+id,{method:'DELETE',headers:{'x-telegram-id':telegramId}});showToast('Eslatma o\'chirildi');loadReminders()}
+async function deleteReminder(id){try{const r=await fetch(API+'/api/tma/reminders/'+id,{method:'DELETE',headers:{'x-telegram-id':telegramId}});if(!r.ok)throw new Error((await r.json().catch(()=>{}))?.error||r.statusText);showToast('Eslatma o\'chirildi');loadReminders()}catch(e){showToast('Xatolik yuz berdi','error')}}
 
 function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('uz-UZ',{day:'numeric',month:'short'})}
 function tryParseJson(s){if(!s)return null;try{return typeof s==='string'?JSON.parse(s):s}catch(e){return null}}
