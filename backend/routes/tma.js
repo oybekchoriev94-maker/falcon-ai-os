@@ -5,6 +5,7 @@ import { verifyTelegramAuth } from '../shared.js';
 
 export default function tmaRoutes(pool) {
   const router = Router();
+  const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
 
   async function q(sql, params = []) {
     const r = await pool.query(sql, params);
@@ -209,6 +210,49 @@ export default function tmaRoutes(pool) {
     try {
       await q("UPDATE medication_reminders SET status = 'deleted' WHERE id = $1", [req.params.id]);
       res.json({ success: true });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ===== Doctors list for TMA =====
+  router.get('/doctors', async (req, res) => {
+    try {
+      const docs = await q("SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE status = 'Faol' ORDER BY first_name");
+      res.json({ success: true, doctors: docs });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ===== Available slots for TMA =====
+  router.get('/slots', async (req, res) => {
+    try {
+      const { doctor_id, date } = req.query;
+      if (!doctor_id || !date) {
+        return res.status(400).json({ success: false, error: 'doctor_id va date talab qilinadi' });
+      }
+      const dateObj = new Date(date + 'T00:00:00');
+      if (isNaN(dateObj.getTime())) {
+        return res.status(400).json({ success: false, error: 'Sana formati notogri. YYYY-MM-DD ishlating' });
+      }
+      const dayOfWeek = dateObj.getDay() || 7;
+      const schedule = await qGet("SELECT * FROM doctor_schedules WHERE doctor_id = $1 AND day_of_week = $2", [doctor_id, dayOfWeek]);
+      if (!schedule) {
+        return res.json({ success: true, date, day_name: DAY_NAMES[dayOfWeek] || 'Noma\'lum', doctor_id, slots: [], message: 'Shifokor bu kuni ishlamaydi' });
+      }
+      const bookedSlots = await q("SELECT appointment_time FROM bookings WHERE doctor_id = $1 AND appointment_date = $2 AND status != 'Bekor qilingan'", [doctor_id, date]);
+      const bookedSet = new Set(bookedSlots.map(b => b.appointment_time));
+      const slots = [];
+      const [startH, startM] = schedule.start_time.split(':').map(Number);
+      const [endH, endM] = schedule.end_time.split(':').map(Number);
+      const duration = schedule.slot_duration || 30;
+      let current = startH * 60 + startM;
+      const end = endH * 60 + endM;
+      while (current + duration <= end) {
+        const hh = String(Math.floor(current / 60)).padStart(2, '0');
+        const mm = String(current % 60).padStart(2, '0');
+        const timeStr = `${hh}:${mm}`;
+        slots.push({ time: timeStr, available: !bookedSet.has(timeStr) });
+        current += duration;
+      }
+      res.json({ success: true, date, day_name: DAY_NAMES[dayOfWeek], doctor_id, slots });
     } catch (e) { safeError(res, e); }
   });
 

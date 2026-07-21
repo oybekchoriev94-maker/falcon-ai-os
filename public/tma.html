@@ -416,19 +416,21 @@ async function loadQueue(){
 }
 
 async function loadDoctors(){
-  try{const data=await api('GET','/api/appointments/doctors');const sel=document.getElementById('bookDoctor');sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')}catch(e){}
+  try{const data=await api('GET','/api/tma/doctors');const sel=document.getElementById('bookDoctor');if(!sel)return;sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')}catch(e){console.error('loadDoctors error:',e)}
 }
 function tryLoadSlots(){const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt)}
 ['bookDoctor','bookDate'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('input',tryLoadSlots);el.addEventListener('change',tryLoadSlots)}});
 const bs=document.getElementById('bookSlot');if(bs)bs.addEventListener('focus',tryLoadSlots);
 async function loadSlots(doctorId,date){
-  try{const data=await api('GET',`/api/appointments/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');if(!sel)return;sel.innerHTML='<option value="">Vaqtni tanlang</option>'+(data?.slots||[]).filter(s=>s.available).map(s=>`<option value="${s.time}">${s.time}</option>`).join('')}catch(e){}
+  try{const data=await api('GET',`/api/tma/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');if(!sel)return;const avail=(data?.slots||[]).filter(s=>s.available);sel.innerHTML=avail.length?'<option value="">Vaqtni tanlang</option>'+avail.map(s=>`<option value="${s.time}">${s.time}</option>`).join(''):'<option value="">Bo\'sh vaqtlar mavjud emas</option>'}catch(e){console.error('loadSlots error:',e)}
 }
 async function bookAppointment(){
-  const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
-  if(!dr)return showToast('Shifokorni tanlang','error');if(!dt)return showToast('Sanani tanlang','error');if(!tm)return showToast('Vaqtni tanlang','error');
-  const data=await api('POST','/api/tma/book',{doctor_id:dr,patient_name:`${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,telegram_id:telegramId,date:dt,time:tm});
-  if(data?.success){showToast('Navbat tasdiqlandi!');document.getElementById('bookSlot').value='';loadAppointments()}else showToast(data?.error||'Xatolik','error')
+  try{
+    const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
+    if(!dr)return showToast('Shifokorni tanlang','error');if(!dt)return showToast('Sanani tanlang','error');if(!tm)return showToast('Vaqtni tanlang','error');
+    const data=await api('POST','/api/tma/book',{doctor_id:dr,patient_name:`${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,telegram_id:telegramId,date:dt,time:tm});
+    if(data?.success){showToast('Navbat tasdiqlandi!');document.getElementById('bookSlot').value='';loadAppointments()}else showToast(data?.error||'Xatolik','error')
+  }catch(e){console.error('bookAppointment error:',e);showToast('Yozilishda xatolik','error')}
 }
 
 async function loadAppointments(){
