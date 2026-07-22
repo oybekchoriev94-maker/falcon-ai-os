@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from insightface.model_zoo import ArcFaceONNX
+from insightface.model_zoo import ArcFaceONNX, SCRFD
 
 app = FastAPI(title="Falcon AI OS — Face Recognition Service")
 
@@ -16,35 +16,41 @@ class CompareRequest(BaseModel):
     embedding1: list[float]
     embedding2: list[float]
 
-model = None
-MODEL_PATH = os.path.expanduser("~/.insightface/models/buffalo_l/w600k_r50.onnx")
+detector = None
+recognizer = None
+BASE = os.path.expanduser("~/.insightface/models/buffalo_l")
+MODEL_PATH = os.path.join(BASE, "w600k_r50.onnx")
+DET_PATH = os.path.join(BASE, "det_10g.onnx")
 
 @app.on_event("startup")
 async def load_model():
-    global model
-    if not os.path.exists(MODEL_PATH):
-        print(f"[FACE] Model not found at {MODEL_PATH}")
-        print(f"[FACE] Contents of model dir: {os.listdir(os.path.dirname(MODEL_PATH))}")
+    global detector, recognizer
+    if not os.path.exists(DET_PATH) or not os.path.exists(MODEL_PATH):
+        files = os.listdir(BASE) if os.path.isdir(BASE) else []
+        print(f"[FACE] Model files missing. In {BASE}: {files}")
         return
 
-    model = ArcFaceONNX(model_file=MODEL_PATH)
-    model.prepare(ctx_id=-1)
-    emb_dim = model.output_shape[-1] if model.output_shape else 512
-    print(f"[FACE] Model loaded OK. Embedding dim: {emb_dim}")
+    detector = SCRFD(model_file=DET_PATH)
+    detector.prepare(ctx_id=-1, det_thresh=0.5)
+    print(f"[FACE] Detector loaded. Input size: {detector.input_size}")
+
+    recognizer = ArcFaceONNX(model_file=MODEL_PATH)
+    recognizer.prepare(ctx_id=-1)
+    print(f"[FACE] Recognizer loaded. Output dim: {recognizer.output_shape[-1]}")
 
 @app.get("/health")
 async def health():
     return {
-        "status": "ok" if model else "error",
-        "model": "buffalo_l/w600k_r50",
-        "embedding_dim": model.output_shape[-1] if model and model.output_shape else 0,
-        "model_loaded": model is not None,
+        "status": "ok" if detector and recognizer else "error",
+        "detector": "SCRFD" if detector else None,
+        "recognizer": "ArcFace(w600k_r50)" if recognizer else None,
+        "embedding_dim": recognizer.output_shape[-1] if recognizer and recognizer.output_shape else 0,
     }
 
 @app.post("/extract")
 async def extract_face(req: ExtractRequest):
-    global model
-    if model is None:
+    global detector, recognizer
+    if detector is None or recognizer is None:
         raise HTTPException(503, "Model yuklanmagan")
 
     try:
@@ -54,20 +60,28 @@ async def extract_face(req: ExtractRequest):
         if img is None:
             raise HTTPException(400, "Noto'g'ri rasm formati")
 
-        faces = model.get(img)
-        if not faces or len(faces) == 0:
+        bboxes, kpss = detector.detect(img)
+        if bboxes is None or len(bboxes) == 0:
             return {"success": False, "error": "Yuz topilmadi", "count": 0}
 
-        face = max(faces, key=lambda f: float(f.det_score))
-        embedding = face.embedding.tolist()
+        best_idx = int(np.argmax(bboxes[:, 4])) if len(bboxes.shape) > 1 else 0
+        bbox = bboxes[best_idx]
+        kps = kpss[best_idx] if kpss is not None else None
+
+        embedding = recognizer.get(img, kps)
+        if embedding is None:
+            return {"success": False, "error": "Yuz aniqlanmadi", "count": 0}
+
+        if hasattr(embedding, 'tolist'):
+            embedding = embedding.tolist()
 
         return {
             "success": True,
             "embedding": embedding,
-            "dim": len(embedding),
-            "det_score": float(face.det_score),
-            "bbox": [float(x) for x in face.bbox] if hasattr(face, 'bbox') else None,
-            "count": len(faces),
+            "dim": len(embedding) if isinstance(embedding, list) else 0,
+            "det_score": float(bbox[4]) if len(bbox) > 4 else 1.0,
+            "bbox": [float(x) for x in bbox[:4]],
+            "count": len(bboxes),
         }
     except HTTPException:
         raise
