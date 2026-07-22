@@ -122,6 +122,7 @@ async function doLogin() {
   const pass = document.getElementById('loginPass').value;
   if (!user || !pass) { document.getElementById('loginError').textContent = 'Login va parolni kiriting'; return; }
   document.getElementById('loginError').textContent = 'Kirish...';
+  document.querySelector('#loginForm button').disabled = true;
   try {
     const res = await fetch(API + '/api/auth/login', {
       method: 'POST',
@@ -133,14 +134,21 @@ async function doLogin() {
       localStorage.setItem('falcon_token', data.token);
       document.getElementById('loginForm').style.display = 'none';
       document.getElementById('loginError').textContent = '';
-      location.reload();
+      document.getElementById('authBtn').textContent = 'Chiqish';
+      document.getElementById('mainContent').style.display = 'block';
+      startFaceApp();
     } else {
       document.getElementById('loginError').textContent = data.error || 'Xato login yoki parol';
     }
   } catch (e) {
-    document.getElementById('loginError').textContent = 'Serverga ulanmadi';
+    document.getElementById('loginError').textContent = 'Serverga ulanmadi. Internetni tekshiring.';
   }
+  document.querySelector('#loginForm button').disabled = false;
 }
+
+document.getElementById('loginPass').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
 
 function setMode(mode) {
   currentMode = mode;
@@ -300,6 +308,13 @@ async function init() {
   isLoggedIn = true;
   authBtn.textContent = 'Chiqish';
   document.getElementById('mainContent').style.display = 'block';
+  startFaceApp();
+}
+
+async function startFaceApp() {
+  const statusEl = document.getElementById('modelStatus');
+  const statusText = document.getElementById('statusText');
+  const token = getToken();
   statusEl.textContent = '⏳ FaceAPI yuklanmoqda...';
 
   try {
