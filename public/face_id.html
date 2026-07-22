@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Face ID — Falcon AI OS</title>
   
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <link rel="stylesheet" href="/css/index.css">
@@ -75,22 +74,22 @@
 
 <script>
 const API = '';
-let faceDetectionNet = null;
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+let faceApi = null;
 let currentMode = 'register';
-let isScanning = false;
 let scanInterval = null;
-let registeredDescriptors = [];
 
-// Load face-api.js models
 async function loadModels() {
-  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models';
   try {
-    document.getElementById('modelStatus').textContent = '⏳ SSD Mobilenet yuklanmoqda...';
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+    document.getElementById('modelStatus').textContent = '⏳ FaceAPI yuklanmoqda...';
+    const module = await import('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js');
+    faceApi = module;
+    document.getElementById('modelStatus').textContent = '⏳ TinyFaceDetector yuklanmoqda...';
+    await faceApi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
     document.getElementById('modelStatus').textContent = '⏳ Landmark yuklanmoqda...';
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    await faceApi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
     document.getElementById('modelStatus').textContent = '⏳ Recognition yuklanmoqda...';
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    await faceApi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
     document.getElementById('modelStatus').textContent = '✅ Modellar yuklandi';
     document.getElementById('modelStatus').className = 'px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-400 text-xs';
     return true;
@@ -101,7 +100,6 @@ async function loadModels() {
   }
 }
 
-// Start camera
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360, facingMode: 'user' } });
@@ -114,32 +112,42 @@ async function startCamera() {
   }
 }
 
-// Canvas overlay untuk detection box
-function drawDetection(detections, displaySize) {
+function drawOverlay(result) {
   const canvas = document.getElementById('overlay');
-  canvas.width = displaySize.width;
-  canvas.height = displaySize.height;
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  faceapi.matchDimensions(canvas, displaySize);
-  const resized = faceapi.resizeResults(detections, displaySize);
-  faceapi.draw.drawDetections(canvas, resized);
-  faceapi.draw.drawFaceLandmarks(canvas, resized);
-}
-
-// Get face descriptor from video
-async function getDescriptor() {
   const video = document.getElementById('video');
-  const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
-  if (detections.length === 0) return null;
-  
-  // Draw on canvas
-  drawDetection(detections, { width: video.videoWidth, height: video.videoHeight });
-  return detections[0].descriptor;
+  canvas.width = video.videoWidth || 480;
+  canvas.height = video.videoHeight || 360;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!result || !result.detection) return;
+  const box = result.detection.box;
+  ctx.strokeStyle = '#3fb950';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.fillStyle = '#3fb950';
+  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.fillText(' ' + (result.detection.score * 100).toFixed(0) + '%', box.x + 4, box.y - 6);
+  if (result.landmarks) {
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.6)';
+    for (const p of result.landmarks.positions) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
-// Load doctors
+async function getDescriptor() {
+  if (!faceApi) return null;
+  const video = document.getElementById('video');
+  const options = new faceApi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 });
+  const result = await faceApi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
+  drawOverlay(result);
+  if (!result) return null;
+  return Array.from(result.descriptor);
+}
+
 async function loadDoctors() {
   try {
     const token = localStorage.getItem('falcon_token') || '';
@@ -159,7 +167,6 @@ async function loadDoctors() {
   }
 }
 
-// Capture and register face
 async function captureDescriptor() {
   const doctorId = document.getElementById('doctorSelect').value;
   if (!doctorId) { document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Iltimos doktorni tanlang</span>'; return; }
@@ -173,11 +180,11 @@ async function captureDescriptor() {
 
   try {
     const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
-  const token = localStorage.getItem('falcon_token') || '';
-  const res = await fetch(API + '/api/face/register', {
+    const token = localStorage.getItem('falcon_token') || '';
+    const res = await fetch(API + '/api/face/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
-      body: JSON.stringify({ doctor_id: doctorId, face_descriptor: Array.from(descriptor), nonce, timestamp: Date.now() })
+      body: JSON.stringify({ doctor_id: doctorId, face_descriptor: descriptor, nonce, timestamp: Date.now() })
     });
     const data = await res.json();
     document.getElementById('registerResult').innerHTML = data.success
@@ -188,7 +195,6 @@ async function captureDescriptor() {
   }
 }
 
-// Continuous verification
 async function startVerification() {
   if (scanInterval) clearInterval(scanInterval);
   scanInterval = setInterval(async () => {
@@ -205,7 +211,7 @@ async function startVerification() {
       const res = await fetch(API + '/api/face/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
-        body: JSON.stringify({ face_descriptor: Array.from(descriptor), nonce, timestamp: Date.now() })
+        body: JSON.stringify({ face_descriptor: descriptor, nonce, timestamp: Date.now() })
       });
       const data = await res.json();
 
@@ -214,7 +220,6 @@ async function startVerification() {
         document.getElementById('verifyConfidence').textContent = `Ishonchlilik: ${Math.round(data.confidence * 100)}%`;
         clearInterval(scanInterval);
         scanInterval = null;
-        // Redirect to scribe after 2s
         setTimeout(() => {
           if (data.identity) {
             window.location.href = '/scribe.html?doctor_id=' + data.identity.id + '&doctor_name=' + encodeURIComponent(data.identity.name) + '&face_auth=true';
@@ -230,7 +235,6 @@ async function startVerification() {
   }, 2000);
 }
 
-// Load today's face logs
 async function loadFaceLogs() {
   try {
     const token = localStorage.getItem('falcon_token') || '';
@@ -276,7 +280,6 @@ function setMode(mode) {
   }
 }
 
-// Init
 (async () => {
   const modelsLoaded = await loadModels();
   const cameraStarted = await startCamera();
@@ -284,7 +287,6 @@ function setMode(mode) {
     await loadDoctors();
     loadFaceLogs();
     setMode('register');
-    // Auto refresh logs every 30s
     setInterval(loadFaceLogs, 30000);
   }
 })();
