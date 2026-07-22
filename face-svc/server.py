@@ -29,14 +29,15 @@ async def load_model():
 
     model = ArcFaceONNX(model_file=MODEL_PATH)
     model.prepare(ctx_id=-1)
-    print(f"[FACE] Model loaded OK. Embedding dim: {model.embedding_size}")
+    emb_dim = model.output_shape[-1] if model.output_shape else 512
+    print(f"[FACE] Model loaded OK. Embedding dim: {emb_dim}")
 
 @app.get("/health")
 async def health():
     return {
         "status": "ok" if model else "error",
         "model": "buffalo_l/w600k_r50",
-        "embedding_dim": model.embedding_size if model else 0,
+        "embedding_dim": model.output_shape[-1] if model and model.output_shape else 0,
         "model_loaded": model is not None,
     }
 
