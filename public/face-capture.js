@@ -13,7 +13,7 @@
   else if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.FaceCapture = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+  const MODEL_URL = '/models/';
   const MIN_FACE_SIZE = 160;
   const MIN_CONFIDENCE = 0.7;
 
@@ -72,7 +72,7 @@
       try {
         this._setStatus('Yuklanmoqda...', 'loading');
 
-        const module = await import('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js');
+        const module = await import('/face-api.esm.js');
         this.faceApi = module;
 
         await this.faceApi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);

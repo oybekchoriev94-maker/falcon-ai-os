@@ -4,261 +4,100 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Face ID — Falcon AI OS</title>
-  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <link rel="stylesheet" href="/css/index.css">
 </head>
 <body>
 <div class="max-w-4xl mx-auto p-4 pb-24">
-  <!-- Header -->
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-2xl font-bold">🪪 Face ID</h1>
       <p class="text-sm opacity-50">Falcon AI OS — Yuzni tanish tizimi</p>
     </div>
     <div class="flex gap-2">
-      <span id="modelStatus" class="px-3 py-1 rounded-full bg-yellow-900/40 text-yellow-400 text-xs">⏳ Modellar yuklanmoqda...</span>
+      <span id="modelStatus" class="px-3 py-1 rounded-full bg-yellow-900/40 text-yellow-400 text-xs">⏳ Yuklanmoqda...</span>
       <button onclick="logout()" class="px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs hover:bg-red-800/50">Chiqish</button>
     </div>
   </div>
 
-  <!-- Mode selector -->
-  <div class="flex gap-2 mb-4">
-    <button id="modeRegister" class="px-4 py-2 rounded-lg font-medium bg-blue-600 text-white text-sm" onclick="setMode('register')">📝 Yuzni ro'yxatdan o'tkazish</button>
-    <button id="modeVerify" class="px-4 py-2 rounded-lg bg-slate-700 text-white text-sm" onclick="setMode('verify')">🔍 Face ID orqali kirish</button>
+  <div class="tabs flex gap-2 mb-4">
+    <button id="modeRegister" class="tab-btn active" onclick="setMode('register')">📝 Yozish</button>
+    <button id="modeVerify" class="tab-btn" onclick="setMode('verify')">🔍 Tekshirish</button>
   </div>
 
-  <!-- Main card -->
   <div class="card mb-4">
     <div class="text-center">
-      <div class="video-container mx-auto">
-        <video id="video" autoplay muted playsinline></video>
-        <canvas id="overlay"></canvas>
-      </div>
+      <video id="video" autoplay muted playsinline style="width:100%;max-width:480px;border-radius:12px;transform:scaleX(-1)"></video>
+      <canvas id="overlay" style="display:none"></canvas>
       <p id="statusText" class="text-sm mt-3 opacity-60">Kamera yoqilmoqda...</p>
     </div>
   </div>
 
-  <!-- Register panel -->
-  <div id="registerPanel" class="card mb-4" style="display:none;">
-    <h3 class="font-semibold mb-3">📝 Yangi yuzni ro'yxatdan o'tkazish</h3>
+  <div id="registerPanel" class="card mb-4">
+    <h3 class="font-semibold mb-3">📝 Yuzni ro'yxatdan o'tkazish</h3>
     <select id="doctorSelect" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white mb-3">
       <option value="">— Doktorni tanlang —</option>
     </select>
-    <button id="captureBtn" class="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white disabled:opacity-30" disabled onclick="captureDescriptor()">
-      📸 Yuzni skaner qilish
+    <button id="captureBtn" class="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white disabled:opacity-30" disabled onclick="captureFace()">
+      📸 Yuzni olish
     </button>
     <div id="registerResult" class="mt-3 text-sm"></div>
   </div>
 
-  <!-- Verify panel -->
-  <div id="verifyPanel" class="card" style="display:none;">
-    <h3 class="font-semibold mb-3">🔍 Face ID orqali kirish</h3>
+  <div id="verifyPanel" class="card mb-4" style="display:none">
+    <h3 class="font-semibold mb-3">🔍 Yuzni tekshirish</h3>
     <p class="text-sm opacity-50 mb-3">Kameraga qarang. Tizim avtomatik yuzingizni taniydi.</p>
-    <div id="verifyResult" class="p-4 rounded-xl bg-slate-800/50 text-center">
-      <span class="material-icons-round text-4xl text-slate-500">face</span>
-      <p class="text-lg font-bold mt-2" id="verifyName">—</p>
+    <div class="p-4 rounded-xl bg-slate-800/50 text-center min-h-[100px] flex flex-col items-center justify-center">
+      <span class="text-4xl mb-2" id="verifyIcon">👤</span>
+      <p class="text-lg font-bold" id="verifyName">—</p>
       <p class="text-sm opacity-50" id="verifyConfidence">Kutilmoqda...</p>
     </div>
   </div>
 
-  <!-- Today's logs -->
   <div class="card mt-4">
-    <h3 class="font-semibold mb-3">📋 Bugun Face ID orqali kelganlar</h3>
-    <div id="faceLogs" class="space-y-2 max-h-60 overflow-y-auto">
+    <h3 class="font-semibold mb-3">📋 Bugungi kirishlar</h3>
+    <div id="faceLogs" class="space-y-2 max-h-72 overflow-y-auto">
       <p class="text-sm opacity-40 text-center py-4">Yuklanmoqda...</p>
     </div>
   </div>
 </div>
 
+<style>
+.tabs .tab-btn {
+  flex:1; padding:10px 16px; border-radius:10px; font-weight:600; font-size:14px;
+  border:none; cursor:pointer; transition:all .2s;
+  background:#334155; color:#94a3b8;
+}
+.tabs .tab-btn.active {
+  background:#2563eb; color:#fff;
+}
+.card h3 { color:#e2e8f0; }
+</style>
+
 <script>
 const API = '';
-const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-let faceApi = null;
+let faceCapture = null;
 let currentMode = 'register';
-let scanInterval = null;
+let verifyInterval = null;
 
-async function loadModels() {
-  try {
-    document.getElementById('modelStatus').textContent = '⏳ FaceAPI yuklanmoqda...';
-    const module = await import('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.esm.js');
-    faceApi = module;
-    document.getElementById('modelStatus').textContent = '⏳ TinyFaceDetector yuklanmoqda...';
-    await faceApi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    document.getElementById('modelStatus').textContent = '⏳ Landmark yuklanmoqda...';
-    await faceApi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    document.getElementById('modelStatus').textContent = '⏳ Recognition yuklanmoqda...';
-    await faceApi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    document.getElementById('modelStatus').textContent = '✅ Modellar yuklandi';
-    document.getElementById('modelStatus').className = 'px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-400 text-xs';
-    return true;
-  } catch (e) {
-    document.getElementById('modelStatus').textContent = '❌ Yuklash xatosi: ' + e.message;
-    document.getElementById('modelStatus').className = 'px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs';
-    return false;
-  }
+async function getToken() {
+  return localStorage.getItem('falcon_token') || '';
 }
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360, facingMode: 'user' } });
-    document.getElementById('video').srcObject = stream;
-    document.getElementById('statusText').textContent = '✅ Kamera ishlamoqda';
-    return true;
-  } catch (e) {
-    document.getElementById('statusText').textContent = '❌ Kamera xatosi: ' + e.message;
-    return false;
-  }
+async function apiGet(url) {
+  const token = await getToken();
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + url, { headers });
+  return res.json();
 }
 
-function drawOverlay(result) {
-  const canvas = document.getElementById('overlay');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const video = document.getElementById('video');
-  canvas.width = video.videoWidth || 480;
-  canvas.height = video.videoHeight || 360;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!result || !result.detection) return;
-  const box = result.detection.box;
-  ctx.strokeStyle = '#3fb950';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(box.x, box.y, box.width, box.height);
-  ctx.fillStyle = '#3fb950';
-  ctx.font = 'bold 14px system-ui, sans-serif';
-  ctx.fillText(' ' + (result.detection.score * 100).toFixed(0) + '%', box.x + 4, box.y - 6);
-  if (result.landmarks) {
-    ctx.fillStyle = 'rgba(88, 166, 255, 0.6)';
-    for (const p of result.landmarks.positions) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-async function getDescriptor() {
-  if (!faceApi) return null;
-  const video = document.getElementById('video');
-  const options = new faceApi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 });
-  const result = await faceApi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
-  drawOverlay(result);
-  if (!result) return null;
-  return Array.from(result.descriptor);
-}
-
-async function loadDoctors() {
-  try {
-    const token = localStorage.getItem('falcon_token') || '';
-    const res = await fetch(API + '/api/face/doctors', {
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
-    });
-    const data = await res.json();
-    const select = document.getElementById('doctorSelect');
-    select.innerHTML = '<option value="">— Doktorni tanlang —</option>';
-    (data.doctors || []).forEach(doc => {
-      const enrolled = doc.face_enrolled ? '✅' : '❌';
-      select.innerHTML += `<option value="${doc.id}">${doc.first_name} ${doc.last_name} (${doc.specialty || '—'}) ${enrolled}</option>`;
-    });
-    document.getElementById('captureBtn').disabled = false;
-  } catch (e) {
-    console.error('Doctor load error:', e);
-  }
-}
-
-async function captureDescriptor() {
-  const doctorId = document.getElementById('doctorSelect').value;
-  if (!doctorId) { document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Iltimos doktorni tanlang</span>'; return; }
-
-  document.getElementById('registerResult').innerHTML = '<span class="text-blue-400">⏳ Yuz tahlil qilinmoqda...</span>';
-  const descriptor = await getDescriptor();
-  if (!descriptor) {
-    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Yuz aniqlanmadi. Kameraga to\'g\'ri qarang.</span>';
-    return;
-  }
-
-  try {
-    const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
-    const token = localStorage.getItem('falcon_token') || '';
-    const res = await fetch(API + '/api/face/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
-      body: JSON.stringify({ doctor_id: doctorId, face_descriptor: descriptor, nonce, timestamp: Date.now() })
-    });
-    const data = await res.json();
-    document.getElementById('registerResult').innerHTML = data.success
-      ? '<span class="text-emerald-400">✅ Yuz modeli saqlandi!</span>'
-      : '<span class="text-red-400">❌ ' + (data.error || 'Xatolik') + '</span>';
-  } catch (e) {
-    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ ' + e.message + '</span>';
-  }
-}
-
-async function startVerification() {
-  if (scanInterval) clearInterval(scanInterval);
-  scanInterval = setInterval(async () => {
-    try {
-      const descriptor = await getDescriptor();
-      if (!descriptor) {
-        document.getElementById('verifyName').textContent = 'Yuz aniqlanmadi';
-        document.getElementById('verifyConfidence').textContent = 'Kameraga qarang';
-        return;
-      }
-
-      const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
-      const token = localStorage.getItem('falcon_token') || '';
-      const res = await fetch(API + '/api/face/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
-        body: JSON.stringify({ face_descriptor: descriptor, nonce, timestamp: Date.now() })
-      });
-      const data = await res.json();
-
-      if (data.success && data.matched) {
-        document.getElementById('verifyName').textContent = '✅ ' + (data.identity?.name || 'Topildi');
-        document.getElementById('verifyConfidence').textContent = `Ishonchlilik: ${Math.round(data.confidence * 100)}%`;
-        clearInterval(scanInterval);
-        scanInterval = null;
-        setTimeout(() => {
-          if (data.identity) {
-            window.location.href = '/scribe.html?doctor_id=' + data.identity.id + '&doctor_name=' + encodeURIComponent(data.identity.name) + '&face_auth=true';
-          }
-        }, 2000);
-      } else if (data.success && !data.matched) {
-        document.getElementById('verifyName').textContent = '❌ Noma\'lum yuz';
-        document.getElementById('verifyConfidence').textContent = `Moslik: ${data.distance ? Math.round((1 - data.distance) * 100) : 0}%`;
-      } else {
-        document.getElementById('verifyConfidence').textContent = data.error || 'Xatolik yuz berdi';
-      }
-    } catch (e) {}
-  }, 2000);
-}
-
-async function loadFaceLogs() {
-  try {
-    const token = localStorage.getItem('falcon_token') || '';
-    const res = await fetch(API + '/api/face/logs', {
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
-    });
-    const data = await res.json();
-    const logs = data.logs || [];
-    document.getElementById('faceLogs').innerHTML = logs.length
-      ? logs.map(log => {
-          const isMatch = log.matched === 'yes';
-          return `<div class="flex items-center gap-3 p-3 rounded-xl ${isMatch ? 'bg-emerald-900/20 border border-emerald-800/30' : 'bg-red-900/20 border border-red-800/30'}">
-            <span class="material-icons-round ${isMatch ? 'text-emerald-400' : 'text-red-400'}">${isMatch ? 'face' : 'person_off'}</span>
-            <div class="flex-1">
-              <p class="text-sm font-medium">${log.doctor_name || 'Noma\'lum'}</p>
-              <p class="text-xs opacity-50">${new Date(log.created_at).toLocaleTimeString('uz-UZ')} · Ishonchlilik: ${Math.round(log.confidence * 100)}%</p>
-            </div>
-            <span class="text-xs ${isMatch ? 'text-emerald-400' : 'text-red-400'}">${isMatch ? '✅' : '❌'}</span>
-          </div>`;
-        }).join('')
-      : '<p class="text-sm opacity-40 text-center py-4">Bugun hech kim Face ID orqali kirmagan</p>';
-  } catch (e) {
-    document.getElementById('faceLogs').innerHTML = '<p class="text-sm opacity-40 text-center py-4">Ma\'lumot yuklanmadi</p>';
-  }
+async function apiPost(url, body) {
+  const token = await getToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + url, { method: 'POST', headers, body: JSON.stringify(body) });
+  return { ok: res.ok, status: res.status, data: await res.json() };
 }
 
 function logout() {
@@ -270,26 +109,184 @@ function setMode(mode) {
   currentMode = mode;
   document.getElementById('registerPanel').style.display = mode === 'register' ? 'block' : 'none';
   document.getElementById('verifyPanel').style.display = mode === 'verify' ? 'block' : 'none';
-  document.getElementById('modeRegister').className = mode === 'register' ? 'px-4 py-2 rounded-lg font-medium bg-blue-600 text-white text-sm' : 'px-4 py-2 rounded-lg bg-slate-700 text-white text-sm';
-  document.getElementById('modeVerify').className = mode === 'verify' ? 'px-4 py-2 rounded-lg font-medium bg-blue-600 text-white text-sm' : 'px-4 py-2 rounded-lg bg-slate-700 text-white text-sm';
-  if (mode === 'verify') {
-    if (scanInterval) clearInterval(scanInterval);
-    startVerification();
-  } else {
-    if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.id === 'mode' + mode.charAt(0).toUpperCase() + mode.slice(1)));
+  if (mode === 'verify') startVerifyLoop();
+  else stopVerifyLoop();
+}
+
+function stopVerifyLoop() {
+  if (verifyInterval) { clearInterval(verifyInterval); verifyInterval = null; }
+}
+
+function startVerifyLoop() {
+  stopVerifyLoop();
+  verifyInterval = setInterval(doVerify, 2500);
+}
+
+async function doVerify() {
+  if (!faceCapture || !faceCapture.faceApi || !faceCapture.lastDescriptor) {
+    document.getElementById('verifyName').textContent = 'Kameraga qarang';
+    document.getElementById('verifyConfidence').textContent = 'Yuz aniqlanmadi';
+    document.getElementById('verifyIcon').textContent = '👤';
+    return;
+  }
+  try {
+    const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
+    const d = await apiPost('/api/face/verify', {
+      face_descriptor: faceCapture.lastDescriptor,
+      nonce,
+      timestamp: Date.now()
+    });
+    if (!d.ok) {
+      if (d.status === 403 && d.data?.spoof_warning) {
+        document.getElementById('verifyName').textContent = '🚫 Liveness o\'tmadi';
+        document.getElementById('verifyConfidence').textContent = 'Jonli yuz talab qilinadi';
+        document.getElementById('verifyIcon').textContent = '🚫';
+      }
+      return;
+    }
+    const data = d.data;
+    if (data.matched) {
+      const name = data.identity?.name || 'Topildi';
+      document.getElementById('verifyName').textContent = '✅ ' + name;
+      const conf = data.confidence ? Math.round(data.confidence * 100) + '%' : '-';
+      document.getElementById('verifyConfidence').textContent = 'Ishonchlilik: ' + conf;
+      document.getElementById('verifyIcon').textContent = '✅';
+      stopVerifyLoop();
+      setTimeout(() => {
+        startVerifyLoop();
+      }, 5000);
+    } else {
+      document.getElementById('verifyName').textContent = '❌ Noma\'lum';
+      document.getElementById('verifyConfidence').textContent = 'Yuz tanilmadi';
+      document.getElementById('verifyIcon').textContent = '❌';
+    }
+  } catch (e) {
+    document.getElementById('verifyConfidence').textContent = 'Xatolik: ' + e.message;
   }
 }
 
-(async () => {
-  const modelsLoaded = await loadModels();
-  const cameraStarted = await startCamera();
-  if (modelsLoaded && cameraStarted) {
+async function captureFace() {
+  const doctorId = document.getElementById('doctorSelect').value;
+  if (!doctorId) { document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Doktorni tanlang</span>'; return; }
+
+  document.getElementById('registerResult').innerHTML = '<span class="text-blue-400">⏳ Yuz tahlil qilinmoqda...</span>';
+  document.getElementById('captureBtn').disabled = true;
+
+  if (!faceCapture || !faceCapture.faceApi) {
+    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Face ID yuklanmagan</span>';
+    document.getElementById('captureBtn').disabled = false;
+    return;
+  }
+
+  try {
+    const options = new faceCapture.faceApi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 });
+    const result = await faceCapture.faceApi.detectSingleFace(document.getElementById('video'), options)
+      .withFaceLandmarks()
+      .withFaceDescriptor();
+
+    if (!result) {
+      document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Yuz aniqlanmadi. Kameraga to\'g\'ri qarang.</span>';
+      document.getElementById('captureBtn').disabled = false;
+      return;
+    }
+
+    const descriptor = Array.from(result.descriptor);
+    const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
+
+    const d = await apiPost('/api/face/register', {
+      doctor_id: doctorId,
+      face_descriptor: descriptor,
+      nonce,
+      timestamp: Date.now()
+    });
+
+    document.getElementById('registerResult').innerHTML = d.ok
+      ? '<span class="text-emerald-400">✅ Yuz modeli saqlandi!</span>'
+      : '<span class="text-red-400">❌ ' + (d.data?.error || 'Xatolik') + '</span>';
+
+    if (d.ok) await loadDoctors();
+  } catch (e) {
+    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ ' + e.message + '</span>';
+  }
+  document.getElementById('captureBtn').disabled = false;
+}
+
+async function loadDoctors() {
+  try {
+    const data = await apiGet('/api/face/doctors');
+    const select = document.getElementById('doctorSelect');
+    select.innerHTML = '<option value="">— Doktorni tanlang —</option>';
+    (data.doctors || []).forEach(doc => {
+      const enrolled = doc.face_enrolled ? '✅' : '❌';
+      select.innerHTML += '<option value="' + doc.id + '">' + doc.first_name + ' ' + doc.last_name + ' (' + (doc.specialty || '—') + ') ' + enrolled + '</option>';
+    });
+    document.getElementById('captureBtn').disabled = false;
+  } catch (e) {
+    console.error('Doctor load error:', e);
+  }
+}
+
+async function loadFaceLogs() {
+  try {
+    const data = await apiGet('/api/face/logs');
+    const logs = data.logs || [];
+    const container = document.getElementById('faceLogs');
+    if (!logs.length) {
+      container.innerHTML = '<p class="text-sm opacity-40 text-center py-4">Bugun hech kim kirmagan</p>';
+      return;
+    }
+    container.innerHTML = logs.map(log => {
+      const isMatch = log.matched === 'yes';
+      const name = log.doctor_name || log.patient_id || 'Noma\'lum';
+      const conf = log.confidence ? Math.round(log.confidence * 100) + '%' : '-';
+      const time = new Date(log.created_at).toLocaleTimeString('uz-UZ');
+      const icon = log.action === 'attended' || log.action === 'entry' ? '👨‍⚕️' : '🧑';
+      return '<div class="flex items-center gap-3 p-3 rounded-xl ' +
+        (isMatch ? 'bg-emerald-900/20 border border-emerald-800/30' : 'bg-red-900/20 border border-red-800/30') +
+        '"><span>' + icon + '</span>' +
+        '<div class="flex-1"><p class="text-sm font-medium">' + name + '</p>' +
+        '<p class="text-xs opacity-50">' + time + ' · ' + conf + '</p></div>' +
+        '<span class="text-xs ' + (isMatch ? 'text-emerald-400' : 'text-red-400') + '">' + (isMatch ? '✅' : '❌') + '</span></div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('faceLogs').innerHTML = '<p class="text-sm opacity-40 text-center py-4">Ma\'lumot yuklanmadi</p>';
+  }
+}
+
+async function init() {
+  const statusEl = document.getElementById('modelStatus');
+  const video = document.getElementById('video');
+  statusEl.textContent = '⏳ FaceAPI yuklanmoqda...';
+
+  try {
+    const FaceCapture = (await import('./face-capture.js')).default;
+    faceCapture = new FaceCapture({
+      videoEl: video,
+      canvasEl: document.getElementById('overlay'),
+      statusEl: document.getElementById('statusText'),
+      baseUrl: API,
+      authToken: await getToken()
+    });
+
+    const ok = await faceCapture.init();
+    if (!ok) {
+      statusEl.textContent = '❌ Yuklanmadi';
+      return;
+    }
+    statusEl.textContent = '✅ Tayyor';
+    statusEl.className = 'px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-400 text-xs';
+
     await loadDoctors();
     loadFaceLogs();
-    setMode('register');
     setInterval(loadFaceLogs, 30000);
+  } catch (e) {
+    statusEl.textContent = '❌ Xatolik: ' + e.message;
+    document.getElementById('statusText').textContent = '❌ ' + e.message;
   }
-})();
+}
+
+document.addEventListener('DOMContentLoaded', init);
 </script>
-<script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
+</body>
 </html>
