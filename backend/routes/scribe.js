@@ -34,7 +34,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       );
       const consId = uuidv4();
       await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
-        [consId, tenantId, req.body?.doctor_id || 'unknown', result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
+        [consId, tenantId, req.body?.doctor_id || req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
       let consumption = null;
       if (result.procedure) {
         consumption = await q(
@@ -68,7 +68,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       const result = await llm(prompt, text);
       const consId = uuidv4();
       await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
-        [consId, tenantId, req.user?.id || 'unknown', result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
+        [consId, tenantId, req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
       const specLabel = MEDICAL_SKILLS[specialization]?.label || specialization;
       const reportId = uuidv4();
       const telegramId = req.body?.telegram_id || null;
