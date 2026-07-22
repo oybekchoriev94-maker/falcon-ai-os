@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { safeError } from '../services/safe-error.js';
-import { findBestMatch, prepareForDb } from '../services/face-engine.js';
+import { findBestMatch, prepareForDb, extractFace } from '../services/face-engine.js';
 import { schemas } from '../shared.js';
 
 export default function faceRoutes(pool, authMiddleware, checkRole) {
@@ -315,6 +315,149 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           success: true,
           matched: false,
           liveness_passed: true,
+          distance: Math.min(bestDoctor.distance, bestPatient.distance),
+        });
+      } catch (e) {
+        safeError(res, e);
+      }
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  // Photo-based endpoints (use face-svc for descriptor extraction)
+  // ────────────────────────────────────────────────────────────
+
+  const registerPhotoSchema = z.object({
+    doctor_id: z.string().uuid(),
+    photo_base64: z.string().min(50),
+    nonce: z.string().min(8).max(64),
+    timestamp: z.number(),
+  });
+
+  const verifyPhotoSchema = z.object({
+    photo_base64: z.string().min(50),
+    nonce: z.string().min(8).max(64),
+    timestamp: z.number(),
+    device_id: z.string().max(128).optional(),
+  });
+
+  // POST /register-photo — register doctor's face from photo
+  router.post(
+    '/register-photo',
+    authMiddleware,
+    checkRole('admin'),
+    faceRegisterLimiter,
+    validateNonce,
+    validate(registerPhotoSchema),
+    async (req, res) => {
+      try {
+        const { doctor_id, photo_base64, device_id } = req.body;
+
+        const descriptor = await extractFace(photo_base64);
+        if (!descriptor) {
+          return res.status(400).json({
+            success: false,
+            error: "Yuz aniqlanmadi. Iltimos, kameraga to'g'ri qarang va yaxshi yoritilgan joyda turing.",
+          });
+        }
+
+        const stored = prepareForDb(descriptor);
+        await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2', [stored, doctor_id]);
+
+        const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1', [doctor_id]);
+        const name = doc ? `${doc.first_name} ${doc.last_name}` : 'Unknown';
+        await q(
+          "INSERT INTO face_logs (doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, 'face_register', 'yes', $3)",
+          [doctor_id, name, device_id || null]
+        );
+
+        res.json({
+          success: true,
+          message: 'Yuz modeli muvaffaqiyatli saqlandi',
+          descriptor_dim: descriptor.length,
+        });
+      } catch (e) {
+        safeError(res, e);
+      }
+    }
+  );
+
+  // POST /verify-photo — verify face from photo (against doctors + patients)
+  router.post(
+    '/verify-photo',
+    authMiddleware,
+    faceRouteLimiter,
+    validateNonce,
+    validate(verifyPhotoSchema),
+    async (req, res) => {
+      try {
+        const { photo_base64, device_id } = req.body;
+
+        const descriptor = await extractFace(photo_base64);
+        if (!descriptor) {
+          return res.status(400).json({
+            success: false,
+            error: "Yuz aniqlanmadi. Iltimos, kameraga to'g'ri qarang.",
+          });
+        }
+
+        const doctors = await q(
+          "SELECT id, first_name, last_name, specialty, face_descriptor FROM doctors WHERE face_descriptor IS NOT NULL AND status = 'Faol'"
+        );
+        const patients = await q(
+          'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL'
+        );
+
+        const bestDoctor = findBestMatch(descriptor, doctors, 0.45);
+        const bestPatient = findBestMatch(descriptor, patients, 0.45);
+
+        if (bestDoctor.match) {
+          const name = `${bestDoctor.match.first_name} ${bestDoctor.match.last_name}`;
+          await q(
+            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+            [bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, 1, 1, device_id || null]
+          );
+          return res.json({
+            success: true,
+            matched: true,
+            type: 'staff',
+            confidence: bestDoctor.confidence,
+            liveness_passed: true,
+            identity: {
+              id: bestDoctor.match.id,
+              name,
+              specialty: bestDoctor.match.specialty,
+            },
+          });
+        }
+
+        if (bestPatient.match) {
+          const name = `${bestPatient.match.first_name} ${bestPatient.match.last_name}`;
+          await q(
+            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+            [null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, 1, 1, device_id || null]
+          );
+          return res.json({
+            success: true,
+            matched: true,
+            type: 'patient',
+            confidence: bestPatient.confidence,
+            liveness_passed: true,
+            identity: {
+              id: bestPatient.match.id,
+              name,
+              phone: bestPatient.match.phone,
+            },
+          });
+        }
+
+        await q(
+          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, $3, $4, $5)',
+          [null, "Noma'lum", 'entry', 'no', device_id || null]
+        );
+        res.json({
+          success: true,
+          matched: false,
           distance: Math.min(bestDoctor.distance, bestPatient.distance),
         });
       } catch (e) {

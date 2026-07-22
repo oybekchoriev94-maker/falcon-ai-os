@@ -6,6 +6,7 @@
   <title>Face ID — Falcon AI OS</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/index.css">
+  <script src="/face-capture.js"></script>
 </head>
 <body>
 <div class="max-w-4xl mx-auto p-4 pb-24">
@@ -20,11 +21,10 @@
     </div>
   </div>
 
-  <!-- Login form -->
   <div id="loginForm" class="card mb-4" style="display:none">
     <h3 class="font-semibold mb-3">🔐 Tizimga kirish</h3>
     <input id="loginUser" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white mb-3" placeholder="Login">
-    <input id="loginPass" type="password" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white mb-3" placeholder="Parol">
+    <input id="loginPass" type="password" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white mb-3" placeholder="Parol" onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()" class="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white">Kirish</button>
     <div id="loginError" class="mt-2 text-sm text-red-400"></div>
   </div>
@@ -38,7 +38,7 @@
     <div class="card mb-4">
       <div class="text-center">
         <video id="video" autoplay muted playsinline style="width:100%;max-width:480px;border-radius:12px;transform:scaleX(-1)"></video>
-        <canvas id="overlay" style="display:none"></canvas>
+        <canvas id="captureCanvas" style="display:none"></canvas>
         <p id="statusText" class="text-sm mt-3 opacity-60">Kamera yoqilmoqda...</p>
       </div>
     </div>
@@ -49,18 +49,21 @@
         <option value="">— Doktorni tanlang —</option>
       </select>
       <button id="captureBtn" class="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white disabled:opacity-30" disabled onclick="captureFace()">
-        📸 Yuzni olish
+        📸 Rasmga olish
       </button>
       <div id="registerResult" class="mt-3 text-sm"></div>
     </div>
 
     <div id="verifyPanel" class="card mb-4" style="display:none">
       <h3 class="font-semibold mb-3">🔍 Yuzni tekshirish</h3>
-      <p class="text-sm opacity-50 mb-3">Kameraga qarang. Tizim avtomatik yuzingizni taniydi.</p>
+      <p class="text-sm opacity-50 mb-3">Kameraga qarang va "Tekshirish" tugmasini bosing.</p>
       <div class="p-4 rounded-xl bg-slate-800/50 text-center min-h-[100px] flex flex-col items-center justify-center">
         <span class="text-4xl mb-2" id="verifyIcon">👤</span>
         <p class="text-lg font-bold" id="verifyName">—</p>
         <p class="text-sm opacity-50" id="verifyConfidence">Kutilmoqda...</p>
+        <button id="verifyBtn" onclick="doVerify()" class="mt-4 px-6 py-3 rounded-xl font-semibold bg-emerald-600 text-white hover:bg-emerald-500">
+          🔍 Tekshirish
+        </button>
       </div>
     </div>
 
@@ -87,7 +90,6 @@
 const API = '';
 let faceCapture = null;
 let currentMode = 'register';
-let verifyInterval = null;
 let isLoggedIn = false;
 
 function getToken() { return localStorage.getItem('falcon_token') || ''; }
@@ -146,94 +148,70 @@ async function doLogin() {
   document.querySelector('#loginForm button').disabled = false;
 }
 
-document.getElementById('loginPass').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') doLogin();
-});
-
 function setMode(mode) {
   currentMode = mode;
   document.getElementById('registerPanel').style.display = mode === 'register' ? 'block' : 'none';
   document.getElementById('verifyPanel').style.display = mode === 'verify' ? 'block' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.id === ('mode' + mode[0].toUpperCase() + mode.slice(1))));
-  if (mode === 'verify') startVerifyLoop();
-  else stopVerifyLoop();
-}
-
-function stopVerifyLoop() {
-  if (verifyInterval) { clearInterval(verifyInterval); verifyInterval = null; }
-}
-
-function startVerifyLoop() {
-  stopVerifyLoop();
-  verifyInterval = setInterval(doVerify, 2500);
 }
 
 async function doVerify() {
-  if (!faceCapture || !faceCapture.faceApi || !faceCapture.lastDescriptor) {
+  const btn = document.getElementById('verifyBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Tekshirilmoqda...';
+  const photo = faceCapture?.capture();
+  if (!photo) {
     document.getElementById('verifyName').textContent = 'Kameraga qarang';
-    document.getElementById('verifyConfidence').textContent = 'Yuz aniqlanmadi';
-    document.getElementById('verifyIcon').textContent = '👤';
+    document.getElementById('verifyConfidence').textContent = 'Rasm olinmadi';
+    document.getElementById('verifyIcon').textContent = '❌';
+    btn.disabled = false;
+    btn.textContent = '🔍 Tekshirish';
     return;
   }
   try {
-    const d = await apiPost('/api/face/verify', {
-      face_descriptor: faceCapture.lastDescriptor,
-      nonce: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2),
+    const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
+    const d = await apiPost('/api/face/verify-photo', {
+      photo_base64: photo,
+      nonce,
       timestamp: Date.now()
     });
-    if (!d.ok) {
-      if (d.status === 403 && d.data?.spoof_warning) {
-        document.getElementById('verifyName').textContent = '🚫 Liveness o\'tmadi';
-      }
-      return;
-    }
-    const data = d.data;
-    if (data.matched) {
-      const name = data.identity?.name || 'Topildi';
+    if (d.ok && d.data.matched) {
+      const name = d.data.identity?.name || 'Topildi';
       document.getElementById('verifyName').textContent = '✅ ' + name;
-      document.getElementById('verifyConfidence').textContent = 'Ishonchlilik: ' + (data.confidence ? Math.round(data.confidence * 100) + '%' : '-');
+      document.getElementById('verifyConfidence').textContent = 'Ishonchlilik: ' + (d.data.confidence ? Math.round(d.data.confidence * 100) + '%' : '-');
       document.getElementById('verifyIcon').textContent = '✅';
-      stopVerifyLoop();
-      setTimeout(startVerifyLoop, 5000);
     } else {
       document.getElementById('verifyName').textContent = '❌ Noma\'lum';
-      document.getElementById('verifyConfidence').textContent = 'Yuz tanilmadi';
+      document.getElementById('verifyConfidence').textContent = d.data?.error || 'Yuz tanilmadi';
       document.getElementById('verifyIcon').textContent = '❌';
     }
   } catch (e) {
     document.getElementById('verifyConfidence').textContent = 'Xatolik: ' + e.message;
+    document.getElementById('verifyIcon').textContent = '⚠️';
   }
+  btn.disabled = false;
+  btn.textContent = '🔍 Tekshirish';
 }
 
 async function captureFace() {
   const doctorId = document.getElementById('doctorSelect').value;
   if (!doctorId) { document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Doktorni tanlang</span>'; return; }
 
-  document.getElementById('registerResult').innerHTML = '<span class="text-blue-400">⏳ Yuz tahlil qilinmoqda...</span>';
+  document.getElementById('registerResult').innerHTML = '<span class="text-blue-400">⏳ Rasm olinmoqda...</span>';
   document.getElementById('captureBtn').disabled = true;
 
-  if (!faceCapture || !faceCapture.faceApi) {
-    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Face ID yuklanmagan</span>';
+  const photo = faceCapture?.capture();
+  if (!photo) {
+    document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Rasm olinmadi. Kamerani tekshiring.</span>';
     document.getElementById('captureBtn').disabled = false;
     return;
   }
 
   try {
-    const options = new faceCapture.faceApi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 });
-    const result = await faceCapture.faceApi.detectSingleFace(document.getElementById('video'), options)
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
-    if (!result) {
-      document.getElementById('registerResult').innerHTML = '<span class="text-red-400">❌ Yuz aniqlanmadi. Kameraga to\'g\'ri qarang.</span>';
-      document.getElementById('captureBtn').disabled = false;
-      return;
-    }
-
     const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
-    const d = await apiPost('/api/face/register', {
+    const d = await apiPost('/api/face/register-photo', {
       doctor_id: doctorId,
-      face_descriptor: Array.from(result.descriptor),
+      photo_base64: photo,
       nonce,
       timestamp: Date.now()
     });
@@ -278,10 +256,9 @@ async function loadFaceLogs() {
     }
     container.innerHTML = logs.map(log => {
       const isMatch = log.matched === 'yes';
-      const isDoctor = log.action === 'attended' || log.action === 'entry';
       return '<div class="flex items-center gap-3 p-3 rounded-xl ' +
         (isMatch ? 'bg-emerald-900/20 border border-emerald-800/30' : 'bg-red-900/20 border border-red-800/30') +
-        '"><span>' + (isDoctor ? '👨‍⚕️' : '🧑') + '</span>' +
+        '"><span>' + '👤' + '</span>' +
         '<div class="flex-1"><p class="text-sm font-medium">' + (log.doctor_name || log.patient_id || 'Noma\'lum') + '</p>' +
         '<p class="text-xs opacity-50">' + new Date(log.created_at).toLocaleTimeString('uz-UZ') + ' · ' + (log.confidence ? Math.round(log.confidence * 100) + '%' : '-') + '</p></div>' +
         '<span class="text-xs ' + (isMatch ? 'text-emerald-400' : 'text-red-400') + '">' + (isMatch ? '✅' : '❌') + '</span></div>';
@@ -293,7 +270,6 @@ async function loadFaceLogs() {
 
 async function init() {
   const statusEl = document.getElementById('modelStatus');
-  const statusText = document.getElementById('statusText');
   const authBtn = document.getElementById('authBtn');
   const token = getToken();
 
@@ -315,25 +291,18 @@ async function startFaceApp() {
   const statusEl = document.getElementById('modelStatus');
   const statusText = document.getElementById('statusText');
   const token = getToken();
-  statusEl.textContent = '⏳ FaceAPI yuklanmoqda...';
+  statusEl.textContent = '⏳ Kamera yoqilmoqda...';
 
   try {
-    const mod = await import('./face-capture.js');
-    const FC = mod.default || mod.FaceCapture || window.FaceCapture;
-    if (!FC) throw new Error('FaceCapture moduli topilmadi');
-
-    faceCapture = new FC({
+    faceCapture = new FaceCapture({
       videoEl: document.getElementById('video'),
-      canvasEl: document.getElementById('overlay'),
+      canvasEl: document.getElementById('captureCanvas'),
       statusEl: statusText,
-      baseUrl: API,
-      authToken: token
     });
 
-    statusEl.textContent = '⏳ Kamera va modellar yuklanmoqda...';
     const ok = await faceCapture.init();
     if (!ok) {
-      statusEl.textContent = '❌ Yuklanmadi';
+      statusEl.textContent = '❌ Kamera yoqilmadi';
       return;
     }
 
@@ -344,7 +313,7 @@ async function startFaceApp() {
     loadFaceLogs();
     setInterval(loadFaceLogs, 30000);
   } catch (e) {
-    statusEl.textContent = '❌ Xatolik: ' + e.message;
+    statusEl.textContent = '❌ Xatolik: ' + (e.message || 'Noma\'lum');
     if (statusText) statusText.textContent = '❌ ' + e.message;
     console.error('Face ID init error:', e);
   }

@@ -1,5 +1,24 @@
 import crypto from 'crypto';
 
+const FACE_SVC_URL = process.env.FACE_SVC_URL || 'http://face-svc:8082';
+
+export async function extractFace(imageBase64) {
+  try {
+    const resp = await fetch(`${FACE_SVC_URL}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64 }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.success ? data.embedding : null;
+  } catch (e) {
+    console.error('[FACE] extractFace error:', e.message);
+    return null;
+  }
+}
+
 function getEncryptionKey() {
   const raw = process.env.FACE_ENCRYPTION_KEY;
   if (!raw) return null;
