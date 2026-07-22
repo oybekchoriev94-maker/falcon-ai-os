@@ -663,15 +663,14 @@
         }
 
         // Show transcript if available
-        if (data.transcript) {
-          transcriptText.textContent = data.transcript;
+        const transcriptTextContent = data.transcription || data.transcript || '';
+        if (transcriptTextContent) {
+          transcriptText.textContent = transcriptTextContent;
           transcriptDisplay.classList.add('visible');
-          // Also put in textarea for editing
-          dictationText.value = data.transcript;
-          charCount.textContent = data.transcript.length;
+          dictationText.value = transcriptTextContent;
+          charCount.textContent = transcriptTextContent.length;
         }
 
-        // Show whisper status in transcript display
         if (data.meta) {
           let metaInfo = '';
           if (data.meta.whisper_used) metaInfo += '✓ Whisper STT';

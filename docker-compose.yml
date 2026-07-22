@@ -63,7 +63,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOG_LEVEL: info
-      LOCAL_ONLY: "true"
+      LOCAL_ONLY: "${LOCAL_ONLY:-true}"
       WHISPER_URL: http://stt:8081
     volumes:
       - falcon-backup:/backup
