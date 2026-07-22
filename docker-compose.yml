@@ -94,16 +94,6 @@ services:
   face-svc:
     <<: *common
     build: ./face-svc
-    environment:
-      MODEL_NAME: buffalo_l
-    volumes:
-      - face-models:/root/.insightface
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8082/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
 
   caddy:
     <<: *common
@@ -125,7 +115,6 @@ volumes:
   caddy-data:
   caddy-config:
   stt-cache:
-  face-models:
 
 networks:
   falcon:
