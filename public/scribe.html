@@ -900,7 +900,7 @@
 
     // ---- Render structured result (dinamik — barcha shablonlar) ----
     function renderResult(data) {
-      const s = data.structured || {};
+      const s = data.structured || data.data || {};
       loadingState.style.display = 'none';
       emptyState.style.display = 'none';
       resultCards.style.display = 'block';
@@ -1071,7 +1071,7 @@
         metaBadges += spBadge + ' ';
       }
       metaBar.innerHTML = `
-        <span>${data.patient_name ? 'Bemor: ' + escapeHtml(data.patient_name) : ''}</span>
+        <span>${s.patient_name ? 'Bemor: ' + escapeHtml(s.patient_name) : ''}</span>
         <span style="display:flex;align-items:center;gap:8px;">${metaBadges}
           <span>${meta.processed_at ? new Date(meta.processed_at).toLocaleTimeString('uz-UZ') : ''}</span>
         </span>`;
