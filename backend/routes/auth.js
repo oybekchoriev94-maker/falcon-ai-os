@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
@@ -98,10 +99,21 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     res.json({ success: true, user: req.user });
   });
 
-  router.post('/refresh', authMiddleware, (req, res) => {
+  router.post('/refresh', async (req, res) => {
     try {
-      const newToken = signToken(req.user);
-      res.json({ success: true, token: newToken, message: 'Token yangilandi' });
+      const { token: oldToken } = req.body;
+      if (!oldToken) return res.status(400).json({ success: false, error: 'Token talab qilinadi' });
+      let decoded;
+      try {
+        decoded = jwt.verify(oldToken, process.env.JWT_SECRET, { ignoreExpiration: true });
+      } catch (e) {
+        return res.status(401).json({ success: false, error: 'Token yaroqsiz' });
+      }
+      const blacklisted = await qGet("SELECT id FROM token_blacklist WHERE jti = $1", [decoded.jti]);
+      if (blacklisted) return res.status(401).json({ success: false, error: 'Token bekor qilingan' });
+      const newToken = signToken(decoded);
+      const freshUser = await qGet("SELECT id, username, role, name FROM users WHERE id = $1", [decoded.id]);
+      res.json({ success: true, token: newToken, user: freshUser || null, message: 'Token yangilandi' });
     } catch (e) { safeError(res, e); }
   });
 
