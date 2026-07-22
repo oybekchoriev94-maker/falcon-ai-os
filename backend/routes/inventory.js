@@ -12,10 +12,10 @@ import { safeError } from '../services/safe-error.js';
 const inventoryLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  trustProxy: true,
   message: { error: 'Juda ko\'p inventar so\'rovi, 1 daqiqa kuting' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 
 /**

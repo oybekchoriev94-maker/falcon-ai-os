@@ -34,9 +34,10 @@ export default function faceIdRoutes(db, authMiddleware, checkRole) {
   }
 
   const faceRouteLimiter = rateLimit({
-    windowMs: 60000, max: 10, trustProxy: true,
+    windowMs: 60000, max: 10,
     message: { error: 'Juda ko\'p so\'rov, 1 daqiqa kuting' },
-    standardHeaders: true, legacyHeaders: false
+    standardHeaders: true, legacyHeaders: false,
+    validate: { trustProxy: false },
   });
 
   const registerPatientSchema = z.object({

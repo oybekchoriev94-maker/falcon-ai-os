@@ -49,28 +49,28 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   const faceRouteLimiter = rateLimit({
     windowMs: 60000,
     max: 10,
-    trustProxy: true,
     message: { error: "Juda ko'p so'rov, 1 daqiqa kuting" },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
   });
 
   const faceVerifyLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
-    trustProxy: true,
     message: { error: "Juda ko'p yuz tekshirish urinishi, 1 daqiqa kuting" },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
   });
 
   const faceRegisterLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 5,
-    trustProxy: true,
     message: { error: "Juda ko'p yuz ro'yxatdan o'tkazish urinishi, 1 daqiqa kuting" },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
   });
 
   // ────────────────────────────────────────────────────────────

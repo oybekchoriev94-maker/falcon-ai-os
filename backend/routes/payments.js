@@ -34,15 +34,15 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   const payLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 20,
-    trustProxy: true,
-    message: { error: 'Juda ko\'p to\'lov so\'rovi, 1 daqiqa kuting' }
+    message: { error: 'Juda ko\'p to\'lov so\'rovi, 1 daqiqa kuting' },
+    validate: { trustProxy: false },
   });
 
   const webhookLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 60, // webhook'lar ko'p kelishi mumkin
-    trustProxy: true,
-    message: { error: 'Too many requests' }
+    message: { error: 'Too many requests' },
+    validate: { trustProxy: false },
   });
 
   // ============================================================
