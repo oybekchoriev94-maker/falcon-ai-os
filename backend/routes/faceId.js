@@ -34,7 +34,7 @@ export default function faceIdRoutes(db, authMiddleware, checkRole) {
   }
 
   const faceRouteLimiter = rateLimit({
-    windowMs: 60000, max: 10,
+    windowMs: 60000, max: 10, trustProxy: true,
     message: { error: 'Juda ko\'p so\'rov, 1 daqiqa kuting' },
     standardHeaders: true, legacyHeaders: false
   });

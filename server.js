@@ -129,15 +129,16 @@ if (IS_PROD) {
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
+  trustProxy: true,
   message: { error: 'Juda ko\'p so\'rov, keyin urinib ko\'ring' },
   standardHeaders: true,
   legacyHeaders: false
 });
 app.use([`/api`, API_PREFIX], limiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
-const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
-const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, trustProxy: true, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
+const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, trustProxy: true, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
+const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, trustProxy: true, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false });
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-256-bit-hex-secret-here' || process.env.JWT_SECRET.length < 16) {
   console.error('JWT_SECRET .env da xavfsiz qiymat bilan sozlanishi kerak!');

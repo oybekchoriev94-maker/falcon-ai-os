@@ -10,6 +10,7 @@ import { safeError } from '../services/safe-error.js';
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
+  trustProxy: true,
   message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting' },
   standardHeaders: true,
   legacyHeaders: false
