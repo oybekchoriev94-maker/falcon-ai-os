@@ -448,7 +448,7 @@
   <script>
   const API = window.location.origin;
   let token = localStorage.getItem('falcon_token');
-  let user = JSON.parse(localStorage.getItem('falcon_user') || 'null');
+  let user = (() => { try { return JSON.parse(localStorage.getItem('falcon_user') || 'null'); } catch { return null; } })();
   let mediaRecorder = null, audioChunks = [], recording = false;
   let docRecorder = null, docChunks = [], docRecording = false;
   let revenueChart = null;

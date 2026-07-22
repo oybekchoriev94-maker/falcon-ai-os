@@ -255,7 +255,7 @@
   <script>
     const API = window.location.origin;
     let token = localStorage.getItem('falcon_token');
-    let user = JSON.parse(localStorage.getItem('falcon_user') || 'null');
+    let user = (() => { try { return JSON.parse(localStorage.getItem('falcon_user') || 'null'); } catch { return null; } })();
     
     const navItems = [
       { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', url: 'dashboard.html', roles: ['ceo', 'admin', 'receptionist', 'doctor'] },

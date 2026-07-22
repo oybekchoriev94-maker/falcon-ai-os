@@ -407,7 +407,7 @@
 <script>
 // ===== STATE =====
 let token = localStorage.getItem('falcon_token') || localStorage.getItem('token');
-let user = JSON.parse(localStorage.getItem('falcon_user') || localStorage.getItem('user') || '{}');
+let user = (() => { try { return JSON.parse(localStorage.getItem('falcon_user') || localStorage.getItem('user') || 'null'); } catch { return null; } })();
 let currentPatient = null;
 let currentDischargeId = null;
 
