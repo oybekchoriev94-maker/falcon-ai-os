@@ -194,6 +194,10 @@
     // AI SCRIBE — Frontend Controller
     // ============================================================
 
+    // ---- Auth ----
+    const token = localStorage.getItem('falcon_token') || '';
+    function authHeaders(extra) { return { ...(token ? { 'Authorization': 'Bearer ' + token } : {}), ...extra }; }
+
     // ---- DOM refs ----
     const patientNameInput = document.getElementById('patientName');
     const dictationText = document.getElementById('dictationText');
@@ -639,6 +643,7 @@
 
         const res = await fetch('/api/scribe/transcribe', {
           method: 'POST',
+          headers: authHeaders({}),
           body: formData
         });
 
@@ -867,10 +872,10 @@
       try {
         const res = await fetch('/api/scribe/transcribe', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ patient_name: patientName, raw_text: rawText, specialty })
         });
-
+        if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Server xatosi'); }
         const data = await res.json();
 
         if (!data.success && !data.structured) {
@@ -1143,7 +1148,7 @@
     // ---- Fetch clinics list (for up-to-date detection) ----
     async function fetchClinics() {
       try {
-        const res = await fetch('/api/b2b/clinics');
+        const res = await fetch('/api/b2b/clinics', { headers: authHeaders({}) });
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.data)) {
@@ -1240,7 +1245,7 @@
       try {
         const res = await fetch('/api/b2b/referral', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             note: text,
             transcript: text,
@@ -1272,7 +1277,7 @@
           try {
             const consumeResp = await fetch('/api/inventory/consume', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: authHeaders({ 'Content-Type': 'application/json' }),
               body: JSON.stringify({
                 procedure_name: procedureName,
                 consultation_id: null,

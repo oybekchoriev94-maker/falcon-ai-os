@@ -16,11 +16,18 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
 
   router.post('/transcribe', authMiddleware, checkRole('doctor', 'admin'), upload.single('audio'), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { transcribe, llm } = await import('../../ai/orchestrator.js');
-      const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
-      if (error) return res.status(500).json({ success: false, error });
+      let text;
+      if (req.file) {
+        const result = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
+        if (result.error) return res.status(500).json({ success: false, error: result.error });
+        text = result.text;
+      } else if (req.body?.raw_text) {
+        text = req.body.raw_text;
+      } else {
+        return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
+      }
       const result = await llm(
         'Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}. Agar muolaja aniqlansa, procedure maydoniga yozing.',
         text
