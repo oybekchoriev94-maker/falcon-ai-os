@@ -1,8 +1,14 @@
 import crypto from 'crypto';
 
-const ENC_KEY = process.env.FACE_ENCRYPTION_KEY
-  ? Buffer.from(process.env.FACE_ENCRYPTION_KEY, 'hex')
-  : null;
+function getEncryptionKey() {
+  const raw = process.env.FACE_ENCRYPTION_KEY;
+  if (!raw) return null;
+  const key = Buffer.from(raw, 'hex');
+  if (key.length === 32) return key;
+  console.warn(`[FACE] FACE_ENCRYPTION_KEY noto'g'ri: ${raw.length} simvol, 64 talab. Shifrlanmagan holda ishlatiladi.`);
+  return null;
+}
+const ENC_KEY = getEncryptionKey();
 const ALGO = 'aes-256-gcm';
 
 export function l2Norm(arr) {

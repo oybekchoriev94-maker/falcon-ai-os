@@ -167,10 +167,12 @@ async function captureDescriptor() {
   }
 
   try {
-    const res = await fetch(API + '/api/face/register', {
+    const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
+  const token = localStorage.getItem('falcon_token') || '';
+  const res = await fetch(API + '/api/face/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doctor_id: doctorId, face_descriptor: Array.from(descriptor) })
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ doctor_id: doctorId, face_descriptor: Array.from(descriptor), nonce, timestamp: Date.now() })
     });
     const data = await res.json();
     document.getElementById('registerResult').innerHTML = data.success
@@ -193,25 +195,31 @@ async function startVerification() {
         return;
       }
 
+      const nonce = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
+      const token = localStorage.getItem('falcon_token') || '';
       const res = await fetch(API + '/api/face/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ face_descriptor: Array.from(descriptor) })
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+        body: JSON.stringify({ face_descriptor: Array.from(descriptor), nonce, timestamp: Date.now() })
       });
       const data = await res.json();
 
-      if (data.success && data.match) {
-        document.getElementById('verifyName').textContent = '✅ ' + data.message;
-        document.getElementById('verifyConfidence').textContent = `Ishonchlilik: ${Math.round((1 - data.confidence) * 100)}%`;
+      if (data.success && data.matched) {
+        document.getElementById('verifyName').textContent = '✅ ' + (data.identity?.name || 'Topildi');
+        document.getElementById('verifyConfidence').textContent = `Ishonchlilik: ${Math.round(data.confidence * 100)}%`;
         clearInterval(scanInterval);
         scanInterval = null;
         // Redirect to scribe after 2s
         setTimeout(() => {
-          window.location.href = '/scribe.html?doctor_id=' + data.match.id + '&doctor_name=' + encodeURIComponent(data.match.first_name + ' ' + data.match.last_name) + '&face_auth=true';
+          if (data.identity) {
+            window.location.href = '/scribe.html?doctor_id=' + data.identity.id + '&doctor_name=' + encodeURIComponent(data.identity.name) + '&face_auth=true';
+          }
         }, 2000);
-      } else {
+      } else if (data.success && !data.matched) {
         document.getElementById('verifyName').textContent = '❌ Noma\'lum yuz';
-        document.getElementById('verifyConfidence').textContent = `Moslik: ${Math.round((1 - data.confidence) * 100)}%`;
+        document.getElementById('verifyConfidence').textContent = `Moslik: ${data.distance ? Math.round((1 - data.distance) * 100) : 0}%`;
+      } else {
+        document.getElementById('verifyConfidence').textContent = data.error || 'Xatolik yuz berdi';
       }
     } catch (e) {}
   }, 2000);
