@@ -17,7 +17,11 @@ function makeForm(audioBuffer, filename, opts) {
   form.append('file', blob, filename);
   form.append('response_format', 'json');
   form.append('language', opts.language || 'uz');
-  form.append('prompt', opts.prompt || "O'zbek tilidagi matn, o'zbek lotin alifbosi, tibbiyot bilan bog'liq");
+  const defaultPrompt = "O'zbek tilidagi tibbiy matn. Bemor shikoyatlari, tashxis, dori nomlari: " +
+    "paratsetamol, amoksitsillin, ibuprofen, azitromitsin, dexametazon, prednizolon, loratadin, omeprazol, " +
+    "metformin, qon bosimi, yurak urishi, harorat, yuqori nafas yo'llari, oshqozon, jigar, buyrak. " +
+    "O'zbek lotin alifbosi (o'g', sh, ch, o', q, g').";
+  form.append('prompt', opts.prompt || defaultPrompt);
   if (opts.temperature !== undefined) form.append('temperature', String(opts.temperature));
   return form;
 }
