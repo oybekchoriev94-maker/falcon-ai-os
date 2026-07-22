@@ -102,15 +102,12 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
   router.post('/refresh', async (req, res) => {
     try {
       const { token: oldToken } = req.body;
-      console.log('[REFRESH] got token:', oldToken ? oldToken.substring(0, 20) + '...' : 'NONE');
       if (!oldToken) return res.status(400).json({ success: false, error: 'Token talab qilinadi' });
       let decoded;
       try {
         decoded = jwt.verify(oldToken, process.env.JWT_SECRET, { ignoreExpiration: true });
-        console.log('[REFRESH] decoded ok, id:', decoded.id);
       } catch (e) {
-        console.error('[REFRESH] verify error:', e.message);
-        return res.status(401).json({ success: false, error: 'Token yaroqsiz: ' + e.message });
+        return res.status(401).json({ success: false, error: 'Token yaroqsiz' });
       }
       const blacklisted = await qGet("SELECT id FROM token_blacklist WHERE jti = $1", [decoded.jti]);
       if (blacklisted) return res.status(401).json({ success: false, error: 'Token bekor qilingan' });
