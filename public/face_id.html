@@ -94,11 +94,17 @@ let isLoggedIn = false;
 
 function getToken() { return localStorage.getItem('falcon_token') || ''; }
 
+async function handleAuthError(res) {
+  if (res.status === 401) { showLogin(); return true; }
+  return false;
+}
+
 async function apiGet(url) {
   const token = getToken();
   const headers = {};
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(API + url, { headers });
+  if (await handleAuthError(res)) return {};
   return res.json();
 }
 
@@ -107,6 +113,7 @@ async function apiPost(url, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(API + url, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (await handleAuthError(res)) return { ok: false, status: 401, data: {} };
   return { ok: res.ok, status: res.status, data: await res.json() };
 }
 
@@ -268,16 +275,40 @@ async function loadFaceLogs() {
   }
 }
 
+function showLogin() {
+  const statusEl = document.getElementById('modelStatus');
+  const authBtn = document.getElementById('authBtn');
+  statusEl.textContent = '❌ Kirish talab qilinadi';
+  statusEl.className = 'px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs';
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('mainContent').style.display = 'none';
+  authBtn.textContent = '🔐 Kirish';
+  isLoggedIn = false;
+  localStorage.removeItem('falcon_token');
+}
+
+async function validateToken() {
+  try {
+    const res = await fetch(API + '/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 async function init() {
   const statusEl = document.getElementById('modelStatus');
   const authBtn = document.getElementById('authBtn');
   const token = getToken();
 
   if (!token) {
-    statusEl.textContent = '❌ Kirish talab qilinadi';
-    statusEl.className = 'px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs';
-    document.getElementById('loginForm').style.display = 'block';
-    authBtn.textContent = '🔐 Kirish';
+    showLogin();
+    return;
+  }
+
+  const valid = await validateToken();
+  if (!valid) {
+    showLogin();
     return;
   }
 
