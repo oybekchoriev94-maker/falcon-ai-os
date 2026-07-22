@@ -90,6 +90,8 @@ const WebApp = window.Telegram?.WebApp;
 if (WebApp) { WebApp.ready(); WebApp.expand(); }
 
 const API = '';
+const TOKEN = localStorage.getItem('falcon_token') || '';
+const AUTH_HEADERS = TOKEN ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN } : { 'Content-Type': 'application/json' };
 let faceCaptureVerify = null;
 let faceCaptureRegister = null;
 
@@ -172,7 +174,7 @@ async function onVerifyCapture(payload) {
   try {
     const resp = await fetch(API + '/api/face/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: AUTH_HEADERS,
       body: JSON.stringify(payload)
     });
     const data = await resp.json();
@@ -193,21 +195,23 @@ async function onVerifyCapture(payload) {
       return;
     }
 
-    if (data.matched) {
+    if (data.success && data.matched) {
       div.innerHTML = `
         <div class="success-box">
-          ✅ <strong>${data.identity.name}</strong> — tanildi
+          ✅ <strong>${data.identity?.name || 'Topildi'}</strong> — tanildi
           <span class="badge ${data.type === 'staff' ? 'badge-staff' : 'badge-patient'}">${data.type === 'staff' ? '👨‍⚕️ Xodim' : '🧑 Bemor'}</span>
         </div>
-        <div class="fc-result ${data.success ? 'fc-result-success' : 'fc-result-error'}">
-          <h4>${data.success ? '✅ Muvaffaqiyatli' : '❌ Xatolik'}</h4>
+        <div class="fc-result fc-result-success">
+          <h4>✅ Muvaffaqiyatli</h4>
           <p>Ishonchlilik: <strong>${(data.confidence * 100).toFixed(1)}%</strong></p>
           <p>Liveness: ${data.liveness_passed ? '✅ O\'tdi' : '❌ O\'tmadi'}</p>
           ${data.identity?.specialty ? '<p>Mutaxassislik: ' + data.identity.specialty + '</p>' : ''}
         </div>`;
-    } else {
+    } else if (data.success && !data.matched) {
       div.innerHTML = `
         <div class="error-box">❌ Yuz tanilmadi. Qayta urinib ko'ring.</div>`;
+    } else {
+      div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
     }
   } catch (e) {
     showError('verify', 'Server bilan bog\'lanishda xatolik');
@@ -220,7 +224,7 @@ async function onRegisterCapture(payload) {
     if (!firstName) { showError('register', 'Ism majburiy'); return; }
     const resp = await fetch(API + '/api/face/register-patient', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: AUTH_HEADERS,
       body: JSON.stringify({
         ...payload,
         first_name: firstName,

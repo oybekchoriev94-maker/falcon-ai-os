@@ -448,11 +448,11 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   // DOCTOR ROUTES  (from server.js inline)
   // ====================================================================
 
-  // GET /doctors — list doctors with face enrolled
+  // GET /doctors — list all doctors (admin/ceo)
   router.get('/doctors', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
       const docs = await q(
-        'SELECT id, first_name, last_name, specialty FROM doctors WHERE face_descriptor IS NOT NULL'
+        'SELECT id, first_name, last_name, specialty, CASE WHEN face_descriptor IS NOT NULL THEN true ELSE false END as face_enrolled FROM doctors ORDER BY first_name'
       );
       res.json({ success: true, doctors: docs });
     } catch (e) {

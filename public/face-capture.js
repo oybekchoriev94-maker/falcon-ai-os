@@ -34,6 +34,7 @@
       this.onCapture = options.onCapture || null;
       this.onError = options.onError || null;
       this.baseUrl = options.baseUrl || '';
+      this.authToken = options.authToken || '';
       this.stream = null;
       this.faceApi = null;
       this.animationId = null;
@@ -460,9 +461,11 @@
       const payload = await this.capture();
       if (!payload) return null;
       try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.authToken) headers['Authorization'] = 'Bearer ' + this.authToken;
         const resp = await fetch(`${this.baseUrl}/api/face/verify`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ ...payload, ...extra })
         });
         return { ok: resp.ok, status: resp.status, data: await resp.json() };
@@ -476,8 +479,10 @@
       const payload = await this.capture();
       if (!payload) return null;
       try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.authToken) headers['Authorization'] = 'Bearer ' + this.authToken;
         const resp = await fetch(`${this.baseUrl}/api/face/register-patient`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers,
           body: JSON.stringify({ ...patientInfo, ...payload, ...extra })
         });
         return { ok: resp.ok, status: resp.status, data: await resp.json() };

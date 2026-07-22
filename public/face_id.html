@@ -20,6 +20,7 @@
     </div>
     <div class="flex gap-2">
       <span id="modelStatus" class="px-3 py-1 rounded-full bg-yellow-900/40 text-yellow-400 text-xs">⏳ Modellar yuklanmoqda...</span>
+      <button onclick="logout()" class="px-3 py-1 rounded-full bg-red-900/40 text-red-400 text-xs hover:bg-red-800/50">Chiqish</button>
     </div>
   </div>
 
@@ -141,12 +142,16 @@ async function getDescriptor() {
 // Load doctors
 async function loadDoctors() {
   try {
-    const res = await fetch(API + '/api/face/doctors');
+    const token = localStorage.getItem('falcon_token') || '';
+    const res = await fetch(API + '/api/face/doctors', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
     const data = await res.json();
     const select = document.getElementById('doctorSelect');
     select.innerHTML = '<option value="">— Doktorni tanlang —</option>';
     (data.doctors || []).forEach(doc => {
-      select.innerHTML += `<option value="${doc.id}">${doc.first_name} ${doc.last_name} (${doc.specialty || '—'})</option>`;
+      const enrolled = doc.face_enrolled ? '✅' : '❌';
+      select.innerHTML += `<option value="${doc.id}">${doc.first_name} ${doc.last_name} (${doc.specialty || '—'}) ${enrolled}</option>`;
     });
     document.getElementById('captureBtn').disabled = false;
   } catch (e) {
@@ -228,7 +233,10 @@ async function startVerification() {
 // Load today's face logs
 async function loadFaceLogs() {
   try {
-    const res = await fetch(API + '/api/face/logs');
+    const token = localStorage.getItem('falcon_token') || '';
+    const res = await fetch(API + '/api/face/logs', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
     const data = await res.json();
     const logs = data.logs || [];
     document.getElementById('faceLogs').innerHTML = logs.length
@@ -247,6 +255,11 @@ async function loadFaceLogs() {
   } catch (e) {
     document.getElementById('faceLogs').innerHTML = '<p class="text-sm opacity-40 text-center py-4">Ma\'lumot yuklanmadi</p>';
   }
+}
+
+function logout() {
+  localStorage.removeItem('falcon_token');
+  window.location.href = '/dashboard.html';
 }
 
 function setMode(mode) {
