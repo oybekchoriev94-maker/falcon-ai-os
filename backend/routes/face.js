@@ -182,7 +182,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         );
         await q(
           'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-          [id, `${first_name} ${last_name || ''}`, 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
+          [null, req.user?.name || 'Admin', 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
         );
         const patient = await qGet(
           'SELECT id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at FROM patients WHERE id = $1',
@@ -221,7 +221,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         );
         await q(
           'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [tenantId, null, `${first_name} ${last_name || ''}`, 'patient_register_simple', 1.0, 'yes', id, null]
+          [tenantId, null, req.user?.name || 'Admin', 'patient_register_simple', 1.0, 'yes', id, null]
         );
         const patient = await qGet(
           'SELECT id, first_name, last_name, phone, created_at FROM patients WHERE id = $1', [id]
