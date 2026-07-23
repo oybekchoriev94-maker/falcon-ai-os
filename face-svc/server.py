@@ -138,7 +138,7 @@ async def extract_face(req: ExtractRequest):
             return {"success": False, "error": "Yuz aniqlanmadi", "count": 0}
 
         if hasattr(embedding, 'tolist'):
-            embedding = embedding.tolist()
+            embedding = embedding[0].tolist()
 
         bbox_int = [int(v) for v in bbox[:4]]
         face_crop = _crop_face(img, bbox_int, margin=1.5)
