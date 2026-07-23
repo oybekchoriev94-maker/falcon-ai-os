@@ -95,6 +95,9 @@ const AUTH_HEADERS = TOKEN ? { 'Content-Type': 'application/json', 'Authorizatio
 let faceCaptureVerify = null;
 let faceCaptureRegister = null;
 
+// Sahifa yuklanganda verify kamerani avtomatik ishga tushiramiz
+document.addEventListener('DOMContentLoaded', () => switchMode('verify'));
+
 function switchMode(mode) {
   document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + mode));
@@ -165,7 +168,15 @@ async function doCapture(id) {
   }
 
   const payload = await fc.capture();
+  if (!payload) {
+    showError(id, 'Yuz aniqlanmadi yoki server bilan bog\'lanmadi');
+    btn.disabled = false;
+    btn.textContent = '📸 Yuzni olish';
+    return;
+  }
 
+  // onCapture callback already handled the result;
+  // payload is { face_descriptor, liveness_score, nonce, timestamp }
   btn.disabled = false;
   btn.textContent = '📸 Yuzni olish';
 }
@@ -188,7 +199,7 @@ async function onVerifyCapture(payload) {
         Iltimos, to'g'ridan-to'g'ri kameraga qarang va ko'rsatilgan harakatlarni bajaring.</div>
         <div class="fc-result fc-result-error">
           <h4>🚫 Spoof bloklandi</h4>
-          <p>Liveness: <strong>${(data.liveness_score * 100).toFixed(0)}%</strong> (talab: ≥85%)</p>
+          <p>Liveness: <strong>${(data.liveness_score * 100).toFixed(0)}%</strong> (talab: ≥50%)</p>
           <div class="fc-score-bar"><div class="fc-score-fill" style="width:${Math.min(100, data.liveness_score * 100)}%;background:#f85149"></div></div>
           <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>
         </div>`;
@@ -220,15 +231,31 @@ async function onVerifyCapture(payload) {
 
 async function onRegisterCapture(payload) {
   try {
-    const firstName = document.getElementById('regFirstName').value.trim();
-    if (!firstName) { showError('register', 'Ism majburiy'); return; }
+    const firstName = document.getElementById('regFirstName').value.trim().replace(/\s+/g, ' ');
+    if (!firstName || firstName.length < 2) { showError('register', 'Ism kamida 2 harf'); return; }
+
+    const phone = document.getElementById('regPhone').value.trim();
+    if (phone && !/^\+998\d{9}$/.test(phone.replace(/[\s\-()]/g, ''))) {
+      showError('register', 'Telefon: +998 XX XXX XX XX formatida');
+      return;
+    }
+
+    const birthDate = document.getElementById('regBirthDate').value;
+    if (birthDate) {
+      const bd = new Date(birthDate);
+      if (isNaN(bd.getTime())) { showError('register', "Tug'ilgan sana noto'g'ri"); return; }
+      if (bd > new Date()) { showError('register', "Tug'ilgan sana kelajakda bo'lishi mumkin emas"); return; }
+      if (bd < new Date('1900-01-01')) { showError('register', "Tug'ilgan sana noto'g'ri"); return; }
+    }
+
+    const lastName = document.getElementById('regLastName').value.trim().replace(/\s+/g, ' ');
     const resp = await fetch(API + '/api/face/register-patient', {
       method: 'POST',
       headers: AUTH_HEADERS,
       body: JSON.stringify({
         ...payload,
         first_name: firstName,
-        last_name: document.getElementById('regLastName').value.trim(),
+        last_name: lastName,
         phone: document.getElementById('regPhone').value.trim(),
         birth_date: document.getElementById('regBirthDate').value
       })
@@ -241,7 +268,7 @@ async function onRegisterCapture(payload) {
       div.innerHTML = `
         <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
         Ro'yxatdan o'tish uchun jonli yuz talab qilinadi.<br>
-        Liveness: ${(data.liveness_score * 100).toFixed(0)}% (talab: ≥85%)</div>
+        Liveness: ${(data.liveness_score * 100).toFixed(0)}% (talab: ≥50%)</div>
         <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>`;
       return;
     }
@@ -267,10 +294,7 @@ function showError(panel, msg) {
   div.innerHTML = `<div class="error-box">❌ ${msg}</div>`;
 }
 
-// Init verify mode by default
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => initVerifyCapture(), 500);
-});
+
 </script>
 <script src="face-capture.js"></script>
 </body>

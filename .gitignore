@@ -79,3 +79,7 @@ falcon-ai-os-tijorat*
 ~$*
 start.bat
 fix.cjs
+
+# Local dev scratch (token, helper scripts)
+token.txt
+get-token.mjs

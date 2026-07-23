@@ -78,7 +78,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   // ────────────────────────────────────────────────────────────
 
   const FACE_THRESHOLD = 0.45;
-  const LIVENESS_THRESHOLD = 0.85;
+  const LIVENESS_THRESHOLD = 0.5;
 
   const registerPatientSchema = z.object({
     first_name: z.string().min(2).max(100),
@@ -96,7 +96,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     order_number: z.string().max(50).optional(),
     medical_record_number: z.string().max(50).optional(),
     notes: z.string().max(1000).optional(),
-    face_descriptor: z.array(z.number()).min(128).max(512),
+    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
     liveness_score: z.number().min(0).max(1).optional(),
     nonce: z.string().min(8).max(64),
     timestamp: z.number(),
@@ -122,7 +122,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   });
 
   const verifySchema = z.object({
-    face_descriptor: z.array(z.number()).min(128).max(512),
+    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
     liveness_score: z.number().min(0).max(1).optional(),
     nonce: z.string().min(8).max(64),
     timestamp: z.number(),
@@ -147,8 +147,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
 
         if (livenessValue < LIVENESS_THRESHOLD) {
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)',
-            ['Spoof-Register', 'patient_register', 'no', livenessValue, 0, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)',
+            [req.tenant_id || 'default', 'Spoof-Register', 'patient_register', 'no', livenessValue, 0, 1, device_id || null]
           );
           return res.status(403).json({
             success: false,
@@ -159,7 +159,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         const existingPatients = await q(
-          'SELECT id, first_name, last_name, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL'
+          'SELECT id, first_name, last_name, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL AND tenant_id = $1',
+          [req.tenant_id]
         );
         const dupCheck = findBestMatch(face_descriptor, existingPatients, 0.35);
         if (dupCheck.match) {
@@ -174,15 +175,15 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         const id = uuidv4();
-        const tenantId = req.tenant_id;
+        const tenantId = req.tenant_id || 'default';
         const stored = prepareForDb(face_descriptor);
         await q(
           'INSERT INTO patients (id, tenant_id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, face_descriptor) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)',
-          [id, tenantId, first_name, last_name || '', middle_name || '', phone || '', birth_date || '', region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '', stored]
+          [id, tenantId, first_name, last_name || '', middle_name || '', phone || '', birth_date || null, region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '', stored]
         );
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-          [null, req.user?.name || 'Admin', 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [tenantId, null, req.user?.name || 'Admin', 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
         );
         const patient = await qGet(
           'SELECT id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at FROM patients WHERE id = $1',
@@ -212,12 +213,26 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         const { first_name, last_name, phone, photo_base64 } = req.body;
         const tenantId = req.tenant_id;
         const id = uuidv4();
+
+        let storedDescriptor = null;
+        if (photo_base64) {
+          const faceData = await extractFace(photo_base64);
+          if (faceData && faceData.embedding) {
+            if ((faceData.liveness_score ?? 0) < LIVENESS_THRESHOLD) {
+              return res.status(403).json({
+                success: false,
+                error: "Soxta yuz aniqlangan. Jonli yuz talab qilinadi.",
+                liveness_score: faceData.liveness_score,
+              });
+            }
+            storedDescriptor = prepareForDb(faceData.embedding);
+          }
+        }
+
         await q(
-          `INSERT INTO patients (id, tenant_id, first_name, last_name, phone, face_descriptor, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [id, tenantId, first_name, last_name || '', phone || '',
-           photo_base64 ? JSON.stringify({ photo: true, captured: new Date().toISOString() }) : null,
-           photo_base64 ? `photo:${photo_base64.substring(0, 100)}...` : '']
+          `INSERT INTO patients (id, tenant_id, first_name, last_name, phone, face_descriptor)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, tenantId, first_name, last_name || '', phone || '', storedDescriptor]
         );
         await q(
           'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
@@ -243,10 +258,12 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         const { face_descriptor, liveness_score, device_id } = req.body;
         const livenessValue = liveness_score !== undefined ? parseFloat(liveness_score) : 0;
 
+        const tenantId = req.tenant_id || 'default';
+
         if (livenessValue < LIVENESS_THRESHOLD) {
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)',
-            ['Spoof', 'entry', 'no', livenessValue, 0, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)',
+            [tenantId, 'Spoof', 'entry', 'no', livenessValue, 0, 1, device_id || null]
           );
           return res.status(403).json({
             success: false,
@@ -258,10 +275,12 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         const doctors = await q(
-          "SELECT id, first_name, last_name, specialty, face_descriptor FROM doctors WHERE face_descriptor IS NOT NULL AND status = 'Faol'"
+          "SELECT id, first_name, last_name, specialty, face_descriptor FROM doctors WHERE face_descriptor IS NOT NULL AND status = 'Faol' AND tenant_id = $1",
+          [tenantId]
         );
         const patients = await q(
-          'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL'
+          'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL AND tenant_id = $1',
+          [tenantId]
         );
 
         const bestDoctor = findBestMatch(face_descriptor, doctors, FACE_THRESHOLD);
@@ -270,8 +289,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         if (bestDoctor.match) {
           const name = `${bestDoctor.match.first_name} ${bestDoctor.match.last_name}`;
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, livenessValue, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+            [tenantId, bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, livenessValue, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -290,8 +309,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         if (bestPatient.match) {
           const name = `${bestPatient.match.first_name} ${bestPatient.match.last_name}`;
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, livenessValue, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+            [tenantId, null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, livenessValue, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -308,14 +327,51 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [null, "Noma'lum", 'entry', 'no', livenessValue, 1, device_id || null]
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [tenantId, null, "Noma'lum", 'entry', 'no', livenessValue, 1, device_id || null]
         );
         res.json({
           success: true,
           matched: false,
           liveness_passed: true,
           distance: Math.min(bestDoctor.distance, bestPatient.distance),
+        });
+      } catch (e) {
+        safeError(res, e);
+      }
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────
+  // POST /extract — extract face descriptor + liveness from photo
+  // ────────────────────────────────────────────────────────────
+  const extractPhotoSchema = z.object({
+    photo_base64: z.string().min(50, 'Rasm juda kichik'),
+    nonce: z.string().min(8).max(64),
+    timestamp: z.number(),
+  });
+
+  router.post(
+    '/extract',
+    authMiddleware,
+    faceRouteLimiter,
+    validateNonce,
+    validate(extractPhotoSchema),
+    async (req, res) => {
+      try {
+        const { photo_base64 } = req.body;
+        const faceData = await extractFace(photo_base64);
+        if (!faceData || !faceData.embedding) {
+          return res.status(400).json({
+            success: false,
+            error: "Yuz aniqlanmadi. Kameraga to'g'ri qarang va yaxshi yoritilgan joyda turing.",
+          });
+        }
+        res.json({
+          success: true,
+          face_descriptor: faceData.embedding,
+          liveness_score: faceData.liveness_score ?? 0.5,
+          descriptor_dim: faceData.embedding.length,
         });
       } catch (e) {
         safeError(res, e);
@@ -369,14 +425,17 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           });
         }
 
+        const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1 AND tenant_id = $2', [doctor_id, req.tenant_id]);
+        if (!doc) {
+          return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+        }
         const stored = prepareForDb(faceData.embedding);
-        await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2', [stored, doctor_id]);
+        await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2 AND tenant_id = $3', [stored, doctor_id, req.tenant_id]);
 
-        const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1', [doctor_id]);
-        const name = doc ? `${doc.first_name} ${doc.last_name}` : 'Unknown';
+        const name = `${doc.first_name} ${doc.last_name}`;
         await q(
-          "INSERT INTO face_logs (doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, 'face_register', 'yes', $3)",
-          [doctor_id, name, device_id || null]
+          "INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, $3, 'face_register', 'yes', $4)",
+          [req.tenant_id, doctor_id, name, device_id || null]
         );
 
         res.json({
@@ -410,10 +469,12 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           });
         }
 
+        const tenantId = req.tenant_id;
+
         if (faceData.liveness_score < 0.5) {
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)',
-            ['Spoof', 'verify_photo', 'no', faceData.liveness_score, 0, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)',
+            [tenantId, 'Spoof', 'verify_photo', 'no', faceData.liveness_score, 0, 1, device_id || null]
           );
           return res.status(403).json({
             success: false,
@@ -423,10 +484,12 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         const doctors = await q(
-          "SELECT id, first_name, last_name, specialty, face_descriptor FROM doctors WHERE face_descriptor IS NOT NULL AND status = 'Faol'"
+          "SELECT id, first_name, last_name, specialty, face_descriptor FROM doctors WHERE face_descriptor IS NOT NULL AND status = 'Faol' AND tenant_id = $1",
+          [tenantId]
         );
         const patients = await q(
-          'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL'
+          'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL AND tenant_id = $1',
+          [tenantId]
         );
 
         const bestDoctor = findBestMatch(faceData.embedding, doctors, 0.45);
@@ -435,8 +498,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         if (bestDoctor.match) {
           const name = `${bestDoctor.match.first_name} ${bestDoctor.match.last_name}`;
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, faceData.liveness_score, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+            [tenantId, bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, faceData.liveness_score, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -455,8 +518,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         if (bestPatient.match) {
           const name = `${bestPatient.match.first_name} ${bestPatient.match.last_name}`;
           await q(
-            'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, faceData.liveness_score, 1, device_id || null]
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+            [tenantId, null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, faceData.liveness_score, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -473,8 +536,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [null, "Noma'lum", 'entry', 'no', faceData.liveness_score, 1, device_id || null]
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [tenantId, null, "Noma'lum", 'entry', 'no', faceData.liveness_score, 1, device_id || null]
         );
         res.json({
           success: true,
@@ -488,10 +551,11 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   );
 
   // GET /attendance — today's staff attendance logs
-  router.get('/attendance', authMiddleware, async (req, res) => {
+  router.get('/attendance', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
       const logs = await q(
-        "SELECT * FROM face_logs WHERE created_at::date = CURRENT_DATE AND action IN ('attended','entry') ORDER BY created_at DESC"
+        "SELECT * FROM face_logs WHERE tenant_id = $1 AND created_at::date = CURRENT_DATE AND action IN ('attended','entry') ORDER BY created_at DESC",
+        [req.tenant_id]
       );
       res.json({ success: true, total: logs.length, logs });
     } catch (e) {
@@ -500,10 +564,11 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   });
 
   // GET /patient-checkins — today's patient check-in logs
-  router.get('/patient-checkins', authMiddleware, async (req, res) => {
+  router.get('/patient-checkins', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
       const logs = await q(
-        "SELECT * FROM face_logs WHERE created_at::date = CURRENT_DATE AND action IN ('checked_in','patient_register') ORDER BY created_at DESC"
+        "SELECT * FROM face_logs WHERE tenant_id = $1 AND created_at::date = CURRENT_DATE AND action IN ('checked_in','patient_register') ORDER BY created_at DESC",
+        [req.tenant_id]
       );
       res.json({ success: true, total: logs.length, logs });
     } catch (e) {
@@ -619,7 +684,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.get('/doctors', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
       const docs = await q(
-        'SELECT id, first_name, last_name, specialty, CASE WHEN face_descriptor IS NOT NULL THEN true ELSE false END as face_enrolled FROM doctors ORDER BY first_name'
+        'SELECT id, first_name, last_name, specialty, CASE WHEN face_descriptor IS NOT NULL THEN true ELSE false END as face_enrolled FROM doctors WHERE tenant_id = $1 ORDER BY first_name',
+        [req.tenant_id]
       );
       res.json({ success: true, doctors: docs });
     } catch (e) {
@@ -638,13 +704,14 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     async (req, res) => {
       try {
         const { doctor_id, face_descriptor, device_id } = req.body;
+        const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1 AND tenant_id = $2', [doctor_id, req.tenant_id]);
+        if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
         const stored = prepareForDb(face_descriptor);
-        await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2', [stored, doctor_id]);
-        const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1', [doctor_id]);
-        const name = doc ? `${doc.first_name} ${doc.last_name}` : 'Unknown';
+        await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2 AND tenant_id = $3', [stored, doctor_id, req.tenant_id]);
+        const name = `${doc.first_name} ${doc.last_name}`;
         await q(
-          "INSERT INTO face_logs (doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, 'face_register', 'yes', $3)",
-          [doctor_id, name, device_id || null]
+          "INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, $3, 'face_register', 'yes', $4)",
+          [req.tenant_id, doctor_id, name, device_id || null]
         );
         res.json({ success: true, message: 'Yuz modeli saqlandi' });
       } catch (e) {
@@ -657,7 +724,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.get('/logs', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
       const logs = await q(
-        "SELECT * FROM face_logs WHERE created_at::date = CURRENT_DATE ORDER BY created_at DESC LIMIT 20"
+        "SELECT * FROM face_logs WHERE tenant_id = $1 AND created_at::date = CURRENT_DATE ORDER BY created_at DESC LIMIT 20",
+        [req.tenant_id]
       );
       res.json({ success: true, total: logs.length, logs });
     } catch (e) {
@@ -672,7 +740,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         `SELECT id, first_name, last_name, specialty, username,
          CASE WHEN face_descriptor IS NOT NULL THEN 'active' ELSE 'no_face' END as biometric_status,
          status as account_status
-         FROM doctors ORDER BY first_name`
+         FROM doctors WHERE tenant_id = $1 ORDER BY first_name`,
+        [req.tenant_id]
       );
       res.json({ success: true, doctors });
     } catch (e) {
@@ -684,9 +753,9 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.post('/doctors/:id/block', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = await qGet('SELECT id FROM doctors WHERE id = $1', [id]);
+      const existing = await qGet('SELECT id FROM doctors WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       if (!existing) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-      await q("UPDATE doctors SET status = 'Bloklangan' WHERE id = $1", [id]);
+      await q("UPDATE doctors SET status = 'Bloklangan' WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
       res.json({ success: true, message: 'Biometrik status bloklandi' });
     } catch (e) {
       safeError(res, e);
@@ -697,9 +766,9 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.post('/doctors/:id/unblock', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = await qGet('SELECT id FROM doctors WHERE id = $1', [id]);
+      const existing = await qGet('SELECT id FROM doctors WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       if (!existing) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-      await q("UPDATE doctors SET status = 'Faol' WHERE id = $1", [id]);
+      await q("UPDATE doctors SET status = 'Faol' WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
       res.json({ success: true, message: 'Biometrik status faollashtirildi' });
     } catch (e) {
       safeError(res, e);
@@ -710,9 +779,9 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.delete('/doctors/:id/face', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = await qGet('SELECT id FROM doctors WHERE id = $1', [id]);
+      const existing = await qGet('SELECT id FROM doctors WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       if (!existing) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-      await q("UPDATE doctors SET face_descriptor = NULL, status = 'Faol' WHERE id = $1", [id]);
+      await q("UPDATE doctors SET face_descriptor = NULL, status = 'Faol' WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
       res.json({ success: true, message: "Yuz modeli o'chirildi" });
     } catch (e) {
       safeError(res, e);
@@ -744,8 +813,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           [user_type, user_id, consent_text || '', ip, ua]
         );
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, anonymized) VALUES (NULL, $1, \'consent_given\', \'yes\', 0)',
-          [user_type === 'doctor' ? `Doctor:${user_id}` : `Patient:${user_id}`]
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, anonymized) VALUES ($1, NULL, $2, \'consent_given\', \'yes\', 0)',
+          [req.tenant_id, user_type === 'doctor' ? `Doctor:${user_id}` : `Patient:${user_id}`]
         );
         res.status(201).json({ success: true, message: 'Rozilik berildi', consent_id: result[0]?.id });
       } catch (e) {
@@ -776,13 +845,13 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.delete('/forget/doctor/:id', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const doc = await qGet('SELECT id, first_name, last_name FROM doctors WHERE id = $1', [id]);
+      const doc = await qGet('SELECT id, first_name, last_name FROM doctors WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-      await q('UPDATE doctors SET face_descriptor = NULL WHERE id = $1', [id]);
+      await q('UPDATE doctors SET face_descriptor = NULL WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       await q("DELETE FROM consent_logs WHERE user_type = 'doctor' AND user_id = $1", [id]);
       await q(
-        'UPDATE face_logs SET doctor_name = \'Forgotten\', doctor_id = NULL, matched = \'forgotten\', anonymized = 1 WHERE doctor_id = $1',
-        [id]
+        'UPDATE face_logs SET doctor_name = \'Forgotten\', doctor_id = NULL, matched = \'forgotten\', anonymized = 1 WHERE doctor_id = $1 AND tenant_id = $2',
+        [id, req.tenant_id]
       );
       res.json({
         success: true,
@@ -797,13 +866,13 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
   router.delete('/forget/patient/:id', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const pat = await qGet('SELECT id, first_name, last_name FROM patients WHERE id = $1', [id]);
+      const pat = await qGet('SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       if (!pat) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
-      await q('UPDATE patients SET face_descriptor = NULL WHERE id = $1', [id]);
+      await q('UPDATE patients SET face_descriptor = NULL WHERE id = $1 AND tenant_id = $2', [id, req.tenant_id]);
       await q("DELETE FROM consent_logs WHERE user_type = 'patient' AND user_id = $1", [id]);
       await q(
-        'UPDATE face_logs SET doctor_name = \'Forgotten\', doctor_id = NULL, patient_id = NULL, matched = \'forgotten\', anonymized = 1 WHERE patient_id = $1',
-        [id]
+        'UPDATE face_logs SET doctor_name = \'Forgotten\', doctor_id = NULL, patient_id = NULL, matched = \'forgotten\', anonymized = 1 WHERE patient_id = $1 AND tenant_id = $2',
+        [id, req.tenant_id]
       );
       res.json({
         success: true,

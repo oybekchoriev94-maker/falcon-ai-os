@@ -144,6 +144,54 @@ export function verifyTelegramAuth(req, res, next) {
   }
 }
 
+// Telegram initData imzosini tekshiradi va req.telegramUser ni o'rnatadi.
+// Bemor (patient) TMA endpointlari uchun — staff a'zoligini talab qilmaydi.
+// Production: initData majburiy va imzosi tekshiriladi.
+// Development/test: initData bo'lmasa, lokal test uchun x-telegram-id header'iga ruxsat.
+export function verifyTelegramInitData(req, res, next) {
+  const initData = req.headers['x-telegram-init-data'];
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (!initData) {
+    if (!isProd) {
+      const devId = req.headers['x-telegram-id'] || req.query.telegram_id || req.body?.telegram_id;
+      if (devId) {
+        req.telegramUser = { id: devId };
+        return next();
+      }
+    }
+    return res.status(401).json({ success: false, error: 'Telegram autentifikatsiyasi talab qilinadi' });
+  }
+
+  try {
+    const botToken = process.env.TELEGRAM_TOKEN_PATIENT || process.env.TELEGRAM_TOKEN_REFERRAL || '';
+    if (!botToken) return res.status(500).json({ success: false, error: 'BOT_TOKEN aniqlanmadi' });
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    if (!hash) return res.status(403).json({ success: false, error: 'Hash topilmadi' });
+    params.delete('hash');
+    const dataCheckString = Array.from(params.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+    const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    if (computedHash !== hash) {
+      return res.status(403).json({ success: false, error: 'Telegram autentifikatsiyasi muvaffaqiyatsiz' });
+    }
+    const authDate = params.get('auth_date');
+    if (!authDate || Math.floor(Date.now() / 1000) - parseInt(authDate, 10) > 86400) {
+      return res.status(403).json({ success: false, error: 'Avtorizatsiya vaqti o\'tgan, ilovani qayta yuklang' });
+    }
+    const userStr = params.get('user');
+    if (!userStr) return res.status(403).json({ success: false, error: 'Foydalanuvchi ma\'lumoti topilmadi' });
+    req.telegramUser = JSON.parse(userStr);
+    return next();
+  } catch (e) {
+    return res.status(403).json({ success: false, error: 'Avtorizatsiya xatosi' });
+  }
+}
+
 export function telegramOrJwtAuth(...allowedRoles) {
   return (req, res, next) => {
     if (req.headers['x-telegram-init-data']) {
@@ -230,14 +278,14 @@ export const schemas = {
   }),
   faceRegister: z.object({
     doctor_id: z.string().uuid(),
-    face_descriptor: z.array(z.number()).min(128).max(512),
+    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
     liveness_score: z.number().min(0).max(1).optional(),
     nonce: z.string().min(8).max(64),
     timestamp: z.number(),
     device_id: z.string().max(128).optional()
   }),
   faceVerify: z.object({
-    face_descriptor: z.array(z.number()).min(128).max(512),
+    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
     liveness_score: z.number().min(0).max(1).optional(),
     nonce: z.string().min(8).max(64),
     timestamp: z.number(),

@@ -55,7 +55,9 @@ services:
       TELEGRAM_TOKEN_PATIENT: ${TELEGRAM_TOKEN_PATIENT:-}
       TELEGRAM_TOKEN_REFERRAL: ${TELEGRAM_TOKEN_REFERRAL:-}
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
-      FACE_ENCRYPTION_KEY: ${FACE_ENCRYPTION_KEY:-}
+      # ─── YUZ MA'LUMOTLARI SHIFRLASH (MAJBURIY!) ───
+      # .env faylida: FACE_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      FACE_ENCRYPTION_KEY: ${FACE_ENCRYPTION_KEY:?}
       SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:-ceo-change-me-now}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin-change-me-now}
       SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:-reception-change-me-now}
@@ -73,9 +75,9 @@ services:
       db:
         condition: service_healthy
       stt:
-        condition: service_started
+        condition: service_healthy
       face-svc:
-        condition: service_started
+        condition: service_healthy
 
   frontend:
     <<: *common

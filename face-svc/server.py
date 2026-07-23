@@ -70,7 +70,8 @@ def _crop_face(img, bbox, margin=1.5):
 
 def _predict_liveness(face_img):
     if liveness_session is None:
-        return 1.0
+        print("[FACE] WARNING: Liveness model not loaded — defaulting to 0.0 (fail-safe)")
+        return 0.0
 
     face_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
     h_f, w_f = face_rgb.shape[:2]

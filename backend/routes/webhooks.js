@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { q, qGet } from '../db.js';
-import { handlePaymeWebhook } from '../services/payment-gateway.js';
+import { handlePaymeWebhook, verifyPaymeAuth, verifyClickSign } from '../services/payment-gateway.js';
 import { sendInvoiceEmail } from '../services/email.js';
 
 export default function webhookRoutes() {
@@ -9,6 +9,9 @@ export default function webhookRoutes() {
 
   router.post('/payme', async (req, res) => {
     try {
+      if (!verifyPaymeAuth(req)) {
+        return res.status(401).json({ error: -32504, message: 'Avtorizatsiya xatosi' });
+      }
       const result = handlePaymeWebhook(req.body);
       if (result.success && result.tenant_id) {
         await q(
@@ -40,6 +43,9 @@ export default function webhookRoutes() {
 
   router.post('/click', async (req, res) => {
     try {
+      if (!verifyClickSign(req.body)) {
+        return res.status(401).json({ error: -1, error_note: 'SIGN CHECK FAILED' });
+      }
       const { click_trans_id, service_id, merchant_trans_id, amount, status } = req.body;
       if (status === 0) {
         await q(

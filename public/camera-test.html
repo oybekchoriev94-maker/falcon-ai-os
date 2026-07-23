@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kamera Test — Falcon AI OS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#e6edf3;padding:20px}
+h1{font-size:20px;margin-bottom:12px;text-align:center}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:16px}
+video{width:100%;max-width:640px;border-radius:8px;display:block;margin:0 auto;background:#000}
+button{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin:8px 4px}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-success{background:#16a34a;color:#fff}
+pre{background:#0d1117;padding:12px;border-radius:8px;font-size:13px;margin-top:8px;white-space:pre-wrap}
+.status{padding:10px;border-radius:6px;margin-top:8px;font-weight:600}
+.status-ok{background:#0d2818;color:#4ade80}
+.status-err{background:#3b0a0a;color:#f87171}
+.status-info{background:#1e3a5f;color:#93c5fd}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>📷 Kamera Test</h1>
+<div class="card">
+  <div id="status" class="status status-info">⏳ Tekshirilmoqda...</div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h2>📹 Kamera ko'rinishi</h2>
+    <video id="video" autoplay playsinline muted></video>
+    <div style="text-align:center;margin-top:8px">
+      <button class="btn-primary" onclick="startCamera()">📷 Kamerani boshlash</button>
+      <button class="btn-danger" onclick="stopCamera()">⏹ To'xtatish</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>📊 Natijalar</h2>
+    <div id="results">
+      <p style="color:#8b949e">Kamera boshlangandan keyin natijalar ko'rinadi...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const video = document.getElementById('video');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+let stream = null;
+
+function setStatus(msg, type) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status status-' + type;
+}
+
+function addResult(label, value, ok) {
+  const p = document.createElement('p');
+  p.innerHTML = `<strong>${label}:</strong> ${ok ? '✅ ' : '❌ '} ${value}`;
+  p.style.margin = '4px 0';
+  resultsEl.appendChild(p);
+}
+
+async function startCamera() {
+  setStatus("⏳ Kamera so'ralmoqda...", 'info');
+  
+  // Test 1: getUserMedia mavjudmi?
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus('❌ getUserMedia qo\'llab-quvvatlanmaydi', 'err');
+    addResult('getUserMedia', 'Mavjud emas', false);
+    return;
+  }
+  addResult('getUserMedia', 'Mavjud', true);
+
+  // Test 2: Kamera ruxsati
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      audio: false,
+    });
+    addResult('Kamera ruxsati', 'Tasdiqlandi', true);
+  } catch (e) {
+    setStatus('❌ Kamera xatosi: ' + e.message, 'err');
+    addResult('Kamera ruxsati', e.message, false);
+    return;
+  }
+
+  // Test 3: Video elementga ulash
+  try {
+    video.srcObject = stream;
+    await video.play();
+    addResult('Video element', 'Ishlamoqda', true);
+  } catch (e) {
+    setStatus('❌ Video xatosi: ' + e.message, 'err');
+    addResult('Video element', e.message, false);
+    return;
+  }
+
+  // Test 4: Video o'lchamlari
+  setTimeout(() => {
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w > 0 && h > 0) {
+      addResult('Video o\'lchami', `${w}x${h}`, true);
+      setStatus('✅ Kamera ishlayapti! Yuzingiz ko\'rinadi ✔️', 'ok');
+    } else {
+      addResult('Video o\'lchami', 'O\'lchanmadi (0x0)', false);
+      setStatus('⚠️ Kamera ishlayapti, lekin o\'lcham hali topilmadi', 'info');
+    }
+  }, 1000);
+
+  // Test 5: Kamera tracklari
+  const tracks = stream.getVideoTracks();
+  if (tracks.length > 0) {
+    const track = tracks[0];
+    addResult('Kamera track', track.label || 'Topildi', true);
+    addResult('Track settings', JSON.stringify({
+      width: track.getSettings().width,
+      height: track.getSettings().height,
+      frameRate: track.getSettings().frameRate,
+    }), true);
+  } else {
+    addResult('Kamera track', 'Topilmadi', false);
+  }
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    stream = null;
+    setStatus('⏹ Kamera to\'xtatildi', 'info');
+  }
+}
+
+// Avtomatik boshlash
+startCamera();
+</script>
+</body>
+</html>

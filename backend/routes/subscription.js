@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { q, qGet } from '../db.js';
+import { authMiddleware } from '../shared.js';
 
 export default function subscriptionRoutes() {
   const router = Router();
 
+  // Tenant har doim JWT dan olinadi (header/query orqali soxtalashtirib bo'lmaydi)
+  const tenantOf = (req) => req.user?.tenant_id || 'default';
+
+  // /plans — ochiq (marketing uchun tarif ro'yxati)
   router.get('/plans', async (req, res) => {
     try {
       const plans = await q("SELECT * FROM subscription_plans WHERE active = true ORDER BY monthly_price ASC");
@@ -14,9 +19,9 @@ export default function subscriptionRoutes() {
     }
   });
 
-  router.get('/current', async (req, res) => {
+  router.get('/current', authMiddleware, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = tenantOf(req);
       const sub = await qGet(`
         SELECT s.*, sp.name as plan_name, sp.code as plan_code,
           sp.max_doctors, sp.max_patients, sp.ai_requests_limit,
@@ -34,11 +39,15 @@ export default function subscriptionRoutes() {
     }
   });
 
-  router.post('/change', async (req, res) => {
+  // Tarifni faqat tenant egasi (ceo/admin) o'zgartira oladi
+  router.post('/change', authMiddleware, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      if (!['ceo', 'admin', 'superadmin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: 'Tarifni faqat klinika ma\'muri o\'zgartira oladi' });
+      }
+      const tenantId = tenantOf(req);
       const { plan_id, billing_cycle } = req.body;
-      if (!plan_id) return res.status(400).json({ error: 'plan_id talab qilinadi' });
+      if (!plan_id) return res.status(400).json({ error: 'Tarif (plan_id) talab qilinadi' });
 
       const plan = await qGet("SELECT * FROM subscription_plans WHERE id = $1 AND active = true", [plan_id]);
       if (!plan) return res.status(404).json({ error: 'Tarif topilmadi' });
@@ -63,9 +72,9 @@ export default function subscriptionRoutes() {
     }
   });
 
-  router.get('/usage', async (req, res) => {
+  router.get('/usage', authMiddleware, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = tenantOf(req);
       const today = new Date().toISOString().slice(0, 10);
       const usage = await qGet(`
         SELECT
@@ -81,9 +90,9 @@ export default function subscriptionRoutes() {
     }
   });
 
-  router.get('/invoices', async (req, res) => {
+  router.get('/invoices', authMiddleware, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = tenantOf(req);
       const invoices = await q(
         `SELECT * FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50`,
         [tenantId]

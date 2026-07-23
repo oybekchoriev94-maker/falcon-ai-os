@@ -454,7 +454,7 @@ async function addReminder(){
     if(data?.success){showToast('Eslatma qo\'shildi');document.getElementById('medName').value='';document.getElementById('medDosage').value='';document.getElementById('medTime').value='';loadReminders()}else showToast(data?.error||'Xatolik','error')
   }catch(e){showToast('Xatolik yuz berdi','error')}
 }
-async function deleteReminder(id){try{const r=await fetch(API+'/api/tma/reminders/'+id,{method:'DELETE',headers:{'x-telegram-id':telegramId}});if(!r.ok)throw new Error((await r.json().catch(()=>{}))?.error||r.statusText);showToast('Eslatma o\'chirildi');loadReminders()}catch(e){showToast('Xatolik yuz berdi','error')}}
+async function deleteReminder(id){try{const d=await api('DELETE','/api/tma/reminders/'+id);if(!d||d.success===false)throw new Error(d?.error||'Xatolik');showToast('Eslatma o\'chirildi');loadReminders()}catch(e){showToast('Xatolik yuz berdi','error')}}
 
 function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('uz-UZ',{day:'numeric',month:'short'})}
 function tryParseJson(s){if(!s)return null;try{return typeof s==='string'?JSON.parse(s):s}catch(e){return null}}

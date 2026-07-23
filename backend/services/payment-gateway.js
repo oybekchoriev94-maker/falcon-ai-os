@@ -4,6 +4,8 @@
 // Klinika kartasiga to'g'ridan-to'g'ri to'lov (karta raqamiga)
 // ============================================================
 
+import crypto from 'crypto';
+
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 // ─── Payme Merchant API ─────────────────────────────────
@@ -315,6 +317,59 @@ function handleUzumWebhook(reqBody) {
   };
 }
 
+// ============================================================
+// WEBHOOK IMZO TEKSHIRUVI (fail-closed)
+// Soxta to'lov tasdiqlaridan himoya
+// ============================================================
+
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+/**
+ * Payme webhook autentifikatsiyasi.
+ * Payme har bir so'rovda `Authorization: Basic base64(Paycom:MERCHANT_KEY)` yuboradi.
+ * @returns {boolean} imzo to'g'ri bo'lsa true
+ */
+function verifyPaymeAuth(req) {
+  if (!PAYME_KEY) {
+    console.error('[PAYME] PAYME_MERCHANT_KEY sozlanmagan — webhook rad etildi (fail-closed)');
+    return false;
+  }
+  const header = req.headers?.authorization || req.headers?.Authorization || '';
+  if (!header.startsWith('Basic ')) return false;
+  let decoded;
+  try { decoded = Buffer.from(header.slice(6), 'base64').toString('utf8'); }
+  catch { return false; }
+  const idx = decoded.indexOf(':');
+  const pass = idx >= 0 ? decoded.slice(idx + 1) : decoded;
+  return safeEqual(pass, PAYME_KEY);
+}
+
+/**
+ * Click webhook imzosini tekshirish (MD5 sign_string).
+ * sign = md5(click_trans_id + service_id + SECRET + merchant_trans_id + [merchant_prepare_id] + amount + action + sign_time)
+ * @returns {boolean}
+ */
+function verifyClickSign(body) {
+  if (!CLICK_SECRET_KEY) {
+    console.error('[CLICK] CLICK_SECRET_KEY sozlanmagan — webhook rad etildi (fail-closed)');
+    return false;
+  }
+  if (!body || !body.sign_string) return false;
+  const {
+    click_trans_id = '', service_id = '', merchant_trans_id = '',
+    merchant_prepare_id, amount = '', action = '', sign_time = ''
+  } = body;
+  const prepareId = merchant_prepare_id === undefined || merchant_prepare_id === null ? '' : merchant_prepare_id;
+  const base = `${click_trans_id}${service_id}${CLICK_SECRET_KEY}${merchant_trans_id}${prepareId}${amount}${action}${sign_time}`;
+  const expected = crypto.createHash('md5').update(base).digest('hex');
+  return safeEqual(expected, body.sign_string);
+}
+
 export {
   createPayment,
   createPaymePayment,
@@ -325,6 +380,8 @@ export {
   handleClickWebhook,
   handleUzumWebhook,
   getCheapestPlatform,
+  verifyPaymeAuth,
+  verifyClickSign,
   COMMISSIONS,
   DEFAULT_CLINIC_CARD
 };

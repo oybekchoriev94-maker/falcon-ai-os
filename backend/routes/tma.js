@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
-import { verifyTelegramAuth } from '../shared.js';
+import { verifyTelegramInitData } from '../shared.js';
 
 export default function tmaRoutes(pool) {
   const router = Router();
   const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
+
+  // Barcha TMA endpointlari uchun Telegram autentifikatsiyasi majburiy —
+  // bemor identifikatori faqat imzolangan initData'dan olinadi (header/query orqali soxtalashtirib bo'lmaydi)
+  router.use(verifyTelegramInitData);
 
   async function q(sql, params = []) {
     const r = await pool.query(sql, params);
@@ -16,19 +20,17 @@ export default function tmaRoutes(pool) {
     return r.rows[0] || null;
   }
 
+  // Bemor identifikatori faqat tekshirilgan Telegram initData'dan (soxtalashtirib bo'lmaydi)
   function getTelegramId(req) {
-    return req.telegramUser?.id?.toString() ||
-      req.headers['x-telegram-id'] ||
-      req.query.telegram_id ||
-      req.body?.telegram_id ||
-      '';
+    return req.telegramUser?.id?.toString() || '';
   }
 
   // ===== Sync/Link Telegram user =====
   router.post('/user/sync', async (req, res) => {
     try {
-      const { telegram_id, first_name, username, patient_name } = req.body;
-      if (!telegram_id) return res.status(400).json({ success: false, error: 'telegram_id talab qilinadi' });
+      const { first_name, username, patient_name } = req.body;
+      const telegram_id = getTelegramId(req);
+      if (!telegram_id) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
       const existing = await qGet("SELECT id, tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
       if (existing) {
@@ -66,9 +68,10 @@ export default function tmaRoutes(pool) {
   // ===== Register patient with telegram_id =====
   router.post('/register-patient', async (req, res) => {
     try {
-      const { telegram_id, first_name, last_name, phone, birth_date } = req.body;
+      const { first_name, last_name, phone, birth_date } = req.body;
+      const telegram_id = getTelegramId(req);
       if (!telegram_id || !first_name) {
-        return res.status(400).json({ success: false, error: 'telegram_id va first_name talab qilinadi' });
+        return res.status(400).json({ success: false, error: 'Telegram ID va ism talab qilinadi' });
       }
 
       // Find existing patient by telegram_id or phone
@@ -189,9 +192,10 @@ export default function tmaRoutes(pool) {
 
   router.post('/reminders', async (req, res) => {
     try {
-      const { telegram_id, medicine_name, dosage, reminder_time, notes } = req.body;
+      const { medicine_name, dosage, reminder_time, notes } = req.body;
+      const telegram_id = getTelegramId(req);
       if (!telegram_id || !medicine_name || !reminder_time) {
-        return res.status(400).json({ success: false, error: 'telegram_id, medicine_name va reminder_time talab qilinadi' });
+        return res.status(400).json({ success: false, error: 'Telegram ID, dori nomi va vaqt talab qilinadi' });
       }
 
       const user = await qGet("SELECT tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
@@ -208,7 +212,10 @@ export default function tmaRoutes(pool) {
 
   router.delete('/reminders/:id', async (req, res) => {
     try {
-      await q("UPDATE medication_reminders SET status = 'deleted' WHERE id = $1", [req.params.id]);
+      const telegramId = getTelegramId(req);
+      if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
+      // Faqat o'z eslatmasini o'chira oladi
+      await q("UPDATE medication_reminders SET status = 'deleted' WHERE id = $1 AND telegram_id = $2", [req.params.id, telegramId]);
       res.json({ success: true });
     } catch (e) { safeError(res, e); }
   });
@@ -259,7 +266,8 @@ export default function tmaRoutes(pool) {
   // ===== Book appointment via TMA =====
   router.post('/book', async (req, res) => {
     try {
-      const { doctor_id, patient_name, telegram_id, date, time } = req.body;
+      const { doctor_id, patient_name, date, time } = req.body;
+      const telegram_id = getTelegramId(req);
       if (!doctor_id || !patient_name || !date || !time) {
         return res.status(400).json({ success: false, error: 'doctor_id, patient_name, date va time talab qilinadi' });
       }

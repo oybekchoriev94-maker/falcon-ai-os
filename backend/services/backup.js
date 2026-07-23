@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
@@ -36,11 +36,29 @@ export async function createBackup() {
   }
 }
 
+// Faqat createBackup() yaratgan aniq shakldagi fayl nomlari ruxsat etiladi
+// (path traversal va shell-injection'dan himoya)
+const SAFE_BACKUP_NAME = /^falcon-backup-[0-9TZ-]+\.sql\.gz$/;
+
 export async function restoreBackup(filename) {
-  const filepath = path.join(BACKUP_DIR, filename);
+  if (typeof filename !== 'string' || !SAFE_BACKUP_NAME.test(filename)) {
+    return { success: false, error: 'Noto\'g\'ri fayl nomi' };
+  }
+  const filepath = path.join(BACKUP_DIR, path.basename(filename));
+  if (path.dirname(filepath) !== path.resolve(BACKUP_DIR)) {
+    return { success: false, error: 'Noto\'g\'ri fayl nomi' };
+  }
   if (!fs.existsSync(filepath)) return { success: false, error: 'Fayl topilmadi' };
   try {
-    execSync(`gunzip -c "${filepath}" | psql "${DB_URL}"`, { stdio: 'pipe', timeout: 300000 });
+    // Argumentlar shell orqali emas, argv massivi orqali uzatiladi — injection imkonsiz
+    const gunzip = spawnSync('gunzip', ['-c', '--', filepath], { timeout: 300000, maxBuffer: 1024 * 1024 * 1024 });
+    if (gunzip.status !== 0) {
+      throw new Error(gunzip.stderr?.toString() || 'gunzip xatosi');
+    }
+    const psql = spawnSync('psql', [DB_URL], { input: gunzip.stdout, timeout: 300000 });
+    if (psql.status !== 0) {
+      throw new Error(psql.stderr?.toString() || 'psql xatosi');
+    }
     console.log(`[BACKUP] Restore OK: ${filename}`);
     return { success: true };
   } catch (e) {

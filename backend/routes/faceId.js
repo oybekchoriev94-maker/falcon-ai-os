@@ -61,7 +61,7 @@ export default function faceIdRoutes(db, authMiddleware, checkRole) {
   });
 
   const THRESHOLD = 0.45;
-  const LIVENESS_MIN = 0.85;
+  const LIVENESS_MIN = 0.5;
 
   router.post('/register-patient', authMiddleware, faceRouteLimiter, validateNonce, validate(registerPatientSchema), (req, res) => {
     try {
@@ -96,7 +96,7 @@ export default function faceIdRoutes(db, authMiddleware, checkRole) {
       );
       q(
         'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, `${first_name} ${last_name || ''}`, 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
+        [null, `${first_name} ${last_name || ''}`, 'patient_register', 1.0, 'yes', id, livenessValue, 1, device_id || null]
       );
       const patient = qGet('SELECT id, first_name, last_name, phone, birth_date, created_at FROM patients WHERE id = ?', [id]);
       res.json({ success: true, patient, liveness_passed: true });

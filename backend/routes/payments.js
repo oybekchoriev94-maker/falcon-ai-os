@@ -13,7 +13,9 @@ import {
   createPayment,
   handlePaymeWebhook,
   handleClickWebhook,
-  handleUzumWebhook
+  handleUzumWebhook,
+  verifyPaymeAuth,
+  verifyClickSign
 } from '../services/payment-gateway.js';
 import { findBestMatch } from '../services/face-engine.js';
 
@@ -64,7 +66,7 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   router.post('/payments/create', authMiddleware, payLimiter, async (req, res) => {
     try {
       const { patient_id, amount, description, provider, services } = req.body;
-      const clinicId = req.user?.clinic_id || 'default';
+      const tenantId = req.user?.tenant_id || 'default';
 
       // Validatsiya
       if (!amount || amount <= 0) {
@@ -80,10 +82,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
       await q(
         `INSERT INTO payment_transactions
-         (id, clinic_id, patient_id, amount, description, services_json, provider, status, created_at)
+         (id, tenant_id, patient_id, amount, description, services_json, provider, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW())`,
         [
-          orderId, clinicId, patient_id || null,
+          orderId, tenantId, patient_id || null,
           totalAmount, description || `To'lov #${orderId.substring(0, 8)}`,
           services ? JSON.stringify(services) : null,
           provider || 'auto'
@@ -223,6 +225,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.post('/payments/webhook/payme', webhookLimiter, async (req, res) => {
     try {
+      // Imzo tekshiruvi — soxta to'lov tasdiqlaridan himoya
+      if (!verifyPaymeAuth(req)) {
+        return res.status(401).json({ error: -32504, message: 'Avtorizatsiya xatosi' });
+      }
       const result = handlePaymeWebhook(req.body);
 
       if (!result) {
@@ -259,12 +265,12 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
           if (cashback > 0) {
             await q("UPDATE patients SET cashback_balance = COALESCE(cashback_balance, 0) + $1 WHERE id = $2",
               [cashback, txn.patient_id]);
-            await q(`INSERT INTO loyalty_ledger (patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
-                     VALUES ($1, $2, 'earned', $3,
-                       COALESCE((SELECT cashback_balance - $4 FROM patients WHERE id = $5), 0),
-                       COALESCE((SELECT cashback_balance FROM patients WHERE id = $6), 0),
-                       $7, NOW())`,
-              [txn.patient_id, txn.patient_name || 'Bemor', cashback, cashback, txn.patient_id, txn.patient_id,
+            await q(`INSERT INTO loyalty_ledger (tenant_id, patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
+                     VALUES ($1, $2, $3, 'earned', $4,
+                       COALESCE((SELECT cashback_balance - $5 FROM patients WHERE id = $6), 0),
+                       COALESCE((SELECT cashback_balance FROM patients WHERE id = $7), 0),
+                       $8, NOW())`,
+              [txn.tenant_id, txn.patient_id, txn.patient_name || 'Bemor', cashback, cashback, txn.patient_id, txn.patient_id,
                `Cashback ${cashbackPercent}%: ${txn.description || 'To\'lov'} #${txn.id.substring(0, 8)}`]);
           }
         }
@@ -296,6 +302,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.post('/payments/webhook/click', webhookLimiter, async (req, res) => {
     try {
+      // Imzo tekshiruvi (MD5 sign_string) — soxta to'lov tasdiqlaridan himoya
+      if (!verifyClickSign(req.body)) {
+        return res.status(401).json({ error: -1, error_note: 'SIGN CHECK FAILED' });
+      }
       const result = handleClickWebhook(req.body);
 
       if (!result) {
@@ -392,9 +402,20 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   router.post('/payments/face-pay', authMiddleware, payLimiter, async (req, res) => {
     try {
       const { face_descriptor, liveness_score, service_ids, amount, description, provider } = req.body;
+      const tenantId = req.user?.tenant_id || 'default';
 
-      // 1. Face ID orqali bemorni topish
-      const patients = await q("SELECT id, first_name, last_name, phone, face_descriptor, wallet_balance, cashback_balance FROM patients WHERE face_descriptor IS NOT NULL");
+      // 0. Jonlilik (anti-spoofing) tekshiruvi — majburiy
+      const LIVENESS_THRESHOLD = parseFloat(process.env.LIVENESS_THRESHOLD || '0.7');
+      if (typeof liveness_score !== 'number' || liveness_score < LIVENESS_THRESHOLD) {
+        return res.status(403).json({
+          success: false,
+          error: 'Jonlilik tekshiruvidan o\'tmadi. Iltimos, kameraga to\'g\'ridan-to\'g\'ri qarang (foto yoki ekran orqali to\'lov mumkin emas).',
+          code: 'LIVENESS_FAILED'
+        });
+      }
+
+      // 1. Face ID orqali bemorni topish (faqat shu klinika bemorlari)
+      const patients = await q("SELECT id, first_name, last_name, phone, face_descriptor, wallet_balance, cashback_balance FROM patients WHERE face_descriptor IS NOT NULL AND tenant_id = $1", [tenantId]);
 
       if (!patients.length) {
         return res.status(404).json({ success: false, error: 'Ro\'yxatdan o\'tgan bemor topilmadi' });
@@ -440,15 +461,15 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
         const orderId = uuidv4();
         await q(
           `INSERT INTO payment_transactions
-           (id, patient_id, amount, description, provider, status, paid_at, created_at)
-           VALUES ($1, $2, $3, $4, 'wallet', 'paid', NOW(), NOW())`,
-          [orderId, patient.id, totalAmount, description || `Face Pay #${orderId.substring(0, 8)}`]
+           (id, tenant_id, patient_id, amount, description, provider, status, paid_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'wallet', 'paid', NOW(), NOW())`,
+          [orderId, tenantId, patient.id, totalAmount, description || `Face Pay #${orderId.substring(0, 8)}`]
         );
 
         // Wallet log
-        await q(`INSERT INTO wallet_log (patient_id, type, amount, balance_before, balance_after, note, created_at)
-           VALUES ($1, 'payment', $2, $3, $4, $5, NOW())`,
-          [patient.id, totalAmount, currentBalance, newBalance,
+        await q(`INSERT INTO wallet_log (tenant_id, patient_id, type, amount, balance_before, balance_after, note, created_at)
+           VALUES ($1, $2, 'payment', $3, $4, $5, $6, NOW())`,
+          [tenantId, patient.id, totalAmount, currentBalance, newBalance,
            `Face Pay: ${description || 'To\'lov'} #${orderId.substring(0, 8)}`]);
 
         return res.json({
@@ -469,9 +490,9 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
         await q(
           `INSERT INTO payment_transactions
-           (id, patient_id, amount, description, provider, status, created_at)
-           VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
-          [orderId, patient.id, totalAmount, description || `Face Pay #${orderId.substring(0, 8)}`, provider || 'auto']
+           (id, tenant_id, patient_id, amount, description, provider, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())`,
+          [orderId, tenantId, patient.id, totalAmount, description || `Face Pay #${orderId.substring(0, 8)}`, provider || 'auto']
         );
 
         // Background da to'lov link yaratamiz
@@ -515,8 +536,8 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   router.get('/payments/wallet/:patientId', authMiddleware, async (req, res) => {
     try {
       const patient = await qGet(
-        'SELECT id, first_name, last_name, phone, cashback_balance, wallet_balance FROM patients WHERE id = $1',
-        [req.params.patientId]
+        'SELECT id, first_name, last_name, phone, cashback_balance, wallet_balance FROM patients WHERE id = $1 AND tenant_id = $2',
+        [req.params.patientId, req.user?.tenant_id || 'default']
       );
       if (!patient) {
         return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
@@ -544,12 +565,13 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   router.post('/payments/wallet/topup', authMiddleware, payLimiter, async (req, res) => {
     try {
       const { patient_id, amount } = req.body;
+      const tenantId = req.user?.tenant_id || 'default';
 
       if (!patient_id || !amount || amount <= 0) {
         return res.status(400).json({ success: false, error: 'Noto\'g\'ri ma\'lumot' });
       }
 
-      const patient = await qGet('SELECT id, first_name, last_name FROM patients WHERE id = $1', [patient_id]);
+      const patient = await qGet('SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2', [patient_id, tenantId]);
       if (!patient) {
         return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
       }
@@ -560,9 +582,9 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
       await q(
         `INSERT INTO payment_transactions
-         (id, patient_id, amount, description, provider, type, status, created_at)
-         VALUES ($1, $2, $3, 'Wallet to\'ldirish', 'auto', 'wallet_topup', 'pending', NOW())`,
-        [orderId, patient_id, Math.round(amount)]
+         (id, tenant_id, patient_id, amount, description, provider, type, status, created_at)
+         VALUES ($1, $2, $3, $4, 'Wallet to\'ldirish', 'auto', 'wallet_topup', 'pending', NOW())`,
+        [orderId, tenantId, patient_id, Math.round(amount)]
       );
 
       // QR kod yaratamiz
@@ -607,10 +629,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       const limit = parseInt(req.query.limit) || 20;
       const txns = await q(
         `SELECT * FROM payment_transactions
-         WHERE patient_id = $1
+         WHERE patient_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC
-         LIMIT $2`,
-        [req.params.patientId, limit]
+         LIMIT $3`,
+        [req.params.patientId, req.user?.tenant_id || 'default', limit]
       );
 
       res.json({
@@ -639,13 +661,13 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
     try {
       const limit = parseInt(req.query.limit) || 50;
       const status = req.query.status || null;
-      const clinicId = req.user?.clinic_id || 'default';
+      const tenantId = req.user?.tenant_id || 'default';
 
       let sql = `SELECT pt.*, p.first_name, p.last_name, p.phone
                  FROM payment_transactions pt
                  LEFT JOIN patients p ON p.id = pt.patient_id
-                 WHERE pt.clinic_id = $1`;
-      const params = [clinicId];
+                 WHERE pt.tenant_id = $1`;
+      const params = [tenantId];
 
       if (status) {
         sql += ' AND pt.status = $2';

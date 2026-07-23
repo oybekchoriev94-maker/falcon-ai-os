@@ -74,7 +74,7 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
       if (!valid) {
         const newAttempts = (doctor.failed_attempts || 0) + 1;
         if (newAttempts >= MAX_ATTEMPTS) {
-          await q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + INTERVAL '$2 minutes' WHERE id = $3",
+          await q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3",
             [newAttempts, LOCKOUT_MINUTES, doctor.id]);
         } else {
           await q("UPDATE doctors SET failed_attempts = $1 WHERE id = $2", [newAttempts, doctor.id]);

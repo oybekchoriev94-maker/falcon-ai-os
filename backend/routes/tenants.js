@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { q, qGet } from '../db.js';
-import { signToken, authMiddleware } from '../shared.js';
+import { signToken, authMiddleware, checkRole } from '../shared.js';
 import { afterRegistration } from '../services/onboarding.js';
 
 const TRIAL_DAYS = 14;
@@ -20,8 +20,10 @@ export default function tenantRoutes() {
         return res.status(400).json({ error: 'Parol kamida 8 belgi, katta/kichik harf va raqamdan iborat bo\'lishi kerak' });
       }
 
-      const existing = await qGet("SELECT id FROM tenants WHERE code = $1", [email.split('@')[0]]);
+      const existing = await qGet("SELECT id FROM tenants WHERE email = $1", [email]);
       if (existing) return res.status(409).json({ error: 'Bu email allaqachon ro\'yxatdan o\'tgan' });
+      const existingUser = await qGet("SELECT id FROM users WHERE username = $1", [email]);
+      if (existingUser) return res.status(409).json({ error: 'Bu email allaqachon ro\'yxatdan o\'tgan' });
 
       const tenantId = uuidv4();
       const prefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
@@ -134,11 +136,17 @@ export default function tenantRoutes() {
     }
   });
 
-  router.post('/users/invite', authMiddleware, async (req, res) => {
+  const INVITABLE_ROLES = ['admin', 'receptionist', 'doctor'];
+  router.post('/users/invite', authMiddleware, checkRole('ceo', 'admin', 'superadmin'), async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
       const { email, role, name } = req.body;
       if (!email || !role || !name) return res.status(400).json({ error: 'email, role va name talab qilinadi' });
+      if (!INVITABLE_ROLES.includes(role)) {
+        return res.status(400).json({ error: `Ruxsat etilgan rollar: ${INVITABLE_ROLES.join(', ')}` });
+      }
+      const existingUser = await qGet("SELECT id FROM users WHERE username = $1", [email]);
+      if (existingUser) return res.status(409).json({ error: 'Bu email allaqachon ro\'yxatdan o\'tgan' });
       const hashedPwd = await bcrypt.hash(uuidv4().slice(0, 12), 10);
       const userId = uuidv4();
       await q(

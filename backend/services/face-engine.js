@@ -4,10 +4,11 @@ const FACE_SVC_URL = process.env.FACE_SVC_URL || 'http://face-svc:8082';
 
 export async function extractFace(imageBase64) {
   try {
+    const raw = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const resp = await fetch(`${FACE_SVC_URL}/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: imageBase64 }),
+      body: JSON.stringify({ image: raw }),
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return null;
@@ -15,7 +16,8 @@ export async function extractFace(imageBase64) {
     if (!data.success) return null;
     return {
       embedding: data.embedding,
-      liveness_score: data.liveness_score ?? 1.0,
+      // Fail-closed: liveness aniqlanmasa (masalan model yuklanmagan), 0 deb hisoblaymiz — 1.0 emas
+      liveness_score: typeof data.liveness_score === 'number' ? data.liveness_score : 0.0,
     };
   } catch (e) {
     console.error('[FACE] extractFace error:', e.message);
@@ -42,16 +44,21 @@ export function l2Norm(arr) {
   return arr;
 }
 
+const EMBEDDING_DIM = 512;
+
 export function cosineSimilarity(a, b) {
+  if (a.length !== b.length) throw new Error(`Descriptor o'lchami mos kelmadi: ${a.length} vs ${b.length}`);
   const aNorm = l2Norm(new Float32Array(a));
   const bNorm = l2Norm(new Float32Array(b));
   let dot = 0;
-  const len = Math.min(aNorm.length, bNorm.length);
-  for (let i = 0; i < len; i++) dot += aNorm[i] * bNorm[i];
+  for (let i = 0; i < aNorm.length; i++) dot += aNorm[i] * bNorm[i];
   return dot;
 }
 
 export function findBestMatch(inputArr, candidates, threshold = 0.45) {
+  if (!Array.isArray(inputArr) || inputArr.length !== EMBEDDING_DIM) {
+    return { match: null, distance: 1.0, confidence: 0, error: `Noto'g'ri descriptor o'lchami (${inputArr?.length ?? 0}, ${EMBEDDING_DIM} kutilgan)` };
+  }
   const inputNorm = l2Norm(new Float32Array(inputArr));
   let best = { match: null, distance: 1.0 };
   for (const c of candidates) {
@@ -59,11 +66,11 @@ export function findBestMatch(inputArr, candidates, threshold = 0.45) {
     let stored;
     try {
       const raw = parseDescriptor(c.face_descriptor);
+      if (!Array.isArray(raw) || raw.length !== EMBEDDING_DIM) continue; // mos kelmagan o'lcham — solishtirilmaydi
       stored = l2Norm(new Float32Array(raw));
     } catch { continue; }
     let dot = 0;
-    const len = Math.min(inputNorm.length, stored.length);
-    for (let i = 0; i < len; i++) dot += inputNorm[i] * stored[i];
+    for (let i = 0; i < inputNorm.length; i++) dot += inputNorm[i] * stored[i];
     const distance = 1 - dot;
     if (distance < best.distance) best = { match: c, distance };
   }
