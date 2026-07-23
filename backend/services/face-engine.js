@@ -12,7 +12,11 @@ export async function extractFace(imageBase64) {
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    return data.success ? data.embedding : null;
+    if (!data.success) return null;
+    return {
+      embedding: data.embedding,
+      liveness_score: data.liveness_score ?? 1.0,
+    };
   } catch (e) {
     console.error('[FACE] extractFace error:', e.message);
     return null;

@@ -353,15 +353,23 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
       try {
         const { doctor_id, photo_base64, device_id } = req.body;
 
-        const descriptor = await extractFace(photo_base64);
-        if (!descriptor) {
+        const faceData = await extractFace(photo_base64);
+        if (!faceData) {
           return res.status(400).json({
             success: false,
             error: "Yuz aniqlanmadi. Iltimos, kameraga to'g'ri qarang va yaxshi yoritilgan joyda turing.",
           });
         }
 
-        const stored = prepareForDb(descriptor);
+        if (faceData.liveness_score < 0.5) {
+          return res.status(403).json({
+            success: false,
+            error: "Soxta yuz aniqlangan (liveness: " + faceData.liveness_score + "). Jonli yuz talab qilinadi.",
+            liveness_score: faceData.liveness_score,
+          });
+        }
+
+        const stored = prepareForDb(faceData.embedding);
         await q('UPDATE doctors SET face_descriptor = $1 WHERE id = $2', [stored, doctor_id]);
 
         const doc = await qGet('SELECT first_name, last_name FROM doctors WHERE id = $1', [doctor_id]);
@@ -374,7 +382,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         res.json({
           success: true,
           message: 'Yuz modeli muvaffaqiyatli saqlandi',
-          descriptor_dim: descriptor.length,
+          liveness_score: faceData.liveness_score,
+          descriptor_dim: faceData.embedding.length,
         });
       } catch (e) {
         safeError(res, e);
@@ -393,11 +402,23 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
       try {
         const { photo_base64, device_id } = req.body;
 
-        const descriptor = await extractFace(photo_base64);
-        if (!descriptor) {
+        const faceData = await extractFace(photo_base64);
+        if (!faceData) {
           return res.status(400).json({
             success: false,
             error: "Yuz aniqlanmadi. Iltimos, kameraga to'g'ri qarang.",
+          });
+        }
+
+        if (faceData.liveness_score < 0.5) {
+          await q(
+            'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)',
+            ['Spoof', 'verify_photo', 'no', faceData.liveness_score, 0, 1, device_id || null]
+          );
+          return res.status(403).json({
+            success: false,
+            error: "Soxta yuz aniqlangan. Jonli yuz talab qilinadi.",
+            liveness_score: faceData.liveness_score,
           });
         }
 
@@ -408,14 +429,14 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           'SELECT id, first_name, last_name, phone, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL'
         );
 
-        const bestDoctor = findBestMatch(descriptor, doctors, 0.45);
-        const bestPatient = findBestMatch(descriptor, patients, 0.45);
+        const bestDoctor = findBestMatch(faceData.embedding, doctors, 0.45);
+        const bestPatient = findBestMatch(faceData.embedding, patients, 0.45);
 
         if (bestDoctor.match) {
           const name = `${bestDoctor.match.first_name} ${bestDoctor.match.last_name}`;
           await q(
             'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, 1, 1, device_id || null]
+            [bestDoctor.match.id, name, 'attended', bestDoctor.confidence, 'yes', null, faceData.liveness_score, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -435,7 +456,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
           const name = `${bestPatient.match.first_name} ${bestPatient.match.last_name}`;
           await q(
             'INSERT INTO face_logs (doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-            [null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, 1, 1, device_id || null]
+            [null, name, 'checked_in', bestPatient.confidence, 'yes', bestPatient.match.id, faceData.liveness_score, 1, device_id || null]
           );
           return res.json({
             success: true,
@@ -452,8 +473,8 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
         }
 
         await q(
-          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, device_id) VALUES ($1, $2, $3, $4, $5)',
-          [null, "Noma'lum", 'entry', 'no', device_id || null]
+          'INSERT INTO face_logs (doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [null, "Noma'lum", 'entry', 'no', faceData.liveness_score, 1, device_id || null]
         );
         res.json({
           success: true,

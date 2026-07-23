@@ -17,6 +17,12 @@ RUN MODEL_DIR=/root/.insightface/models/buffalo_l && \
     ls -la $MODEL_DIR && \
     echo "Model files: $(ls $MODEL_DIR)"
 
+# Download anti-spoofing liveness model (MiniFASNetV2, 600 KB ONNX)
+RUN mkdir -p /app/models && \
+    curl -sL -o /app/models/liveness.onnx \
+      https://github.com/facenox/face-antispoof-onnx/raw/main/models/best_model_quantized.onnx && \
+    ls -la /app/models/liveness.onnx
+
 COPY server.py .
 
 EXPOSE 8082
