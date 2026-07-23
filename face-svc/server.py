@@ -7,6 +7,7 @@ import onnxruntime as ort
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from insightface.model_zoo import ArcFaceONNX, SCRFD
+from insightface.utils import face_align
 
 app = FastAPI(title="Falcon AI OS — Face Recognition Service")
 
@@ -123,8 +124,16 @@ async def extract_face(req: ExtractRequest):
         bbox = bboxes[best_idx]
         kps = kpss[best_idx] if kpss is not None and len(kpss) > 0 else None
 
-        face_input = (bbox, kps) if kps is not None else bbox
-        embedding = recognizer.get(img, face_input)
+        if kps is not None:
+            aimg = face_align.norm_crop(img, landmark=kps, image_size=112)
+        else:
+            x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
+            aimg = img[y1:y2, x1:x2]
+            if aimg.size == 0:
+                return {"success": False, "error": "Yuz maydoni bo'sh", "count": 0}
+            aimg = cv2.resize(aimg, (112, 112))
+
+        embedding = recognizer.get_feat(aimg)
         if embedding is None:
             return {"success": False, "error": "Yuz aniqlanmadi", "count": 0}
 
