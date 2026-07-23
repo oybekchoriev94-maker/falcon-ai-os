@@ -115,15 +115,15 @@ async def extract_face(req: ExtractRequest):
         if img is None:
             raise HTTPException(400, "Noto'g'ri rasm formati")
 
-        bboxes, kpss = detector.detect(img)
-        if bboxes is None or len(bboxes) == 0:
+        faces = detector.get(img, max_num=1)
+        if len(faces) == 0:
             return {"success": False, "error": "Yuz topilmadi", "count": 0}
 
-        best_idx = int(np.argmax(bboxes[:, 4])) if len(bboxes.shape) > 1 else 0
-        bbox = bboxes[best_idx]
-        kps = kpss[best_idx] if kpss is not None else None
+        face = faces[0]
+        bbox = face.bbox.astype(int).tolist()
+        det_score = float(face.det_score)
 
-        embedding = recognizer.get(img, kps)
+        embedding = recognizer.get(img, face)
         if embedding is None:
             return {"success": False, "error": "Yuz aniqlanmadi", "count": 0}
 
@@ -137,9 +137,9 @@ async def extract_face(req: ExtractRequest):
             "success": True,
             "embedding": embedding,
             "dim": len(embedding) if isinstance(embedding, list) else 0,
-            "det_score": float(bbox[4]) if len(bbox) > 4 else 1.0,
-            "bbox": [float(x) for x in bbox[:4]],
-            "count": len(bboxes),
+            "det_score": det_score,
+            "bbox": bbox,
+            "count": 1,
             "liveness_score": liveness_score,
             "is_live": liveness_score >= 0.5,
         }
@@ -161,12 +161,12 @@ async def check_liveness(req: LivenessRequest):
         if img is None:
             raise HTTPException(400, "Noto'g'ri rasm formati")
 
-        bboxes, _ = detector.detect(img)
-        if bboxes is None or len(bboxes) == 0:
+        faces = detector.get(img, max_num=1)
+        if len(faces) == 0:
             return {"success": False, "error": "Yuz topilmadi", "count": 0, "liveness_score": 0.0, "is_live": False}
 
-        best_idx = int(np.argmax(bboxes[:, 4])) if len(bboxes.shape) > 1 else 0
-        bbox = bboxes[best_idx]
+        face = faces[0]
+        bbox = face.bbox.astype(int).tolist()
         face_crop = _crop_face(img, bbox, margin=1.5)
         liveness_score = _predict_liveness(face_crop)
 
@@ -174,8 +174,8 @@ async def check_liveness(req: LivenessRequest):
             "success": True,
             "liveness_score": liveness_score,
             "is_live": liveness_score >= 0.5,
-            "det_score": float(bbox[4]) if len(bbox) > 4 else 1.0,
-            "count": len(bboxes),
+            "det_score": float(face.det_score),
+            "count": 1,
         }
     except HTTPException:
         raise
