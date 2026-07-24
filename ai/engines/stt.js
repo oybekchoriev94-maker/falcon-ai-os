@@ -6,7 +6,15 @@
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8081';
 
 function groqKey() { return (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== '***') ? process.env.GROQ_API_KEY : ''; }
-function isLocal() { return process.env.LOCAL_ONLY !== 'false'; }
+
+// STT rejimi LLM'dan alohida boshqariladi: STT_LOCAL o'rnatilmagan bo'lsa,
+// eski xatti-harakat uchun LOCAL_ONLY'ga qaytadi.
+function isLocal() {
+  if (process.env.STT_LOCAL !== undefined) return process.env.STT_LOCAL !== 'false';
+  return process.env.LOCAL_ONLY !== 'false';
+}
+// Maxfiylik: lokal STT ishlamay qolsa, bemor audiosi faqat shu flag ochiq bo'lsa cloud'ga yuboriladi.
+function cloudFallbackAllowed() { return process.env.STT_CLOUD_FALLBACK === 'true'; }
 
 // ─── Transkripsiya ───────────────────────────────────────
 function makeForm(audioBuffer, filename, opts) {
@@ -39,15 +47,16 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
         body: form,
         signal: AbortSignal.timeout(60000) // 1 min (katta audio uchun)
       });
-      if (!res.ok) throw new Error(`whisper.cpp HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
       const data = await res.json();
       const text = data.text || '';
       return { text, segments: data.segments || null, error: null };
     } catch (e) {
-      if (process.env.LOCAL_ONLY === 'true') {
-        return { text: '', error: `Lokal STT xatosi: ${e.message}. whisper.cpp serverini ishga tushiring.` };
+      // Lokal STT ishlamadi. Maxfiylik: cloud fallback faqat aniq ruxsat berilgan bo'lsa.
+      if (!cloudFallbackAllowed() || !groqKey()) {
+        return { text: '', error: `Lokal STT xatosi: ${e.message}. STT konteyneri (whisper) ishlayotganiga ishonch hosil qiling.` };
       }
-      console.warn(`[STT] whisper.cpp mavjud emas (${e.message}), cloud ga o'tilmoqda...`);
+      console.warn(`[STT] Lokal STT mavjud emas (${e.message}), cloud ga o'tilmoqda (STT_CLOUD_FALLBACK)...`);
     }
   }
 

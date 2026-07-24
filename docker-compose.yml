@@ -27,11 +27,14 @@ services:
     <<: *common
     build: ./stt-service
     ports: ["8081:8081"]
+    mem_limit: 2g
     environment:
       MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
+      STT_CONCURRENCY: "2"
+      MAX_AUDIO_MB: "25"
     volumes:
       - stt-cache:/cache
     healthcheck:
@@ -45,9 +48,11 @@ services:
     <<: *common
     build: .
     ports: ["3000:3000"]
+    mem_limit: 700m
     environment:
       NODE_ENV: production
       PORT: 3000
+      STT_LOCAL: "true"
       DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:-falcon-secret}@db:5432/falcon_ai_os
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET required}
@@ -96,6 +101,7 @@ services:
   face-svc:
     <<: *common
     build: ./face-svc
+    mem_limit: 900m
 
   caddy:
     <<: *common
