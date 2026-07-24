@@ -96,6 +96,9 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://telegram.org", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com"],
+      // HTML sahifalar inline onclick/onsubmit ishlatadi; script-src-attr default 'none' ularni bloklaydi.
+      // script-src allaqachon 'unsafe-inline' bo'lgani uchun buni ochiq qoldirish izchil.
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "blob:"],
       connectSrc: ["'self'", "https://api.telegram.org", "https://cdn.jsdelivr.net"],
