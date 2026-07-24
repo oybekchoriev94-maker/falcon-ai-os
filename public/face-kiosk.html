@@ -94,6 +94,7 @@ const TOKEN = localStorage.getItem('falcon_token') || '';
 const AUTH_HEADERS = TOKEN ? { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN } : { 'Content-Type': 'application/json' };
 let faceCaptureVerify = null;
 let faceCaptureRegister = null;
+let pendingRegister = null; // { payload, regData } — Saqlash bosilguncha saqlanadi
 
 // Sahifa yuklanganda verify kamerani avtomatik ishga tushiramiz
 document.addEventListener('DOMContentLoaded', () => switchMode('verify'));
@@ -134,6 +135,10 @@ async function initRegisterCapture() {
 }
 
 function buildCaptureHTML(id) {
+  const isReg = id === 'register';
+  const saveBtn = isReg
+    ? `<button class="fc-btn fc-btn-primary hidden" id="fc-save-register" onclick="doSaveRegister()">💾 Saqlash va ro'yxatga olish</button>`
+    : '';
   return `
     <div class="fc-container">
       <div class="fc-viewport">
@@ -148,6 +153,7 @@ function buildCaptureHTML(id) {
       </div>
       <div class="fc-controls">
         <button class="fc-btn fc-btn-primary" id="fc-capture-${id}" onclick="doCapture('${id}')">📸 Yuzni olish</button>
+        ${saveBtn}
         <button class="fc-btn fc-btn-secondary" onclick="location.reload()">🔄 Qayta boshlash</button>
       </div>
     </div>`;
@@ -158,28 +164,62 @@ async function doCapture(id) {
   if (!fc) return;
   const btn = document.getElementById('fc-capture-' + id);
 
-  // Ro'yxatdan o'tishda formani oldindan tekshiramiz (foto olishdan oldin)
-  let regData = null;
+  // ── RO'YXATGA OLISH: bu yerda faqat rasm olinadi (saqlash keyingi qadamda) ──
   if (id === 'register') {
-    regData = validateRegisterForm();
+    const regData = validateRegisterForm();
     if (!regData) return; // validateRegisterForm xatoni ko'rsatdi
+    const payload = fc.capture();
+    if (!payload) return;
+    pendingRegister = { payload, regData };
+    fc._setStatus("✅ Rasm olindi. Endi \"Saqlash\"ni bosing.", 'success');
+    fc._setLivenessDot('active');
+    btn.textContent = '🔄 Qayta olish';
+    const save = document.getElementById('fc-save-register');
+    if (save) { save.classList.remove('hidden'); save.disabled = false; }
+    return;
   }
 
-  const payload = fc.capture(); // { photo_base64, nonce, timestamp }
-  if (!payload) return;         // capture() statusда xatoni ko'rsatdi
-
+  // ── TEKSHIRISH: rasm olinadi va darhol serverga yuboriladi ──
+  const payload = fc.capture();
+  if (!payload) return;
   btn.disabled = true;
   btn.textContent = '⏳ Tekshirilmoqda...';
   fc._setStatus('Yuz serverda tahlil qilinmoqda...', 'loading');
   fc._setLivenessDot('progress');
   try {
-    if (id === 'verify') await submitVerify(payload);
-    else await submitRegister(payload, regData);
+    await submitVerify(payload, fc);
   } catch (e) {
-    showError(id, 'Server bilan bog\'lanishda xatolik');
+    showError('verify', e.name === 'TimeoutError' ? "So'rov vaqti tugadi, qayta urinING" : "Server bilan bog'lanishda xatolik");
+    fc._setStatus('❌ Xatolik', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '📸 Yuzni olish';
+    fc._setLivenessDot('active');
+  }
+}
+
+async function doSaveRegister() {
+  if (!pendingRegister) return;
+  const fc = faceCaptureRegister;
+  const save = document.getElementById('fc-save-register');
+  save.disabled = true;
+  save.textContent = '⏳ Saqlanmoqda...';
+  fc._setStatus('Yuz serverda tahlil qilinmoqda...', 'loading');
+  fc._setLivenessDot('progress');
+  try {
+    const ok = await submitRegister(pendingRegister.payload, pendingRegister.regData, fc);
+    if (ok) {
+      pendingRegister = null;
+      save.classList.add('hidden');
+      const capBtn = document.getElementById('fc-capture-register');
+      if (capBtn) capBtn.textContent = '📸 Yuzni olish';
+    }
+  } catch (e) {
+    showError('register', e.name === 'TimeoutError' ? "So'rov vaqti tugadi, qayta urinING" : "Server bilan bog'lanishda xatolik");
+    fc._setStatus('❌ Xatolik', 'error');
+  } finally {
+    save.disabled = false;
+    save.textContent = '💾 Saqlash va ro\'yxatga olish';
     fc._setLivenessDot('active');
   }
 }
@@ -206,32 +246,35 @@ function validateRegisterForm() {
   };
 }
 
-async function submitVerify(payload) {
+async function submitVerify(payload, fc) {
   const resp = await fetch(API + '/api/face/verify-photo', {
     method: 'POST',
     headers: AUTH_HEADERS,
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30000)
   });
   const data = await resp.json();
   const div = document.getElementById('verifyResult');
   div.classList.remove('hidden');
 
+  if (resp.status === 401) {
+    fc._setStatus('❌ Avval tizimga kiring (token yo\'q)', 'error');
+    div.innerHTML = `<div class="error-box">❌ Tizimga kirish talab qilinadi. Avval <b>dashboard.html</b> orqali kiring.</div>`;
+    return;
+  }
+
   if (resp.status === 403 && data.spoof_warning) {
     const pct = ((data.liveness_score || 0) * 100).toFixed(0);
+    fc._setStatus(`🚫 Soxta urinish (liveness ${pct}%)`, 'error');
     div.innerHTML = `
       <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
       Liveness tekshiruvi o'tmadi (${pct}%).<br>
-      Iltimos, to'g'ridan-to'g'ri kameraga qarang.</div>
-      <div class="fc-result fc-result-error">
-        <h4>🚫 Spoof bloklandi</h4>
-        <p>Liveness: <strong>${pct}%</strong> (talab: ≥50%)</p>
-        <div class="fc-score-bar"><div class="fc-score-fill" style="width:${Math.min(100, (data.liveness_score || 0) * 100)}%;background:#f85149"></div></div>
-        <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>
-      </div>`;
+      Iltimos, to'g'ridan-to'g'ri kameraga qarang.</div>`;
     return;
   }
 
   if (data.success && data.matched) {
+    fc._setStatus(`✅ ${data.identity?.name || 'Tanildi'}`, 'success');
     div.innerHTML = `
       <div class="success-box">
         ✅ <strong>${data.identity?.name || 'Topildi'}</strong> — tanildi
@@ -244,39 +287,55 @@ async function submitVerify(payload) {
         ${data.identity?.specialty ? '<p>Mutaxassislik: ' + data.identity.specialty + '</p>' : ''}
       </div>`;
   } else if (data.success && !data.matched) {
+    fc._setStatus('❌ Yuz tanilmadi', 'error');
     div.innerHTML = `<div class="error-box">❌ Yuz tanilmadi. Qayta urinib ko'ring.</div>`;
   } else {
+    fc._setStatus('❌ ' + (data.error || 'Xatolik'), 'error');
     div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
   }
 }
 
-async function submitRegister(payload, regData) {
+// @returns {boolean} true — muvaffaqiyatli saqlandi
+async function submitRegister(payload, regData, fc) {
   const resp = await fetch(API + '/api/face/register-patient-photo', {
     method: 'POST',
     headers: AUTH_HEADERS,
-    body: JSON.stringify({ ...payload, ...regData })
+    body: JSON.stringify({ ...payload, ...regData }),
+    signal: AbortSignal.timeout(30000)
   });
   const data = await resp.json();
   const div = document.getElementById('registerResult');
   div.classList.remove('hidden');
 
+  if (resp.status === 401) {
+    fc._setStatus('❌ Avval tizimga kiring (token yo\'q)', 'error');
+    div.innerHTML = `<div class="error-box">❌ Tizimga kirish talab qilinadi. Avval <b>dashboard.html</b> orqali kiring.</div>`;
+    return false;
+  }
+
   if (resp.status === 403 && data.spoof_warning) {
     const pct = ((data.liveness_score || 0) * 100).toFixed(0);
+    fc._setStatus(`🚫 Soxta urinish (liveness ${pct}%)`, 'error');
     div.innerHTML = `
       <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
       Ro'yxatdan o'tish uchun jonli yuz talab qilinadi.<br>
-      Liveness: ${pct}% (talab: ≥50%)</div>
-      <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>`;
-    return;
+      Liveness: ${pct}% (talab: ≥50%)</div>`;
+    return false;
   }
 
   if (data.success) {
+    fc._setStatus(`✅ ${data.patient.first_name} ro'yxatdan o'tdi`, 'success');
     div.innerHTML = `<div class="success-box">✅ <strong>${data.patient.first_name}</strong> ro'yxatdan o'tdi</div>`;
     document.getElementById('registerForm').classList.add('hidden');
+    return true;
   } else if (resp.status === 409) {
+    fc._setStatus('⚠️ Bu yuz oldin ro\'yxatdan o\'tgan', 'warning');
     div.innerHTML = `<div class="error-box">⚠️ Bu yuz oldin <strong>${data.existing_patient?.name || 'boshqa bemor'}</strong> sifatida ro'yxatdan o'tgan</div>`;
+    return false;
   } else {
+    fc._setStatus('❌ ' + (data.error || 'Xatolik'), 'error');
     div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
+    return false;
   }
 }
 
