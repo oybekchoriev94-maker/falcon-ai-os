@@ -450,6 +450,107 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
     }
   );
 
+  // POST /register-patient-photo — register a patient from a photo (server-authoritative)
+  // Brauzer faqat fotoni yuboradi; descriptor, liveness va moslik serverda hisoblanadi.
+  const registerPatientPhotoSchema = z.object({
+    first_name: z.string().min(2).max(100),
+    last_name: z.string().max(100).optional(),
+    middle_name: z.string().max(100).optional(),
+    phone: z.string().max(20).optional(),
+    birth_date: z.string().max(20).optional(),
+    region: z.string().max(100).optional(),
+    district: z.string().max(100).optional(),
+    address: z.string().max(500).optional(),
+    passport_number: z.string().max(20).optional(),
+    gender: z.string().max(10).optional(),
+    benefit_category: z.string().max(100).optional(),
+    department: z.string().max(100).optional(),
+    order_number: z.string().max(50).optional(),
+    medical_record_number: z.string().max(50).optional(),
+    notes: z.string().max(1000).optional(),
+    photo_base64: z.string().min(50, 'Rasm juda kichik'),
+    nonce: z.string().min(8).max(64),
+    timestamp: z.number(),
+    device_id: z.string().max(128).optional(),
+  });
+
+  router.post(
+    '/register-patient-photo',
+    authMiddleware,
+    faceRegisterLimiter,
+    validateNonce,
+    validate(registerPatientPhotoSchema),
+    async (req, res) => {
+      try {
+        const {
+          first_name, last_name, middle_name, phone, birth_date, region, district,
+          address, passport_number, gender, benefit_category, department,
+          order_number, medical_record_number, notes, photo_base64, device_id,
+        } = req.body;
+        const tenantId = req.tenant_id;
+
+        // 1. Serverda yuzni ajratish (SCRFD + ArcFace + MiniFASNetV2)
+        const faceData = await extractFace(photo_base64);
+        if (!faceData || !faceData.embedding) {
+          return res.status(400).json({
+            success: false,
+            error: "Yuz aniqlanmadi. Iltimos, kameraga to'g'ri qarang va yaxshi yoritilgan joyda turing.",
+          });
+        }
+
+        // 2. Jonlilik darvozasi (soxta urinishni loglaymiz)
+        if (faceData.liveness_score < LIVENESS_THRESHOLD) {
+          await q(
+            'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, matched, liveness_score, liveness_passed, spoof_warning, device_id) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)',
+            [tenantId, 'Spoof-Register', 'patient_register_photo', 'no', faceData.liveness_score, 0, 1, device_id || null]
+          );
+          return res.status(403).json({
+            success: false,
+            error: "Soxta yuz aniqlangan. Jonli yuz talab qilinadi.",
+            liveness_score: faceData.liveness_score,
+            spoof_warning: true,
+          });
+        }
+
+        // 3. Takrorlanishni tekshirish (faqat shu klinika ichida)
+        const existingPatients = await q(
+          'SELECT id, first_name, last_name, face_descriptor FROM patients WHERE face_descriptor IS NOT NULL AND tenant_id = $1',
+          [tenantId]
+        );
+        const dupCheck = findBestMatch(faceData.embedding, existingPatients, 0.35);
+        if (dupCheck.match) {
+          return res.status(409).json({
+            success: false,
+            error: "Bu yuz oldin ro'yxatdan o'tgan",
+            existing_patient: {
+              id: dupCheck.match.id,
+              name: `${dupCheck.match.first_name} ${dupCheck.match.last_name || ''}`.trim(),
+            },
+          });
+        }
+
+        // 4. Bemorni saqlash (shifrlangan descriptor)
+        const id = uuidv4();
+        const stored = prepareForDb(faceData.embedding);
+        await q(
+          'INSERT INTO patients (id, tenant_id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, face_descriptor) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)',
+          [id, tenantId, first_name, last_name || '', middle_name || '', phone || '', birth_date || null, region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '', stored]
+        );
+        await q(
+          'INSERT INTO face_logs (tenant_id, doctor_id, doctor_name, action, confidence, matched, patient_id, liveness_score, liveness_passed, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [tenantId, null, req.user?.name || 'Admin', 'patient_register', 1.0, 'yes', id, faceData.liveness_score, 1, device_id || null]
+        );
+        const patient = await qGet(
+          'SELECT id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at FROM patients WHERE id = $1',
+          [id]
+        );
+        res.json({ success: true, patient, liveness_passed: true, liveness_score: faceData.liveness_score });
+      } catch (e) {
+        safeError(res, e);
+      }
+    }
+  );
+
   // POST /verify-photo — verify face from photo (against doctors + patients)
   router.post(
     '/verify-photo',
@@ -626,7 +727,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
       const id = uuidv4();
       await q(
         'INSERT INTO patients (id, tenant_id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)',
-        [id, tenantId, first_name, last_name || '', middle_name || '', phone || '', birth_date || '', region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '']
+        [id, tenantId, first_name, last_name || '', middle_name || '', phone || '', birth_date || null, region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '']
       );
       const patient = await qGet(
         'SELECT id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at FROM patients WHERE id = $1',
@@ -648,7 +749,7 @@ export default function faceRoutes(pool, authMiddleware, checkRole) {
       if (!existing) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
       await q(
         `UPDATE patients SET first_name = $1, last_name = $2, middle_name = $3, phone = $4, birth_date = $5, region = $6, district = $7, address = $8, passport_number = $9, gender = $10, benefit_category = $11, department = $12, order_number = $13, medical_record_number = $14, notes = $15 WHERE id = $16`,
-        [first_name, last_name || '', middle_name || '', phone || '', birth_date || '', region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '', id]
+        [first_name, last_name || '', middle_name || '', phone || '', birth_date || null, region || '', district || '', address || '', passport_number || '', gender || '', benefit_category || '', department || '', order_number || '', medical_record_number || '', notes || '', id]
       );
       const patient = await qGet(
         'SELECT id, first_name, last_name, middle_name, phone, birth_date, region, district, address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at FROM patients WHERE id = $1',

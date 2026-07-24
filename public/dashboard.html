@@ -7,7 +7,6 @@
   
   <link rel="stylesheet" href="/css/index.css">
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
   <!-- ===== LOGIN SCREEN ===== -->
@@ -1202,15 +1201,17 @@
     }
   };
 
-  // ---- BEMORLARNI FACE ID ORQALI RO'YXATDAN O'TKAZISH ----
+  // ---- BEMORLARNI FACE ID ORQALI RO'YXATDAN O'TKAZISH (foto-asosli, server-avtoritetli) ----
   let patStream = null;
-  let patDescriptor = null;
+  let patPhoto = null;
 
   async function startPatientCamera() {
     try {
       if (patStream) { patStream.getTracks().forEach(t => t.stop()); }
-      patStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } });
-      document.getElementById('patVideo').srcObject = patStream;
+      patStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } });
+      const video = document.getElementById('patVideo');
+      video.srcObject = patStream;
+      await video.play().catch(() => {});
       document.getElementById('patCameraStatus').textContent = '✅ Kamera ishlamoqda';
       return true;
     } catch(e) {
@@ -1221,97 +1222,69 @@
 
   async function capturePatientFace() {
     const btn = document.getElementById('patCaptureBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Skanerlanmoqda...';
-
     if (!patStream) {
       const ok = await startPatientCamera();
-      if (!ok) { btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash'; return; }
-      await new Promise(r => setTimeout(r, 500));
+      if (!ok) return;
+      await new Promise(r => setTimeout(r, 400));
     }
-
-    // Face-api.js yuklanmagan bo'lsa, oddiy snapshot
-    if (typeof faceapi === 'undefined') {
-      try {
-        await loadFaceApiScript();
-        await new Promise(r => setTimeout(r, 2000));
-      } catch(e) {
-        document.getElementById('patCameraStatus').textContent = '❌ Face-api yuklanmadi, descriptor talab qilinadi';
-        btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
-        return;
-      }
+    const video = document.getElementById('patVideo');
+    if (!video.videoWidth) {
+      document.getElementById('patCameraStatus').textContent = '❌ Kamera hali tayyor emas, biroz kuting';
+      return;
     }
-
-    try {
-      const video = document.getElementById('patVideo');
-      const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
-      if (detections.length === 0) {
-        document.getElementById('patCameraStatus').textContent = '❌ Yuz aniqlanmadi. Kameraga to\'g\'ri qarang.';
-        btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
-        return;
-      }
-      patDescriptor = Array.from(detections[0].descriptor);
-      document.getElementById('patDescriptorData').value = JSON.stringify(patDescriptor);
-      document.getElementById('patCameraStatus').textContent = '✅ Yuz skanerlandi! Ro\'yxatdan o\'tkazishingiz mumkin.';
-
-      // Canvas-ga chizish
-      const canvas = document.getElementById('patOverlay');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.classList.remove('hidden');
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      faceapi.matchDimensions(canvas, { width: video.videoWidth, height: video.videoHeight });
-      const resized = faceapi.resizeResults(detections, { width: video.videoWidth, height: video.videoHeight });
-      faceapi.draw.drawDetections(canvas, resized);
-
-      btn.textContent = '✅ Skanerlandi';
-    } catch(e) {
-      document.getElementById('patCameraStatus').textContent = '❌ Xatolik: ' + e.message;
-      btn.disabled = false; btn.textContent = '📸 Yuzni skanerlash';
-    }
-  }
-
-  function loadFaceApiScript() {
-    return new Promise((resolve, reject) => {
-      if (typeof faceapi !== 'undefined') return resolve();
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
-      script.onload = async () => {
-        try {
-          await faceapi.nets.ssdMobilenetv1.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
-          await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
-          await faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models');
-          resolve();
-        } catch(e) { reject(e); }
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
+    // Kadrni olamiz (yuz aniqlash serverda — SCRFD/ArcFace/liveness)
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
+    ctx.drawImage(video, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    patPhoto = canvas.toDataURL('image/jpeg', 0.9);
+    document.getElementById('patCameraStatus').textContent = '✅ Rasm olindi! "Ro\'yxatdan o\'tkazish"ni bosing.';
+    btn.textContent = '🔄 Qayta olish';
   }
 
   document.getElementById('patientRegForm').onsubmit = async (e) => {
     e.preventDefault();
-    const descriptor = document.getElementById('patDescriptorData').value;
-    if (!descriptor) {
-      document.getElementById('patRegResult').innerHTML = '<span class="text-red-400">❌ Avval yuzni skanerlang</span>';
+    const el = document.getElementById('patRegResult');
+    if (!patPhoto) {
+      el.innerHTML = '<span class="text-red-400">❌ Avval yuzni skanerlang</span>';
       return;
     }
-    const res = await apiPost('/api/face/register-patient', {
-      first_name: document.getElementById('patFirstName').value,
-      last_name: document.getElementById('patLastName').value,
-      phone: document.getElementById('patPhone').value,
+    const firstName = document.getElementById('patFirstName').value.trim();
+    if (firstName.length < 2) {
+      el.innerHTML = '<span class="text-red-400">❌ Ism kamida 2 harf</span>';
+      return;
+    }
+    el.innerHTML = '⏳ Serverda tekshirilmoqda...';
+    el.className = 'mt-2 text-sm text-slate-400';
+    const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const res = await apiPost('/api/face/register-patient-photo', {
+      first_name: firstName,
+      last_name: document.getElementById('patLastName').value.trim(),
+      phone: document.getElementById('patPhone').value.trim(),
       birth_date: document.getElementById('patBirthDate').value,
-      face_descriptor: JSON.parse(descriptor)
+      photo_base64: patPhoto,
+      nonce,
+      timestamp: Date.now()
     });
-    const el = document.getElementById('patRegResult');
     if (res.success) {
       el.innerHTML = `✅ Bemor ro'yxatdan o'tdi: ${res.patient.first_name} ${res.patient.last_name || ''}`;
       el.className = 'mt-2 text-sm text-green-400';
       document.getElementById('patientRegForm').reset();
-      document.getElementById('patDescriptorData').value = '';
-      patDescriptor = null;
+      patPhoto = null;
+      document.getElementById('patCameraStatus').textContent = '';
+      document.getElementById('patCaptureBtn').textContent = '📸 Yuzni skanerlash';
       loadRecentPatients();
+    } else if (res.spoof_warning) {
+      el.innerHTML = '🚫 Soxta yuz aniqlandi (foto/ekran). Jonli yuz talab qilinadi.';
+      el.className = 'mt-2 text-sm text-red-400';
+    } else if (res.existing_patient) {
+      el.innerHTML = `⚠️ Bu yuz oldin <b>${res.existing_patient.name}</b> sifatida ro'yxatdan o'tgan`;
+      el.className = 'mt-2 text-sm text-yellow-400';
     } else {
       el.innerHTML = '❌ ' + (res.error || 'Xatolik');
       el.className = 'mt-2 text-sm text-red-400';

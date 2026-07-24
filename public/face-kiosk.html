@@ -115,7 +115,6 @@ async function initVerifyCapture() {
     challengeEl: document.getElementById('fc-challenge-verify'),
     livenessEl: document.getElementById('fc-liveness-verify'),
     baseUrl: API,
-    onCapture: (payload) => onVerifyCapture(payload)
   });
   await faceCaptureVerify.init();
 }
@@ -130,7 +129,6 @@ async function initRegisterCapture() {
     challengeEl: document.getElementById('fc-challenge-register'),
     livenessEl: document.getElementById('fc-liveness-register'),
     baseUrl: API,
-    onCapture: (payload) => onRegisterCapture(payload)
   });
   await faceCaptureRegister.init();
 }
@@ -159,132 +157,126 @@ async function doCapture(id) {
   const fc = id === 'verify' ? faceCaptureVerify : faceCaptureRegister;
   if (!fc) return;
   const btn = document.getElementById('fc-capture-' + id);
-  btn.disabled = true;
-  btn.textContent = '⏳ Ishlanmoqda...';
 
+  // Ro'yxatdan o'tishda formani oldindan tekshiramiz (foto olishdan oldin)
+  let regData = null;
   if (id === 'register') {
-    const firstName = document.getElementById('regFirstName').value.trim();
-    if (!firstName) { showError('register', 'Ism majburiy'); btn.disabled = false; btn.textContent = '📸 Yuzni olish'; return; }
+    regData = validateRegisterForm();
+    if (!regData) return; // validateRegisterForm xatoni ko'rsatdi
   }
 
-  const payload = await fc.capture();
-  if (!payload) {
-    showError(id, 'Yuz aniqlanmadi yoki server bilan bog\'lanmadi');
+  const payload = fc.capture(); // { photo_base64, nonce, timestamp }
+  if (!payload) return;         // capture() statusда xatoni ko'rsatdi
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Tekshirilmoqda...';
+  fc._setStatus('Yuz serverda tahlil qilinmoqda...', 'loading');
+  fc._setLivenessDot('progress');
+  try {
+    if (id === 'verify') await submitVerify(payload);
+    else await submitRegister(payload, regData);
+  } catch (e) {
+    showError(id, 'Server bilan bog\'lanishda xatolik');
+  } finally {
     btn.disabled = false;
     btn.textContent = '📸 Yuzni olish';
+    fc._setLivenessDot('active');
+  }
+}
+
+function validateRegisterForm() {
+  const firstName = document.getElementById('regFirstName').value.trim().replace(/\s+/g, ' ');
+  if (!firstName || firstName.length < 2) { showError('register', 'Ism kamida 2 harf'); return null; }
+  const rawPhone = document.getElementById('regPhone').value.trim();
+  if (rawPhone && !/^\+998\d{9}$/.test(rawPhone.replace(/[\s\-()]/g, ''))) {
+    showError('register', 'Telefon: +998 XX XXX XX XX formatida'); return null;
+  }
+  const birthDate = document.getElementById('regBirthDate').value;
+  if (birthDate) {
+    const bd = new Date(birthDate);
+    if (isNaN(bd.getTime())) { showError('register', "Tug'ilgan sana noto'g'ri"); return null; }
+    if (bd > new Date()) { showError('register', "Tug'ilgan sana kelajakda bo'lishi mumkin emas"); return null; }
+    if (bd < new Date('1900-01-01')) { showError('register', "Tug'ilgan sana noto'g'ri"); return null; }
+  }
+  return {
+    first_name: firstName,
+    last_name: document.getElementById('regLastName').value.trim().replace(/\s+/g, ' '),
+    phone: rawPhone,
+    birth_date: birthDate,
+  };
+}
+
+async function submitVerify(payload) {
+  const resp = await fetch(API + '/api/face/verify-photo', {
+    method: 'POST',
+    headers: AUTH_HEADERS,
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json();
+  const div = document.getElementById('verifyResult');
+  div.classList.remove('hidden');
+
+  if (resp.status === 403 && data.spoof_warning) {
+    const pct = ((data.liveness_score || 0) * 100).toFixed(0);
+    div.innerHTML = `
+      <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
+      Liveness tekshiruvi o'tmadi (${pct}%).<br>
+      Iltimos, to'g'ridan-to'g'ri kameraga qarang.</div>
+      <div class="fc-result fc-result-error">
+        <h4>🚫 Spoof bloklandi</h4>
+        <p>Liveness: <strong>${pct}%</strong> (talab: ≥50%)</p>
+        <div class="fc-score-bar"><div class="fc-score-fill" style="width:${Math.min(100, (data.liveness_score || 0) * 100)}%;background:#f85149"></div></div>
+        <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>
+      </div>`;
     return;
   }
 
-  // onCapture callback already handled the result;
-  // payload is { face_descriptor, liveness_score, nonce, timestamp }
-  btn.disabled = false;
-  btn.textContent = '📸 Yuzni olish';
-}
-
-async function onVerifyCapture(payload) {
-  try {
-    const resp = await fetch(API + '/api/face/verify', {
-      method: 'POST',
-      headers: AUTH_HEADERS,
-      body: JSON.stringify(payload)
-    });
-    const data = await resp.json();
-    const div = document.getElementById('verifyResult');
-    div.classList.remove('hidden');
-
-    if (resp.status === 403 && data.spoof_warning) {
-      div.innerHTML = `
-        <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
-        Liveness tekshiruvi o'tmadi (${(data.liveness_score * 100).toFixed(0)}%).<br>
-        Iltimos, to'g'ridan-to'g'ri kameraga qarang va ko'rsatilgan harakatlarni bajaring.</div>
-        <div class="fc-result fc-result-error">
-          <h4>🚫 Spoof bloklandi</h4>
-          <p>Liveness: <strong>${(data.liveness_score * 100).toFixed(0)}%</strong> (talab: ≥50%)</p>
-          <div class="fc-score-bar"><div class="fc-score-fill" style="width:${Math.min(100, data.liveness_score * 100)}%;background:#f85149"></div></div>
-          <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>
-        </div>`;
-      return;
-    }
-
-    if (data.success && data.matched) {
-      div.innerHTML = `
-        <div class="success-box">
-          ✅ <strong>${data.identity?.name || 'Topildi'}</strong> — tanildi
-          <span class="badge ${data.type === 'staff' ? 'badge-staff' : 'badge-patient'}">${data.type === 'staff' ? '👨‍⚕️ Xodim' : '🧑 Bemor'}</span>
-        </div>
-        <div class="fc-result fc-result-success">
-          <h4>✅ Muvaffaqiyatli</h4>
-          <p>Ishonchlilik: <strong>${(data.confidence * 100).toFixed(1)}%</strong></p>
-          <p>Liveness: ${data.liveness_passed ? '✅ O\'tdi' : '❌ O\'tmadi'}</p>
-          ${data.identity?.specialty ? '<p>Mutaxassislik: ' + data.identity.specialty + '</p>' : ''}
-        </div>`;
-    } else if (data.success && !data.matched) {
-      div.innerHTML = `
-        <div class="error-box">❌ Yuz tanilmadi. Qayta urinib ko'ring.</div>`;
-    } else {
-      div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
-    }
-  } catch (e) {
-    showError('verify', 'Server bilan bog\'lanishda xatolik');
+  if (data.success && data.matched) {
+    div.innerHTML = `
+      <div class="success-box">
+        ✅ <strong>${data.identity?.name || 'Topildi'}</strong> — tanildi
+        <span class="badge ${data.type === 'staff' ? 'badge-staff' : 'badge-patient'}">${data.type === 'staff' ? '👨‍⚕️ Xodim' : '🧑 Bemor'}</span>
+      </div>
+      <div class="fc-result fc-result-success">
+        <h4>✅ Muvaffaqiyatli</h4>
+        <p>Ishonchlilik: <strong>${(data.confidence * 100).toFixed(1)}%</strong></p>
+        <p>Liveness: ${data.liveness_passed ? '✅ O\'tdi' : '❌ O\'tmadi'}</p>
+        ${data.identity?.specialty ? '<p>Mutaxassislik: ' + data.identity.specialty + '</p>' : ''}
+      </div>`;
+  } else if (data.success && !data.matched) {
+    div.innerHTML = `<div class="error-box">❌ Yuz tanilmadi. Qayta urinib ko'ring.</div>`;
+  } else {
+    div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
   }
 }
 
-async function onRegisterCapture(payload) {
-  try {
-    const firstName = document.getElementById('regFirstName').value.trim().replace(/\s+/g, ' ');
-    if (!firstName || firstName.length < 2) { showError('register', 'Ism kamida 2 harf'); return; }
+async function submitRegister(payload, regData) {
+  const resp = await fetch(API + '/api/face/register-patient-photo', {
+    method: 'POST',
+    headers: AUTH_HEADERS,
+    body: JSON.stringify({ ...payload, ...regData })
+  });
+  const data = await resp.json();
+  const div = document.getElementById('registerResult');
+  div.classList.remove('hidden');
 
-    const phone = document.getElementById('regPhone').value.trim();
-    if (phone && !/^\+998\d{9}$/.test(phone.replace(/[\s\-()]/g, ''))) {
-      showError('register', 'Telefon: +998 XX XXX XX XX formatida');
-      return;
-    }
+  if (resp.status === 403 && data.spoof_warning) {
+    const pct = ((data.liveness_score || 0) * 100).toFixed(0);
+    div.innerHTML = `
+      <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
+      Ro'yxatdan o'tish uchun jonli yuz talab qilinadi.<br>
+      Liveness: ${pct}% (talab: ≥50%)</div>
+      <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>`;
+    return;
+  }
 
-    const birthDate = document.getElementById('regBirthDate').value;
-    if (birthDate) {
-      const bd = new Date(birthDate);
-      if (isNaN(bd.getTime())) { showError('register', "Tug'ilgan sana noto'g'ri"); return; }
-      if (bd > new Date()) { showError('register', "Tug'ilgan sana kelajakda bo'lishi mumkin emas"); return; }
-      if (bd < new Date('1900-01-01')) { showError('register', "Tug'ilgan sana noto'g'ri"); return; }
-    }
-
-    const lastName = document.getElementById('regLastName').value.trim().replace(/\s+/g, ' ');
-    const resp = await fetch(API + '/api/face/register-patient', {
-      method: 'POST',
-      headers: AUTH_HEADERS,
-      body: JSON.stringify({
-        ...payload,
-        first_name: firstName,
-        last_name: lastName,
-        phone: document.getElementById('regPhone').value.trim(),
-        birth_date: document.getElementById('regBirthDate').value
-      })
-    });
-    const data = await resp.json();
-    const div = document.getElementById('registerResult');
-    div.classList.remove('hidden');
-
-    if (resp.status === 403 && data.spoof_warning) {
-      div.innerHTML = `
-        <div class="error-box">🚫 <strong>Soxta urinish aniqlandi!</strong><br>
-        Ro'yxatdan o'tish uchun jonli yuz talab qilinadi.<br>
-        Liveness: ${(data.liveness_score * 100).toFixed(0)}% (talab: ≥50%)</div>
-        <button class="fc-btn fc-btn-primary mt-2" onclick="location.reload()">🔄 Qayta urinish</button>`;
-      return;
-    }
-
-    if (data.success) {
-      div.innerHTML = `
-        <div class="success-box">✅ <strong>${data.patient.first_name}</strong> ro'yxatdan o'tdi</div>`;
-      document.getElementById('registerForm').classList.add('hidden');
-    } else if (resp.status === 409) {
-      div.innerHTML = `
-        <div class="error-box">⚠️ Bu yuz oldin <strong>${data.existing_patient.name}</strong> sifatida ro'yxatdan o'tgan</div>`;
-    } else {
-      div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
-    }
-  } catch (e) {
-    showError('register', 'Server bilan bog\'lanishda xatolik');
+  if (data.success) {
+    div.innerHTML = `<div class="success-box">✅ <strong>${data.patient.first_name}</strong> ro'yxatdan o'tdi</div>`;
+    document.getElementById('registerForm').classList.add('hidden');
+  } else if (resp.status === 409) {
+    div.innerHTML = `<div class="error-box">⚠️ Bu yuz oldin <strong>${data.existing_patient?.name || 'boshqa bemor'}</strong> sifatida ro'yxatdan o'tgan</div>`;
+  } else {
+    div.innerHTML = `<div class="error-box">❌ ${data.error || 'Xatolik yuz berdi'}</div>`;
   }
 }
 

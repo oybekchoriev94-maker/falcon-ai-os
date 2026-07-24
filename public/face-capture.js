@@ -40,96 +40,45 @@ const FaceCapture = (function () {
     }
 
     /**
-     * Capture a photo and optionally extract face descriptor via /extract API.
-     * 
-     * @param {Object} [opts] - Optional overrides
-     * @param {boolean} [opts.skipExtract=false] - If true, skip API call, return raw photo only
-     * @returns {Promise<string|Object>} 
-     *   - If skipExtract: returns base64 data URL string
-     *   - If onCapture callback set: calls onCapture(payload), returns payload
-     *   - Otherwise: returns { photo_base64, face_descriptor, liveness_score, nonce, timestamp }
+     * Capture a single video frame as a JPEG.
+     *
+     * Server-authoritative model: the browser NEVER runs face ML and NEVER
+     * receives the descriptor. It only sends this photo to the photo-based
+     * endpoints (/verify-photo, /register-patient-photo, /register-photo),
+     * where the server extracts the descriptor, checks liveness and matches.
+     * This removes the descriptor-substitution / liveness-forgery attack.
+     *
+     * @returns {{ photo_base64: string, nonce: string, timestamp: number } | null}
+     *   Also invokes the onCapture callback with the same payload when set.
      */
-    async capture(opts = {}) {
+    capture() {
       if (!this.videoEl || !this.canvasEl) {
         this._setStatus('Kamera mavjud emas', 'error');
         return null;
       }
+      if (!this.videoEl.videoWidth) {
+        this._setStatus('Kamera hali tayyor emas, biroz kuting', 'error');
+        return null;
+      }
       const canvas = this.canvasEl;
-      canvas.width = this.videoEl.videoWidth || 640;
-      canvas.height = this.videoEl.videoHeight || 480;
+      canvas.width = this.videoEl.videoWidth;
+      canvas.height = this.videoEl.videoHeight;
       const ctx = canvas.getContext('2d');
+      // Ko'zguga o'xshab ko'rsatilgani uchun saqlashda ham gorizontal aylantiramiz
       ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
       ctx.drawImage(this.videoEl, 0, 0);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const photoBase64 = canvas.toDataURL('image/jpeg', 0.9);
 
-      // If skipExtract, just return the raw photo (legacy mode)
-      if (opts.skipExtract) {
-        return photoBase64;
-      }
-
-      this._setStatus('Yuz tahlil qilinmoqda...', 'loading');
-      this._setLivenessDot('progress');
-
-      try {
-        const nonce = crypto.randomUUID
+      const nonce =
+        typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
           : Date.now().toString(36) + '-' + Math.random().toString(36).substring(2);
-        const timestamp = Date.now();
+      const timestamp = Date.now();
+      const payload = { photo_base64: photoBase64, nonce, timestamp };
 
-        const resp = await fetch(this.baseUrl + '/api/face/extract', {
-          method: 'POST',
-          headers: this._getAuthHeaders(),
-          body: JSON.stringify({
-            photo_base64: photoBase64,
-            nonce,
-            timestamp,
-          }),
-          signal: AbortSignal.timeout(20000),
-        });
-
-        if (!resp.ok) {
-          let errMsg = 'Yuz aniqlanmadi';
-          try {
-            const errData = await resp.json();
-            errMsg = errData.error || errMsg;
-          } catch (_) {}
-          this._setStatus(errMsg, 'error');
-          this._setLivenessDot('inactive');
-          return null;
-        }
-
-        const data = await resp.json();
-        if (!data.success || !data.face_descriptor) {
-          this._setStatus('Yuz aniqlanmadi', 'error');
-          this._setLivenessDot('inactive');
-          return null;
-        }
-
-        const payload = {
-          face_descriptor: data.face_descriptor,
-          liveness_score: data.liveness_score ?? 0.5,
-          nonce,
-          timestamp,
-        };
-
-        this._setStatus('✅ Yuz aniqlandi', 'success');
-        this._setLivenessDot('active');
-
-        if (this.onCapture) {
-          this.onCapture(payload);
-        }
-
-        return payload;
-      } catch (e) {
-        if (e.name === 'AbortError') {
-          this._setStatus("So'rov vaqti tugadi", 'error');
-        } else {
-          this._setStatus('Xatolik: ' + (e.message || 'Serverga ulanmadi'), 'error');
-        }
-        this._setLivenessDot('inactive');
-        return null;
-      }
+      if (this.onCapture) this.onCapture(payload);
+      return payload;
     }
 
     stop() {
