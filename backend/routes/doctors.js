@@ -231,28 +231,40 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   router.post('/reception/confirm', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), validate(schemas.receptionConfirm), async (req, res) => {
     try {
       const { patient_name, phone, doctor_name, department, notes, appointment_time, status } = req.body;
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
       // Agar status berilgan bo'lsa, queue statusini yangilash
       if (status && req.body.id) {
         await q(
-          "UPDATE patient_queue SET status = $1, department = COALESCE($2, department), appointment_time = COALESCE($3, appointment_time) WHERE id = $4 AND tenant_id = $5",
-          [status, department || '', appointment_time || null, req.body.id, req.tenant_id]
+          "UPDATE patient_queue SET status = $1 WHERE id = $2 AND tenant_id = $3",
+          [status, req.body.id, tenantId]
         );
         return res.json({ success: true, status });
       }
       const aptId = 'apt-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
-      await q("INSERT INTO appointments (appointment_id, patient_name, phone, doctor_name, department, notes, source) VALUES ($1, $2, $3, $4, $5, $6, 'reception')",
-        [aptId, patient_name, phone || '', doctor_name || '', department || 'therapy', notes || '']);
-      // Queue
-      const maxQ = await qGet("SELECT COALESCE(MAX(queue_number),0) + 1 as n FROM patient_queue WHERE status='waiting'");
-      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, department, appointment_time, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        [maxQ.n, patient_name, phone || '', doctor_name || '', department || '', appointment_time || null, req.tenant_id]);
-      // Doctor analytics
+      await q("INSERT INTO appointments (appointment_id, tenant_id, patient_name, phone, doctor_name, department, notes, source) VALUES ($1, $2, $3, $4, $5, $6, $7, 'reception')",
+        [aptId, tenantId, patient_name, phone || '', doctor_name || '', department || 'therapy', notes || '']);
+      // Queue — navbat raqami har bir klinika ichida alohida sanaladi.
+      // patient_queue'da department/appointment_time ustunlari yo'q — ma'lumot notes'ga yoziladi.
+      const queueNotes = [department, appointment_time, notes].filter(Boolean).join(' · ') || null;
+      const maxQ = await qGet("SELECT COALESCE(MAX(queue_number),0) + 1 as n FROM patient_queue WHERE status='waiting' AND tenant_id = $1", [tenantId]);
+      await q("INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, notes, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)",
+        [maxQ.n, patient_name, phone || '', doctor_name || '', queueNotes, tenantId]);
+      // Doctor analytics — faqat shifokor nomi bo'yicha topilsa (analitika asosiy oqimni buzmasligi kerak)
       if (doctor_name) {
-        const period = new Date().toISOString().slice(0, 10);
-        await q(
-          `INSERT INTO doctor_analytics (doctor_id, doctor_name, patients_count, period_start, period_end) VALUES ($1, $2, 1, $3, $4)
-           ON CONFLICT (doctor_id, period_start) DO UPDATE SET patients_count = doctor_analytics.patients_count + 1`,
-          [doctor_name.toLowerCase().replace(/\s/g, '_'), doctor_name, period, period]);
+        try {
+          const period = new Date().toISOString().slice(0, 10);
+          const doc = await qGet(
+            "SELECT id FROM doctors WHERE tenant_id = $1 AND (LOWER(first_name || ' ' || COALESCE(last_name,'')) LIKE LOWER($2) OR LOWER(COALESCE(specialty,'')) LIKE LOWER($2)) ORDER BY created_at LIMIT 1",
+            [tenantId, `%${doctor_name}%`]
+          );
+          if (doc) {
+            await q(
+              `INSERT INTO doctor_analytics (tenant_id, doctor_id, doctor_name, patients_count, period_start, period_end) VALUES ($1, $2, $3, 1, $4, $5)
+               ON CONFLICT (tenant_id, doctor_id, period_start) DO UPDATE SET patients_count = doctor_analytics.patients_count + 1`,
+              [tenantId, doc.id, doctor_name, period, period]
+            );
+          }
+        } catch (aErr) { /* analitika ixtiyoriy — xatosi qabulni bekor qilmasin */ }
       }
       res.json({ success: true, appointment: { appointment_id: aptId, patient_name, phone, doctor_name, queue: maxQ.n } });
     } catch (e) { safeError(res, e); }

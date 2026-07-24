@@ -423,10 +423,11 @@ export default function inventoryRoutes(
         const batchNo = safeBatch || ('BATCH-AUTO-' + now.toISOString().slice(0, 10).replace(/-/g, ''));
         const expDate = result.expiration_date || new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString().slice(0, 10);
         const userId = req.user?.id || req.user?.username || 'admin';
+        const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
 
         // ACID transaction
         await withTransaction(async () => {
-          const existing = await qGet("SELECT id, current_stock FROM inventory_items WHERE LOWER(name) = LOWER($1)", [safeName]);
+          const existing = await qGet("SELECT id, current_stock FROM inventory_items WHERE tenant_id = $1 AND LOWER(name) = LOWER($2)", [tenantId, safeName]);
           let itemId, before;
 
           if (existing) {
@@ -435,18 +436,18 @@ export default function inventoryRoutes(
           } else {
             const sku = 'V-' + Date.now().toString(36).toUpperCase();
             const r = await q(
-              "INSERT INTO inventory_items (name, sku, category, current_stock, unit) VALUES ($1, $2, $3, 0, 'dona') RETURNING id",
-              [safeName, sku, 'Boshqa']
+              "INSERT INTO inventory_items (tenant_id, name, sku, category, current_stock, unit) VALUES ($1, $2, $3, $4, 0, 'dona') RETURNING id",
+              [tenantId, safeName, sku, 'Boshqa']
             );
             itemId = r[0].id;
             before = 0;
           }
 
-          // UPSERT batch
+          // UPSERT batch (unique: tenant_id, item_id, batch_number)
           await q(
-            `INSERT INTO inventory_batches (item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4)
-             ON CONFLICT (item_id, batch_number) DO UPDATE SET quantity = quantity + EXCLUDED.quantity`,
-            [itemId, batchNo, qty, expDate]
+            `INSERT INTO inventory_batches (tenant_id, item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (tenant_id, item_id, batch_number) DO UPDATE SET quantity = inventory_batches.quantity + EXCLUDED.quantity`,
+            [tenantId, itemId, batchNo, qty, expDate]
           );
 
           const totalRow = await qGet("SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1", [itemId]);
@@ -455,9 +456,9 @@ export default function inventoryRoutes(
 
           const batchRow = await qGet("SELECT id FROM inventory_batches WHERE item_id = $1 AND batch_number = $2", [itemId, batchNo]);
           await q(
-            `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
-             VALUES ($1, 'VOICE_RECEIPT', $2, $3, $4, $5, $6, $7, $8)`,
-            [itemId, qty, userId, before, after,
+            `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
+             VALUES ($1, $2, 'VOICE_RECEIPT', $3, $4, $5, $6, $7, $8, $9)`,
+            [tenantId, itemId, qty, userId, before, after,
              `Ovozli kirim: ${safeName} (partiya: ${batchNo}, yaroqlilik: ${expDate})`,
              batchRow ? batchRow.id : null, batchNo]
           );
