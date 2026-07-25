@@ -53,6 +53,19 @@
         <div class="field-hint" id="specialtyHint">AI diktantni aynan shu yo'nalishga mos shablonda tahlil qiladi</div>
       </div>
 
+      <!-- Diktant tili -->
+      <div class="md3-field">
+        <label for="languageSelect">Diktant tili</label>
+        <div class="specialty-select-wrapper">
+          <select id="languageSelect" class="specialty-select">
+            <option value="uz">🇺🇿 O'zbekcha</option>
+            <option value="ru">🇷🇺 Ruscha</option>
+          </select>
+          <span class="material-symbols-outlined dropdown-arrow">expand_more</span>
+        </div>
+        <div class="field-hint">Qaysi tilda gapirsangiz, shuni tanlang — aniqlik shunga bog'liq</div>
+      </div>
+
       <!-- Voice controls -->
       <div class="btn-group">
         <button class="btn btn-secondary" id="btnRecord" onclick="toggleRecording()">
@@ -366,7 +379,8 @@
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 1;
-        recognition.lang = 'uz-UZ';  // O'zbek tili
+        // Tanlangan diktant tiliga ergashadi (uz-UZ yoki ru-RU)
+        recognition.lang = ((document.getElementById('languageSelect')?.value) === 'ru') ? 'ru-RU' : 'uz-UZ';
 
         recognitionFatal = false;
 
@@ -638,7 +652,7 @@
         const formData = new FormData();
         formData.append('audio', blob, 'recording.webm');
         formData.append('patient_name', patientName);
-        formData.append('language', 'uz');
+        formData.append('language', (document.getElementById('languageSelect')?.value) || 'uz');
         formData.append('specialty', specialtySelect.value);
 
         const res = await fetch('/api/scribe/transcribe', {

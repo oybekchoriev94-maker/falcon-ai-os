@@ -195,19 +195,24 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   router.post('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), upload.single('audio'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
-      const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
+      const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
       if (error) return res.status(500).json({ success: false, error });
       if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
-      const fixed = await llm(
-        `Quyidagi matnni o'zbek lotin alifbosiga to'g'rilang (faqat matn qaytaring, izohsiz):
+      // Imlo tuzatish faqat o'zbekcha diktant uchun — ruscha matnni buzmasligi kerak
+      const isRu = String(req.body?.language || '').toLowerCase().startsWith('ru');
+      let cleaned = text;
+      if (!isRu) {
+        const fixed = await llm(
+          `Quyidagi matnni o'zbek lotin alifbosiga to'g'rilang (faqat matn qaytaring, izohsiz):
         • ö,õ→o'  ü→u'  ğ,ģ→g'  ş→sh  ç→ch  ý→y  ı→i  â→a  ê→e  î→i
         • Turkcha so'zlarni o'zbekchasiga almashtiring`,
-        text,
-        { temperature: 0.0 }
-      );
-      const cleaned = (typeof fixed === 'string') ? fixed : text;
+          text,
+          { temperature: 0.0 }
+        );
+        if (typeof fixed === 'string') cleaned = fixed;
+      }
       const raw = await llm(
-        `Bemor ma'lumotlarini ajratib, faqat JSON qaytaring:
+        `Bemor ma'lumotlarini ajratib, faqat JSON qaytaring. Matn o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz:
 {
   "patient_name": "bemor ismi",
   "phone": "telefon raqami yoki bo'sh",

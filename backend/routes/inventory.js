@@ -396,7 +396,7 @@ export default function inventoryRoutes(
         // or require them here. The orchestrator is a peer dependency.
         const { transcribe, llm } = await import('../../ai/orchestrator.js');
 
-        const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
+        const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
         if (error) return res.status(500).json({ success: false, error });
 
         const result = await llm(

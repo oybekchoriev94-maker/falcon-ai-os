@@ -337,6 +337,8 @@ export default function ScribePage() {
   const [formDate, setFormDate] = useState(todayDate);
   const [formTime, setFormTime] = useState("");
   const [formNotes, setFormNotes] = useState("");
+  // Diktant tili — model avto-aniqlay olmaydi, shuning uchun aniq tanlanadi
+  const [sttLanguage, setSttLanguage] = useState<"uz" | "ru">("uz");
 
   /* Refs */
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -370,6 +372,7 @@ export default function ScribePage() {
     mutationFn: async (audioBlob: Blob) => {
       const fd = new FormData();
       fd.append("audio", audioBlob, "recording.webm");
+      fd.append("language", sttLanguage);
       const res = await api.upload<VoiceRegisterResponse>(
         "/api/reception/voice-register",
         fd
@@ -617,6 +620,28 @@ export default function ScribePage() {
         <motion.div variants={itemVariants}>
           <Card className="border-border/50 h-full">
             <CardContent className="flex flex-col items-center justify-center py-10 md:py-14">
+              {/* Diktant tili — model avto-aniqlay olmaydi, aniq tanlanadi */}
+              <div className="mb-6 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Diktant tili:</span>
+                <div className="inline-flex rounded-lg border border-border/60 p-0.5">
+                  {(["uz", "ru"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setSttLanguage(lang)}
+                      disabled={appState === "recording" || appState === "processing"}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors disabled:opacity-50 ${
+                        sttLanguage === lang
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {lang === "uz" ? "🇺🇿 O'zbekcha" : "🇷🇺 Ruscha"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <MicButton
                 state={appState}
                 onClick={handleMicClick}

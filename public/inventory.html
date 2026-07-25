@@ -179,6 +179,11 @@
             <span class="material-symbols-outlined text-lg">qr_code_scanner</span>
             Kamera
           </button>
+          <select id="invVoiceLang" title="Ovoz tili"
+            class="px-3 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm bg-white">
+            <option value="uz">🇺🇿 O'zbekcha</option>
+            <option value="ru">🇷🇺 Ruscha</option>
+          </select>
           <span id="voiceStatus" class="text-xs text-gray-400 self-center ml-auto hidden"></span>
         </div>
 
@@ -817,6 +822,7 @@
       try {
         const formData = new FormData();
         formData.append('audio', blob, 'voice_' + Date.now() + '.webm');
+        formData.append('language', (document.getElementById('invVoiceLang')?.value) || 'uz');
 
         const res = await fetch('/api/inventory/voice-add', {
           method: 'POST',

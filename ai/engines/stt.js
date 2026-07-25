@@ -16,6 +16,29 @@ function isLocal() {
 // Maxfiylik: lokal STT ishlamay qolsa, bemor audiosi faqat shu flag ochiq bo'lsa cloud'ga yuboriladi.
 function cloudFallbackAllowed() { return process.env.STT_CLOUD_FALLBACK === 'true'; }
 
+// ─── Tillar ──────────────────────────────────────────────
+// DIQQAT: model o'zbekcha uchun fine-tune qilingani sababli avto-aniqlash
+// ishonchsiz (ruscha audioni ham o'zbekcha deb o'qiydi). Shuning uchun til
+// aniq ko'rsatilishi shart — UI dan uzatiladi.
+export const SUPPORTED_LANGUAGES = ['uz', 'ru'];
+export const DEFAULT_LANGUAGE = 'uz';
+
+const MEDICAL_PROMPTS = {
+  uz: "O'zbek tilidagi tibbiy matn. Bemor shikoyatlari, tashxis, dori nomlari: " +
+    "paratsetamol, amoksitsillin, ibuprofen, azitromitsin, dexametazon, prednizolon, loratadin, omeprazol, " +
+    "metformin, qon bosimi, yurak urishi, harorat, yuqori nafas yo'llari, oshqozon, jigar, buyrak. " +
+    "O'zbek lotin alifbosi (o'g', sh, ch, o', q, g').",
+  ru: "Медицинский текст на русском языке. Жалобы пациента, диагноз, названия лекарств: " +
+    "парацетамол, амоксициллин, ибупрофен, азитромицин, дексаметазон, преднизолон, лоратадин, омепразол, " +
+    "метформин, артериальное давление, частота сердечных сокращений, температура, верхние дыхательные пути, " +
+    "желудок, печень, почки. Пишите на русском языке кириллицей.",
+};
+
+export function normalizeLanguage(lang) {
+  const l = String(lang || '').trim().toLowerCase().slice(0, 2);
+  return SUPPORTED_LANGUAGES.includes(l) ? l : DEFAULT_LANGUAGE;
+}
+
 // ─── Transkripsiya ───────────────────────────────────────
 function makeForm(audioBuffer, filename, opts) {
   const isWav = filename.endsWith('.wav');
@@ -24,12 +47,9 @@ function makeForm(audioBuffer, filename, opts) {
   const blob = new Blob([audioBuffer], { type: mime });
   form.append('file', blob, filename);
   form.append('response_format', 'json');
-  form.append('language', opts.language || 'uz');
-  const defaultPrompt = "O'zbek tilidagi tibbiy matn. Bemor shikoyatlari, tashxis, dori nomlari: " +
-    "paratsetamol, amoksitsillin, ibuprofen, azitromitsin, dexametazon, prednizolon, loratadin, omeprazol, " +
-    "metformin, qon bosimi, yurak urishi, harorat, yuqori nafas yo'llari, oshqozon, jigar, buyrak. " +
-    "O'zbek lotin alifbosi (o'g', sh, ch, o', q, g').";
-  form.append('prompt', opts.prompt || defaultPrompt);
+  const language = normalizeLanguage(opts.language);
+  form.append('language', language);
+  form.append('prompt', opts.prompt || MEDICAL_PROMPTS[language] || MEDICAL_PROMPTS.uz);
   if (opts.temperature !== undefined) form.append('temperature', String(opts.temperature));
   return form;
 }
@@ -50,7 +70,7 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
       if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
       const data = await res.json();
       const text = data.text || '';
-      return { text, segments: data.segments || null, error: null };
+      return { text, segments: data.segments || null, language: normalizeLanguage(opts.language), error: null };
     } catch (e) {
       // Lokal STT ishlamadi. Maxfiylik: cloud fallback faqat aniq ruxsat berilgan bo'lsa.
       if (!cloudFallbackAllowed() || !groqKey()) {
@@ -74,7 +94,7 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
       signal: AbortSignal.timeout(60000)
     });
     const data = await res.json();
-    return { text: data.text || '', segments: data.segments || null, error: data.error?.message || null };
+    return { text: data.text || '', segments: data.segments || null, language: normalizeLanguage(opts.language), error: data.error?.message || null };
   } catch (e) {
     return { text: '', error: e.message };
   }

@@ -19,17 +19,21 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { transcribe, llm } = await import('../../ai/orchestrator.js');
       let text;
+      let sttLanguage = null;
       if (req.file) {
-        const result = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
+        const result = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
         if (result.error) return res.status(500).json({ success: false, error: result.error });
         text = result.text;
+        sttLanguage = result.language || null;
       } else if (req.body?.raw_text) {
         text = req.body.raw_text;
       } else {
         return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
       }
       const result = await llm(
-        'Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}. Agar muolaja aniqlansa, procedure maydoniga yozing.',
+        'Siz shifokor yordamchisisiz. Diktant o\'zbek yoki rus tilida bo\'lishi mumkin — ikkalasini ham tushunasiz. ' +
+        'Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: ' +
+        '{"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}. Agar muolaja aniqlansa, procedure maydoniga yozing.',
         text
       );
       const consId = uuidv4();
@@ -45,7 +49,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
       const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
-      res.json({ success: true, transcription: text, data: result, consultation_id: consId, auto_consumption: consumption });
+      res.json({ success: true, transcription: text, language: sttLanguage, data: result, consultation_id: consId, auto_consumption: consumption });
     } catch (e) { serverError(res, e); }
   });
 
@@ -63,9 +67,10 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       const specialization = req.user?.specialization || 'doctor';
       const prompt = (MEDICAL_SKILLS[specialization]?.systemPrompt) ||
         "Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {\"patient_name\":\"...\",\"diagnosis\":\"...\",\"procedure\":\"...\",\"medicines\":\"...\"}";
-      const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm');
+      const { text, error, language: sttLanguage } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
       if (error) return res.status(500).json({ success: false, error });
-      const result = await llm(prompt, text);
+      // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
+      const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz.", text);
       const consId = uuidv4();
       await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
         [consId, tenantId, req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
@@ -104,7 +109,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
       const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
-      res.json({ success: true, transcription: text, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId });
+      res.json({ success: true, transcription: text, language: sttLanguage || null, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId });
     } catch (e) { serverError(res, e); }
   });
 

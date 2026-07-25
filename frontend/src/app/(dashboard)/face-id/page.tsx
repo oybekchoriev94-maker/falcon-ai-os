@@ -64,8 +64,11 @@ interface Registration {
 
 interface VerifyResponse {
   match: boolean;
-  patient?: Patient;
+  name?: string;
+  type?: "staff" | "patient";
+  detail?: string;
   confidence?: number;
+  livenessPassed?: boolean;
 }
 
 type ScanStatus = "idle" | "scanning" | "success" | "error";
@@ -91,10 +94,6 @@ function formatDate(dateStr: string): string {
     month: "2-digit",
     year: "numeric",
   });
-}
-
-function getInitials(first: string, last: string): string {
-  return `${(first || "")[0] || ""}${(last || "")[0] || ""}`.toUpperCase() || "?";
 }
 
 export default function FaceIdPage() {
@@ -178,11 +177,14 @@ export default function FaceIdPage() {
 
   const registerMutation = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ patient: Patient }>("/api/face/register-simple", {
+      if (!capturedPhoto) throw new Error("Avval yuzni rasmga oling");
+      const res = await api.post<{ patient: Patient }>("/api/face/register-patient-photo", {
         first_name: regFirstName.trim(),
         last_name: regLastName.trim() || undefined,
         phone: regPhone.trim() || undefined,
-        photo_base64: capturedPhoto || undefined,
+        photo_base64: capturedPhoto,
+        nonce: (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)),
+        timestamp: Date.now(),
       });
       if (!res.success) throw new Error(res.error || "Ro'yxatdan o'tkazishda xatolik");
       return res.patient;
@@ -226,29 +228,51 @@ export default function FaceIdPage() {
 
   async function handleVerify() {
     setVerifyResult(null);
-    if (!cameraActive) await startCamera();
+    if (!cameraActive) {
+      await startCamera();
+      await new Promise((r) => setTimeout(r, 700));
+    }
     if (!streamRef.current) return;
     setIsVerifying(true);
-    await new Promise((r) => setTimeout(r, 1500));
     const photo = captureFrame();
     if (!photo) {
       setIsVerifying(false);
       toast.error("Rasmga olishda xatolik");
       return;
     }
-    const matched = patients.length > 0;
-    await new Promise((r) => setTimeout(r, 500));
-    if (matched) {
-      const idx = Math.floor(Math.random() * patients.length);
-      const randomPatient = patients[idx];
-      const confidence = +(0.85 + Math.random() * 0.14).toFixed(3);
-      setVerifyResult({ match: true, patient: randomPatient, confidence });
-      toast.success(`Face ID: ${randomPatient.first_name} ${randomPatient.last_name} aniqlandi`);
-    } else {
-      setVerifyResult({ match: false });
-      toast.error("Yuz mos kelmadi. Avval bemorni ro'yxatdan o'tkazing.");
+    try {
+      const res = await api.post<{
+        matched?: boolean;
+        type?: "staff" | "patient";
+        confidence?: number;
+        liveness_passed?: boolean;
+        identity?: { name?: string; specialty?: string; phone?: string };
+      }>("/api/face/verify-photo", {
+        photo_base64: photo,
+        nonce: (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)),
+        timestamp: Date.now(),
+      });
+
+      if (res.success && res.matched) {
+        setVerifyResult({
+          match: true,
+          name: res.identity?.name || "Aniqlandi",
+          type: res.type,
+          detail: res.identity?.specialty || res.identity?.phone,
+          confidence: res.confidence,
+          livenessPassed: res.liveness_passed,
+        });
+        toast.success(`Face ID: ${res.identity?.name || ""} aniqlandi`);
+      } else if (res.success && !res.matched) {
+        setVerifyResult({ match: false });
+        toast.error("Yuz tanilmadi. Avval bemorni ro'yxatdan o'tkazing.");
+      } else {
+        setVerifyResult({ match: false });
+        toast.error(res.error || "Tekshirishda xatolik (jonlilik yoki tarmoq)");
+      }
+    } finally {
+      setIsVerifying(false);
     }
-    setIsVerifying(false);
   }
 
   async function handleSave() {
@@ -527,7 +551,7 @@ export default function FaceIdPage() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="rounded-lg border p-4 space-y-3"
                       >
-                        {verifyResult.match && verifyResult.patient ? (
+                        {verifyResult.match ? (
                           <>
                             <div className="flex items-center gap-3">
                               <div className="size-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
@@ -536,30 +560,30 @@ export default function FaceIdPage() {
                               <div>
                                 <p className="font-medium text-sm">Moslik aniqlandi</p>
                                 <p className="text-xs text-muted-foreground">
-                                  Face ID muvaffaqiyatli tasdiqlandi
+                                  Jonlilik: {verifyResult.livenessPassed ? "✅ o'tdi" : "tekshirilmadi"}
                                 </p>
                               </div>
                             </div>
                             <div className="flex items-center gap-3 pt-3 border-t border-border/50">
                               <Avatar className="size-10">
                                 <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                  {getInitials(
-                                    verifyResult.patient.first_name,
-                                    verifyResult.patient.last_name
-                                  )}
+                                  {(verifyResult.name || "?").slice(0, 2).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">
-                                  {verifyResult.patient.first_name}{" "}
-                                  {verifyResult.patient.last_name}
+                                  {verifyResult.name}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Ishonchlilik: {(verifyResult.confidence! * 100).toFixed(1)}%
+                                  {verifyResult.type === "staff" ? "👨‍⚕️ Xodim" : "🧑 Bemor"}
+                                  {verifyResult.confidence != null
+                                    ? ` · Ishonchlilik: ${(verifyResult.confidence * 100).toFixed(1)}%`
+                                    : ""}
+                                  {verifyResult.detail ? ` · ${verifyResult.detail}` : ""}
                                 </p>
                               </div>
                               <Badge variant="outline" className="shrink-0">
-                                {verifyResult.confidence! > 0.95 ? "Yuqori" : "O'rtacha"}
+                                {(verifyResult.confidence ?? 0) > 0.6 ? "Yuqori" : "O'rtacha"}
                               </Badge>
                             </div>
                           </>

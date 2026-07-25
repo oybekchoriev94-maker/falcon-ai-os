@@ -330,6 +330,13 @@
         <!-- Voice Registration -->
         <div class="card">
           <h3 class="text-lg font-semibold mb-4">🎙 Front-Desk AI Scribe</h3>
+          <div class="mb-3">
+            <label class="block text-xs text-slate-400 mb-1">Diktant tili</label>
+            <select id="recScribeLang" class="input text-sm" style="max-width:220px">
+              <option value="uz">🇺🇿 O'zbekcha</option>
+              <option value="ru">🇷🇺 Ruscha</option>
+            </select>
+          </div>
           <div class="flex items-center gap-4 mb-4">
             <button id="recMicBtn" onclick="toggleRecording()" class="w-16 h-16 rounded-full text-3xl flex items-center justify-center transition-all" style="background:linear-gradient(135deg,#3b82f6,#a855f7)">🎤</button>
             <div><p id="recStatus" class="text-slate-400 text-sm">Mikrofonga bosing va bemor ma'lumotlarini ayting</p><p id="recTranscription" class="text-sm mt-1 text-slate-300"></p></div>
@@ -414,6 +421,13 @@
         <!-- AI Scribe -->
         <div class="card">
           <h3 class="text-lg font-semibold mb-4" id="scribeTitle">🩺 AI Scribe — Ovozli diktant</h3>
+          <div class="mb-3">
+            <label class="block text-xs text-slate-400 mb-1">Diktant tili</label>
+            <select id="docScribeLang" class="input text-sm" style="max-width:220px">
+              <option value="uz">🇺🇿 O'zbekcha</option>
+              <option value="ru">🇷🇺 Ruscha</option>
+            </select>
+          </div>
           <div class="flex items-center gap-4 mb-4">
             <button id="docMicBtn" onclick="toggleDocRecording()" class="w-16 h-16 rounded-full text-3xl flex items-center justify-center transition-all" style="background:linear-gradient(135deg,#22c55e,#16a34a)">🎤</button>
             <div><p id="docMicStatus" class="text-slate-400 text-sm">Mikrofonga bosing va bemor ma'lumotlarini ayting</p></div>
@@ -824,6 +838,7 @@
         const blob = new Blob(audioChunks, {type:'audio/webm'});
         document.getElementById('recStatus').textContent = '⏳ AI tahlil qilmoqda...';
         const formData = new FormData(); formData.append('audio', blob, 'recording.webm');
+        formData.append('language', (document.getElementById('recScribeLang')?.value) || 'uz');
         const res = await fetch(API+'/api/reception/voice-register', { method:'POST', headers:{'Authorization':'Bearer '+token}, body:formData });
         const data = await res.json();
         stream.getTracks().forEach(t=>t.stop());
@@ -960,6 +975,7 @@
         const formData = new FormData();
         formData.append('audio', blob, 'recording.webm');
         formData.append('doctor_id', user.id);
+        formData.append('language', (document.getElementById('docScribeLang')?.value) || 'uz');
         // Specialization bo'yicha /api/scribe/upload ga yuborish
         const endpoint = user.specialization ? '/api/scribe/upload' : '/api/scribe/transcribe';
         const res = await fetch(API + endpoint, { method:'POST', headers:{'Authorization':'Bearer '+token}, body:formData });
