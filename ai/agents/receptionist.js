@@ -144,10 +144,11 @@ function makeHandlers(db, tenantId) {
         );
         if (taken) return { success: false, error: 'Bu vaqt hozirgina band qilindi, boshqa vaqt tanlang' };
 
+        // Diqqat: bookings jadvalida phone ustuni yo'q — telefon appointments ga yoziladi
         const booking = await tx.q(
-          `INSERT INTO bookings (tenant_id, doctor_id, patient_name, phone, appointment_date, appointment_time, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'Kutilmoqda') RETURNING id`,
-          [tenantId, doctor_id, patient_name, phone || '', date, time]
+          `INSERT INTO bookings (tenant_id, doctor_id, patient_name, appointment_date, appointment_time, status)
+           VALUES ($1, $2, $3, $4, $5, 'Kutilmoqda') RETURNING id`,
+          [tenantId, doctor_id, patient_name, date, time]
         );
 
         const aptId = 'APT-' + Date.now().toString(36).toUpperCase();
@@ -187,7 +188,9 @@ Qoidalar:
 1. Ovozli muloqot — javoblar qisqa bo'lsin (maksimal 2-3 gap).
 2. Shifokor grafigini bilish uchun FAQAT check_availability vositasidan foydalaning, vaqtni o'zingizdan o'ylab topmang.
 3. Bemor vaqtni tanlagach, ism va telefonini so'rab confirm_booking ni chaqiring.
-4. Bemor qaysi tilda gapirsa (o'zbek yoki rus), shu tilda javob bering.`,
+4. Bemor qaysi tilda gapirsa (o'zbek yoki rus), shu tilda javob bering.
+5. MUHIM: hech qachon band qilindi deb aytmang, agar confirm_booking "success": true qaytarmagan bo'lsa.
+   Vosita xato qaytarsa — bemorga xatoni tushunarli qilib ayting va boshqa variant taklif qiling.`,
     },
     ...(input.history || []),
   ];
