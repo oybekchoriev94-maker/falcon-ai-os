@@ -334,6 +334,143 @@ JSON shabloni:
       { key: 'glucose', label: 'Glyukoza', icon: '🩸' },
       { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
     ]
+  },
+  urolog: {
+    label: '🔬 Urolog',
+    systemPrompt: `Siz urolog yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- complaints: Shikoyatlar (siydik ajralishi buzilishi, og'riq, dizuriya, qon aralashishi)
+- kidneys: Buyraklar (o'lcham, parenxima, kosa-jom tizimi kengaygan/normal, tosh)
+- bladder: Siydik pufagi (devor qalinligi, hajmi, siydikdan keyingi qoldiq)
+- prostate: Prostata bezi (hajmi sm3, tuzilishi, tugunlar — erkaklar uchun)
+- urinalysis: Siydik tahlili (leykotsit, eritrotsit, oqsil)
+- diagnosis: Tashxis
+- recommendations: Tavsiyalar
+
+JSON shabloni:
+{"patient_name":"...","complaints":"...","kidneys":{"right":"100x45 mm, tosh yo'q","left":"98x44 mm, KJT kengaymagan"},"bladder":{"wall":"3 mm","volume":"250 ml","residual":"20 ml"},"prostate":{"volume":"22 sm3","structure":"Bir jinsli"},"urinalysis":"Leykotsit 3-4, eritrotsit yo'q, oqsil manfiy","diagnosis":"...","recommendations":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      complaints: { type: 'string', required: true },
+      kidneys: { type: 'object', required: true },
+      bladder: { type: 'object', required: true },
+      prostate: { type: 'object', required: false },
+      urinalysis: { type: 'string', required: false },
+      diagnosis: { type: 'string', required: true },
+      recommendations: { type: 'string', required: true }
+    },
+    fields: [
+      { key: 'complaints', label: 'Shikoyatlar', icon: '🗣️' },
+      { key: 'kidneys', label: 'Buyraklar', icon: '🫘', type: 'object' },
+      { key: 'bladder', label: 'Siydik pufagi', icon: '💧', type: 'object' },
+      { key: 'prostate', label: 'Prostata bezi', icon: '🔬', type: 'object' },
+      { key: 'urinalysis', label: 'Siydik tahlili', icon: '🧪' },
+      { key: 'diagnosis', label: 'Tashxis', icon: '🏷️' },
+      { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
+    ]
+  },
+  fizioterapevt: {
+    label: '💆 Fizioterapevt',
+    systemPrompt: `Siz fizioterapevt yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- diagnosis: Asosiy tashxis (fizioterapiya tayinlangan kasallik)
+- procedure_type: Muolaja turi (magnitoterapiya, elektroforez, UVCh, lazeroterapiya, ultratovush, massaj, parafin)
+- area: Ta'sir hududi (bel, bo'yin, tizza bo'g'imi va h.k.)
+- parameters: Muolaja parametrlari (quvvat, chastota, davomiyligi daqiqa)
+- sessions: Seanslar soni (jami / bajarilgan)
+- dynamics: Holat dinamikasi (yaxshilanish, o'zgarishsiz)
+- recommendations: Tavsiyalar
+
+JSON shabloni:
+{"patient_name":"...","diagnosis":"Bel osteoxondrozi","procedure_type":"Magnitoterapiya + elektroforez","area":"Bel-dumg'aza sohasi","parameters":{"power":"20 mTl","duration":"15 daqiqa","frequency":"kuniga 1 marta"},"sessions":{"total":"10","done":"3"},"dynamics":"Og'riq kamaydi","recommendations":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      diagnosis: { type: 'string', required: true },
+      procedure_type: { type: 'string', required: true },
+      area: { type: 'string', required: true },
+      parameters: { type: 'object', required: false },
+      sessions: { type: 'object', required: false },
+      dynamics: { type: 'string', required: false },
+      recommendations: { type: 'string', required: false }
+    },
+    fields: [
+      { key: 'diagnosis', label: 'Tashxis', icon: '🏷️' },
+      { key: 'procedure_type', label: 'Muolaja turi', icon: '💆' },
+      { key: 'area', label: 'Ta\'sir hududi', icon: '📍' },
+      { key: 'parameters', label: 'Parametrlar', icon: '⚙️', type: 'object' },
+      { key: 'sessions', label: 'Seanslar', icon: '🔢', type: 'object' },
+      { key: 'dynamics', label: 'Dinamika', icon: '📈' },
+      { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
+    ]
+  },
+  rentgen: {
+    label: '☢️ Rentgen',
+    systemPrompt: `Siz rentgenolog (radiolog) yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- examination_area: Tekshirilgan soha (ko'krak qafasi, umurtqa pog'onasi, qo'l/oyoq suyagi, bosh)
+- projection: Proyeksiya (to'g'ri, yon, ikki proyeksiya)
+- findings: Topilmalar (suyak tuzilishi, bo'g'im bo'shlig'i, o'pka maydonlari, soyalar)
+- bone_integrity: Suyak yaxlitligi (sinish bor/yo'q, joyi va turi)
+- soft_tissues: Yumshoq to'qimalar holati
+- conclusion: Xulosa
+
+JSON shabloni:
+{"patient_name":"...","examination_area":"Ko'krak qafasi","projection":"To'g'ri proyeksiya","findings":"O'pka maydonlari toza, o'choqli-infiltrativ soyalar yo'q, yurak chegaralari normal","bone_integrity":"Qovurg'alar yaxlit, sinish yo'q","soft_tissues":"O'zgarishsiz","conclusion":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      examination_area: { type: 'string', required: true },
+      projection: { type: 'string', required: false },
+      findings: { type: 'string', required: true },
+      bone_integrity: { type: 'string', required: false },
+      soft_tissues: { type: 'string', required: false },
+      conclusion: { type: 'string', required: true }
+    },
+    fields: [
+      { key: 'examination_area', label: 'Tekshirilgan soha', icon: '📍' },
+      { key: 'projection', label: 'Proyeksiya', icon: '📐' },
+      { key: 'findings', label: 'Topilmalar', icon: '📋' },
+      { key: 'bone_integrity', label: 'Suyak yaxlitligi', icon: '🦴' },
+      { key: 'soft_tissues', label: 'Yumshoq to\'qimalar', icon: '🔬' },
+      { key: 'conclusion', label: 'Xulosa', icon: '📝' }
+    ]
+  },
+  ekg: {
+    label: '📈 EKG',
+    systemPrompt: `Siz funksional diagnostika (EKG) mutaxassisi yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- rhythm: Yurak ritmi (sinusli, sinusli aritmiya, hilpillovchi aritmiya)
+- heart_rate: Yurak qisqarishlar soni (urin/min)
+- electrical_axis: Yurak elektr o'qi (normal, chapga og'gan, o'ngga og'gan)
+- intervals: Intervallar (PQ, QRS, QT)
+- st_segment: ST segment va T tishcha holati
+- conduction: O'tkazuvchanlik (blokadalar bor/yo'q)
+- conclusion: Xulosa
+
+JSON shabloni:
+{"patient_name":"...","rhythm":"Sinusli ritm","heart_rate":"78 ur/min","electrical_axis":"Normal","intervals":{"pq":"0.16 s","qrs":"0.08 s","qt":"0.38 s"},"st_segment":"Izoliniyada, o'zgarishsiz","conduction":"Buzilishsiz","conclusion":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      rhythm: { type: 'string', required: true },
+      heart_rate: { type: 'string', required: true },
+      electrical_axis: { type: 'string', required: true },
+      intervals: { type: 'object', required: false },
+      st_segment: { type: 'string', required: false },
+      conduction: { type: 'string', required: false },
+      conclusion: { type: 'string', required: true }
+    },
+    fields: [
+      { key: 'rhythm', label: 'Ritm', icon: '📈' },
+      { key: 'heart_rate', label: 'YuQS (urin/min)', icon: '💓' },
+      { key: 'electrical_axis', label: 'Elektr o\'qi', icon: '🧭' },
+      { key: 'intervals', label: 'Intervallar', icon: '📊', type: 'object' },
+      { key: 'st_segment', label: 'ST segment', icon: '📉' },
+      { key: 'conduction', label: 'O\'tkazuvchanlik', icon: '⚡' },
+      { key: 'conclusion', label: 'Xulosa', icon: '📝' }
+    ]
   }
 };
 
