@@ -107,9 +107,19 @@ export async function runToolLoop({ messages, tools, handlers, maxRounds = 3, ..
     }
   }
 
-  // Chegara tugadi — oxirgi javobni matn sifatida qaytaramiz
-  const last = history[history.length - 1];
-  return { text: last?.content || '', toolCalls: usedTools, messages: history, truncated: true };
+  // Chegara tugadi — vositasiz yakuniy javob so'raymiz, foydalanuvchiga
+  // xom JSON emas, tushunarli matn chiqishi uchun
+  try {
+    const final = await chat(
+      [...history, { role: 'system', content: 'Vositalarni boshqa chaqirmang. Yuqoridagi natijalar asosida bemorga qisqa va tushunarli javob bering.' }],
+      null,
+      llmOpts
+    );
+    return { text: final?.content || '', toolCalls: usedTools, messages: history, truncated: true };
+  } catch {
+    const last = history[history.length - 1];
+    return { text: last?.content || '', toolCalls: usedTools, messages: history, truncated: true };
+  }
 }
 
 /**

@@ -23,6 +23,8 @@ export const schema = z.object({
   message: 'text, audio yoki history talab qilinadi',
 });
 
+const DAY_NAMES = { 1: 'Dushanba', 2: 'Seshanba', 3: 'Chorshanba', 4: 'Payshanba', 5: 'Juma', 6: 'Shanba', 7: 'Yakshanba' };
+
 // ─── Vositalar (tool) ta'riflari ────────────────────────────
 const TOOLS = [
   {
@@ -83,7 +85,21 @@ function makeHandlers(db, tenantId) {
         [tenantId, doctor.id, dayOfWeek]
       );
       const doctorLabel = `${doctor.first_name} ${doctor.last_name || ''}`.trim();
-      if (!schedule) return { success: false, error: `${doctorLabel} bu kuni qabul qilmaydi` };
+      if (!schedule) {
+        // Qaysi kunlari ishlashini ham qaytaramiz — aks holda LLM qayta-qayta urinadi
+        const days = await db.q(
+          'SELECT day_of_week, start_time, end_time FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY day_of_week',
+          [tenantId, doctor.id]
+        );
+        return {
+          success: false,
+          error: `${doctorLabel} ${date} kuni qabul qilmaydi`,
+          doctor_id: doctor.id,
+          doctor_name: doctorLabel,
+          works_on: days.map((d) => ({ day: DAY_NAMES[d.day_of_week] || d.day_of_week, from: d.start_time, to: d.end_time })),
+          hint: 'Bemorga shifokor ishlaydigan kunlarni taklif qiling va yangi sana bilan qayta tekshiring.',
+        };
+      }
 
       const booked = await db.q(
         `SELECT appointment_time FROM bookings
