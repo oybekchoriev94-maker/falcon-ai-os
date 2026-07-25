@@ -23,15 +23,18 @@ function cloudFallbackAllowed() { return process.env.STT_CLOUD_FALLBACK === 'tru
 export const SUPPORTED_LANGUAGES = ['uz', 'ru'];
 export const DEFAULT_LANGUAGE = 'uz';
 
+// DIQQAT: joriy o'zbekcha fine-tuned model initial_prompt bilan ishlamaydi —
+// prompt yuborilsa transkripsiya buziladi (production'da tekshirilgan:
+// o'zbekcha promptda "zg zg z", ruscha promptda bo'sh matn). Shuning uchun
+// tibbiy prompt sukut bo'yicha YUBORILMAYDI. Boshqa model ishlatilganda
+// STT_USE_PROMPT=true qilib yoqish mumkin.
+const USE_PROMPT = process.env.STT_USE_PROMPT === 'true';
+
 const MEDICAL_PROMPTS = {
-  uz: "O'zbek tilidagi tibbiy matn. Bemor shikoyatlari, tashxis, dori nomlari: " +
-    "paratsetamol, amoksitsillin, ibuprofen, azitromitsin, dexametazon, prednizolon, loratadin, omeprazol, " +
-    "metformin, qon bosimi, yurak urishi, harorat, yuqori nafas yo'llari, oshqozon, jigar, buyrak. " +
-    "O'zbek lotin alifbosi (o'g', sh, ch, o', q, g').",
-  ru: "Медицинский текст на русском языке. Жалобы пациента, диагноз, названия лекарств: " +
-    "парацетамол, амоксициллин, ибупрофен, азитромицин, дексаметазон, преднизолон, лоратадин, омепразол, " +
-    "метформин, артериальное давление, частота сердечных сокращений, температура, верхние дыхательные пути, " +
-    "желудок, печень, почки. Пишите на русском языке кириллицей.",
+  uz: "O'zbek tilidagi tibbiy matn. Dori nomlari: paratsetamol, amoksitsillin, ibuprofen, " +
+    "azitromitsin, omeprazol, metformin. Qon bosimi, harorat, oshqozon, jigar, buyrak.",
+  ru: "Медицинский текст. Лекарства: парацетамол, амоксициллин, ибупрофен, азитромицин, " +
+    "омепразол, метформин. Артериальное давление, температура, желудок, печень, почки.",
 };
 
 export function normalizeLanguage(lang) {
@@ -49,7 +52,9 @@ function makeForm(audioBuffer, filename, opts) {
   form.append('response_format', 'json');
   const language = normalizeLanguage(opts.language);
   form.append('language', language);
-  form.append('prompt', opts.prompt || MEDICAL_PROMPTS[language] || MEDICAL_PROMPTS.uz);
+  // Prompt faqat aniq so'ralganda (yuqoridagi izohga qarang)
+  const prompt = opts.prompt || (USE_PROMPT ? MEDICAL_PROMPTS[language] : '');
+  if (prompt) form.append('prompt', prompt);
   if (opts.temperature !== undefined) form.append('temperature', String(opts.temperature));
   return form;
 }

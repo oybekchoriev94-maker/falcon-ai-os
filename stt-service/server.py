@@ -13,6 +13,11 @@ MODEL_DIR = os.getenv("MODEL_DIR", "/cache")
 DEVICE = os.getenv("DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "int8")
 BEAM_SIZE = int(os.getenv("BEAM_SIZE", "3"))
+# DIQQAT: bu fine-tuned model initial_prompt bilan ishlamaydi — prompt berilsa
+# chiqish buziladi (bo'sh matn yoki "zg zg z" kabi takrorlanish). Production'da
+# tekshirilgan. Shuning uchun sukut bo'yicha o'chirilgan; boshqa model
+# ishlatilsa STT_USE_PROMPT=true bilan yoqish mumkin.
+USE_PROMPT = os.getenv("STT_USE_PROMPT", "false").lower() == "true"
 # CPU-og'ir ishni cheklash: bir vaqtda nechta transkripsiya bajarilsin
 MAX_CONCURRENCY = int(os.getenv("STT_CONCURRENCY", "2"))
 # Audio hajmi chegarasi (OOM/DoS himoyasi)
@@ -80,8 +85,8 @@ def _run_transcribe(tmp_path: str, language: str, temperature: float, prompt: st
         beam_size=BEAM_SIZE,
         temperature=temperature,
         vad_filter=True,
-        # Tibbiy atamalar bo'yicha modelni yo'naltirish (avval e'tiborsiz qolar edi)
-        initial_prompt=prompt or None,
+        # Faqat STT_USE_PROMPT=true bo'lsa (yuqoridagi izohga qarang)
+        initial_prompt=(prompt or None) if USE_PROMPT else None,
     )
     return " ".join(s.text for s in segments).strip()
 
