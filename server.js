@@ -456,7 +456,8 @@ cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
     const currentMinute = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-    const reminders = await q("SELECT * FROM medication_reminders WHERE status='active' AND reminder_time LIKE $1", [currentMinute + '%']);
+    // Tizim cron'i — barcha klinikalar bo'ylab ishlaydi (ataylab tenantsiz)
+    const reminders = await unsafeQuery.q("SELECT * FROM medication_reminders WHERE status='active' AND reminder_time LIKE $1", [currentMinute + '%']);
     for (const r of reminders) {
       if (r.telegram_id) {
         try { await sendTelegram(r.telegram_id, `Dori vaqti: ${r.medicine_name} (${r.dosage || ''}) — ${r.patient_name}`); }
