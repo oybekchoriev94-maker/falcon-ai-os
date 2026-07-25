@@ -393,7 +393,10 @@ async function main() {
     app.use(`/webhooks`, webhookRoutes());
     app.use(`${API_PREFIX}/tenants`, tenantRoutes());
     app.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
-    app.use(`/api/scribe`, scribeRoutes(getPool(), authMiddleware, checkRole, upload, serverError, logger));
+    // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
+    // authMiddleware oldin turadi: tenant JWT dan olinsin (x-tenant-id header orqali soxtalashtirib bo'lmasin).
+    app.use(`/api/scribe`, authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
+      scribeRoutes(getPool(), authMiddleware, checkRole, upload, serverError, logger));
     app.use(`/api/doctor`, doctorViewRoutes(getPool(), authMiddleware, checkRole, serverError));
     app.use(`/api/b2b`, b2bRoutes(getPool(), authMiddleware, checkRole, validate, schemas, serverError));
     function mountRoutes(prefix) {
@@ -404,7 +407,9 @@ async function main() {
       app.use(`${p}/referral`, referralAgentRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}/referrals`, referralPassRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}`, tenantRateLimit('api'), inventoryRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, agentBypassOrAuth, upload));
-      app.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), checkSubscription, checkAiLimit, aiRoutes(getPool(), authMiddleware, checkRole, validate, schemas, orchestrator));
+      // Obuna/AI limiti ai.js ichida qimmat endpointlarga qo'yiladi (auth'dan keyin,
+      // tenant JWT dan olinsin uchun). /status va /agents ochiq qoladi.
+      app.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), aiRoutes(getPool(), authMiddleware, checkRole, validate, schemas, orchestrator));
       app.use(`${p}`, doctorRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
       app.use(`${p}`, inpatientRoutes(getPool(), authMiddleware, checkRole));
       app.use(`/api/tma`, tmaRoutes(getPool()));

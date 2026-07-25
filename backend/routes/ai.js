@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { safeError } from '../services/safe-error.js';
+import { checkSubscription, checkAiLimit } from '../subscription-middleware.js';
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -36,7 +37,7 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/execute — agentni ishga tushirish ───────────────
-  router.post('/execute', aiLimiter, authMiddleware, checkRole('admin', 'doctor', 'ceo', 'receptionist'), validate(schemas.aiExecute), async (req, res) => {
+  router.post('/execute', aiLimiter, authMiddleware, checkRole('admin', 'doctor', 'ceo', 'receptionist'), checkSubscription, checkAiLimit, validate(schemas.aiExecute), async (req, res) => {
     try {
       const { agent, input } = req.body;
       const ctx = {
@@ -50,7 +51,7 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/pipeline — ko'p agentli pipeline ────────────────
-  router.post('/pipeline', aiLimiter, authMiddleware, checkRole('admin', 'ceo'), validate(schemas.aiPipeline), async (req, res) => {
+  router.post('/pipeline', aiLimiter, authMiddleware, checkRole('admin', 'ceo'), checkSubscription, checkAiLimit, validate(schemas.aiPipeline), async (req, res) => {
     try {
       const { steps } = req.body;
       const ctx = {
@@ -70,7 +71,7 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/transcribe — audio transkripsiya (Whisper) ──────
-  router.post('/transcribe', authMiddleware, async (req, res) => {
+  router.post('/transcribe', authMiddleware, checkSubscription, checkAiLimit, async (req, res) => {
     try {
       if (!req.is('application/json')) return res.status(400).json({ error: 'JSON formatida yuboring' });
       const { audio_base64, language, filename } = req.body;
@@ -82,7 +83,7 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/llm — pure LLM query ─────────────────────────────
-  router.post('/llm', authMiddleware, async (req, res) => {
+  router.post('/llm', authMiddleware, checkSubscription, checkAiLimit, async (req, res) => {
     try {
       const { system_prompt, user_text, temperature, max_tokens } = req.body;
       if (!system_prompt || !user_text) return res.status(400).json({ error: 'system_prompt va user_text talab qilinadi' });
@@ -92,7 +93,7 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/tts — matndan ovoz ──────────────────────────────
-  router.post('/tts', authMiddleware, async (req, res) => {
+  router.post('/tts', authMiddleware, checkSubscription, checkAiLimit, async (req, res) => {
     try {
       const { text, voice, speed } = req.body;
       if (!text) return res.status(400).json({ error: 'text talab qilinadi' });

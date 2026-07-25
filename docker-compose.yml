@@ -66,6 +66,24 @@ services:
       SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:-doctor-change-me-now}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # ─── To'lov provayderlari (bo'sh bo'lsa offline rejim) ───
+      PAYME_MERCHANT_KEY: ${PAYME_MERCHANT_KEY:-}
+      CLICK_SERVICE_ID: ${CLICK_SERVICE_ID:-}
+      CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
+      CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
+      UZUM_TERMINAL_ID: ${UZUM_TERMINAL_ID:-}
+      UZUM_SECRET: ${UZUM_SECRET:-}
+      CLINIC_CARD_NUMBER: ${CLINIC_CARD_NUMBER:-}
+      CLINIC_CARD_HOLDER: ${CLINIC_CARD_HOLDER:-}
+      # ─── Email (SMTP) ───
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # ─── Boshqa ───
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@falconai.uz}
+      PUBLIC_URL_OVERRIDE: ${TUNNEL_URL:-}
       LOG_LEVEL: info
       LOCAL_ONLY: "${LOCAL_ONLY:-true}"
       WHISPER_URL: http://stt:8081
