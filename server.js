@@ -36,7 +36,6 @@ import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } 
 
 import * as orchestrator from './ai/orchestrator.js';
 import { llm, transcribe, speak, isLLMReady } from './ai/orchestrator.js';
-import { setDatabase } from './ai/agents/db.js';
 
 import authRoutes from './backend/routes/auth.js';
 import paymentRoutes from './backend/routes/payments.js';
@@ -383,7 +382,6 @@ async function main() {
     }
     await connectPg(dbUrl);
     console.log('[DB] PostgreSQL connected');
-    setDatabase(null);
 
     await initCache();
     await initEmail();

@@ -36,19 +36,29 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
   });
 
   // ─── POST /api/ai/execute — agentni ishga tushirish ───────────────
-  router.post('/execute', aiLimiter, authMiddleware, checkRole('admin', 'doctor'), validate(schemas.aiExecute), async (req, res) => {
+  router.post('/execute', aiLimiter, authMiddleware, checkRole('admin', 'doctor', 'ceo', 'receptionist'), validate(schemas.aiExecute), async (req, res) => {
     try {
       const { agent, input } = req.body;
-      const result = await orchestrator.executeAgent(agent, input || {});
-      res.json(result);
+      const ctx = {
+        tenantId: req.user?.tenant_id || req.tenant_id,
+        user: req.user,
+        requestId: req.correlationId || null,
+      };
+      const result = await orchestrator.executeAgent(agent, input || {}, ctx);
+      res.status(result.success ? 200 : (result.code === 'AGENT_NOT_FOUND' ? 404 : 400)).json(result);
     } catch (e) { safeError(res, e); }
   });
 
   // ─── POST /api/ai/pipeline — ko'p agentli pipeline ────────────────
-  router.post('/pipeline', aiLimiter, authMiddleware, checkRole('admin'), validate(schemas.aiPipeline), async (req, res) => {
+  router.post('/pipeline', aiLimiter, authMiddleware, checkRole('admin', 'ceo'), validate(schemas.aiPipeline), async (req, res) => {
     try {
       const { steps } = req.body;
-      const result = await orchestrator.executePipeline(steps);
+      const ctx = {
+        tenantId: req.user?.tenant_id || req.tenant_id,
+        user: req.user,
+        requestId: req.correlationId || null,
+      };
+      const result = await orchestrator.executePipeline(steps, ctx);
       res.json(result);
     } catch (e) { safeError(res, e); }
   });

@@ -1,27 +1,30 @@
-import { llm } from '../engines/llm.js';
-import { transcribe } from '../engines/stt.js';
+// ============================================================
+// Medical Scribe Agent — shifokor diktantidan tibbiy kartani ajratadi
+// ============================================================
+
+import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { llmJson } from '../core/tools.js';
+import { transcribe } from '../engines/stt.js';
+import { MEDICAL_SKILLS } from '../protocols/medical-skills.js';
 
 export const name = 'medical-scribe';
-export const description = 'Shifokor diktantini tahlil qilib, tashxis, muolaja, dori va vital signallarni ajratib beradi';
-export const version = '2.1.0';
+export const description = 'Shifokor diktantini tahlil qilib, tashxis, muolaja, dori va hayotiy ko\'rsatkichlarni ajratib beradi';
+export const version = '3.0.0';
+export const category = 'clinical';
 
-const SYSTEM_PROMPT = `Siz "Falcon AI OS" ning Medical Scribe agentsiz — dunyodagi eng ilg'or tibbiy AI asistentsiz.
-Vazifangiz: shifokorning ovozli diktantidan quyidagi ma'lumotlarni aniq ajratib olish:
+export const schema = z.object({
+  text: z.string().min(3).optional(),
+  audio: z.any().optional(),
+  language: z.enum(['uz', 'ru']).optional(),
+  specialty: z.string().max(50).optional(),
+  doctor_id: z.string().uuid().optional(),
+  save: z.boolean().optional(),
+}).refine((d) => d.text || d.audio, { message: 'text yoki audio talab qilinadi' });
 
-1. **patient_name** — bemor ismi (aniqlanmasa null)
-2. **diagnosis** — asosiy tashxis (iloji boricha ICD-10 kod bilan, masalan "I10 — Gipertoniya")
-3. **procedure** — bajarilgan yoki tavsiya etilgan muolaja
-4. **medicines** — buyurilgan dorilar ro'yxati (nom, dozaj)
-5. **symptoms** — bemorning shikoyatlari
-6. **vitals** — hayotiy ko'rsatkichlar (bosim, puls, temp, saturatsiya)
-7. **recommendations** — shifokor tavsiyalari
-8. **referral_needed** — agar boshqa klinikaga yo'llanma kerak bo'lsa, qaysi xizmat
-9. **confidence** — 0-1 oralig'ida ishonchlilik bahosi
-
-DIQQAT: Agar ICD-10 kodini aniq bilmasangiz, faqat tashxis nomini yozing.
-O'zbek va Rus tillarida gapirilgan diktantlarni tushunasiz.
-JSON formatda faqat quyidagi strukturani qaytaring:
+const BASE_PROMPT = `Siz tibbiy diktantni tahlil qiluvchi yordamchisiz.
+Diktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz.
+Faqat JSON qaytaring, boshqa matn qo'shmang:
 {
   "patient_name": "string|null",
   "diagnosis": "string",
@@ -32,54 +35,59 @@ JSON formatda faqat quyidagi strukturani qaytaring:
   "recommendations": "string|null",
   "referral_needed": "string|null",
   "confidence": 0.0
-}`;
+}
+ICD-10 kodini aniq bilmasangiz, faqat tashxis nomini yozing.`;
 
-export const inputSchema = {
-  text: { type: 'string', required: true, description: 'Diktant matni yoki transkripsiya' },
-  audio: { type: 'buffer', required: false, description: 'Audio buffer (agar to\'g\'ridan-to\'g\'ri audio yuborilsa)' },
-  specialty: { type: 'string', required: false, description: 'Shifokor mutaxassisligi (therapy, ultrasound, surgery, etc.)' },
-  doctor_id: { type: 'string', required: false, description: 'Doktor ID (konsultatsiyani saqlash uchun)' }
-};
-
-export async function handler(input, context = {}) {
-  const db = context.db;
+export async function handler(input, ctx) {
+  const { db, tenantId } = ctx;
   let text = input.text;
 
+  // 1. Audio bo'lsa — transkripsiya
   if (input.audio && !text) {
-    const result = await transcribe(input.audio, 'audio.webm');
-    if (result.error) return { error: `Transkripsiya xatosi: ${result.error}` };
-    text = result.text;
+    const stt = await transcribe(input.audio, 'scribe.webm', { language: input.language });
+    if (stt.error) return { error: `Transkripsiya xatosi: ${stt.error}`, code: 'STT_ERROR' };
+    text = stt.text;
+  }
+  if (!text || text.trim().length < 3) {
+    return { error: 'Diktant matni juda qisqa', code: 'INPUT_TOO_SHORT' };
   }
 
-  if (!text || text.trim().length < 3) return { error: 'Diktant matni juda qisqa' };
+  // 2. Mutaxassislik shabloni (bo'lsa) yoki umumiy shablon
+  const skill = input.specialty ? MEDICAL_SKILLS[input.specialty] : null;
+  const prompt = skill
+    ? `${skill.systemPrompt}\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — JSON kalitlarini o'zgartirmang.`
+    : BASE_PROMPT;
 
-  let prompt = SYSTEM_PROMPT;
-  if (input.specialty) {
-    prompt += `\nShifokor mutaxassisligi: ${input.specialty}. Shu yo'nalishga mos tahlil qiling.`;
+  const analysis = await llmJson(prompt, text, { temperature: 0.05, maxTokens: 1500 });
+  if (!analysis || analysis.error) {
+    return { error: `AI tahlil xatosi: ${analysis?.error || 'javob olinmadi'}`, code: 'LLM_ERROR' };
+  }
+  if (typeof analysis !== 'object') {
+    return { error: 'AI tuzilgan JSON qaytarmadi', code: 'LLM_BAD_FORMAT' };
   }
 
-  const analysis = await llm(prompt, text, { temperature: 0.05, maxTokens: 1500 });
-  if (analysis.error) return { error: `AI tahlil xatosi: ${analysis.error}` };
+  // 3. Saqlash (ixtiyoriy) — har doim tenant chegarasida
+  let consultationId = null;
+  if (input.save !== false && input.doctor_id) {
+    const doctor = await db.qGet(
+      'SELECT id FROM doctors WHERE id = $1 AND tenant_id = $2',
+      [input.doctor_id, tenantId]
+    );
+    if (!doctor) return { error: 'Shifokor topilmadi', code: 'DOCTOR_NOT_FOUND' };
 
-  let savedConsultation = null;
-  if (db?.isReady() && input.doctor_id) {
-    try {
-      const id = uuidv4();
-      const patientName = analysis?.patient_name || 'Noma\'lum';
-      const dataJson = JSON.stringify(analysis);
-      db.qExec('INSERT INTO patient_consultations (id, doctor_id, patient_name, raw_text, data_json) VALUES (?, ?, ?, ?, ?)',
-        [id, input.doctor_id, patientName, text, dataJson]);
-      savedConsultation = { id, patient_name: patientName };
-    } catch (e) {
-      savedConsultation = { error: e.message };
-    }
+    consultationId = uuidv4();
+    await db.qExec(
+      `INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [consultationId, tenantId, input.doctor_id, analysis.patient_name || 'Noma\'lum', text, JSON.stringify(analysis)]
+    );
   }
 
   return {
     raw_text: text,
     analysis,
-    saved: !!savedConsultation,
-    consultation_id: savedConsultation?.id || null,
-    specialty_used: input.specialty || 'general'
+    specialty: input.specialty || 'general',
+    consultation_id: consultationId,
+    saved: !!consultationId,
   };
 }

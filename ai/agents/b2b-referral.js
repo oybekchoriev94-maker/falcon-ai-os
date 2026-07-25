@@ -1,87 +1,102 @@
-import { llm } from '../engines/llm.js';
+// ============================================================
+// B2B Referral Agent — hamkor klinikaga yo'llanma + split-kassa
+// ============================================================
+
+import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { llmJson } from '../core/tools.js';
 
 export const name = 'b2b-referral';
-export const description = 'B2B yo\'llanma agenti — bemorni eng mos hamkor klinikaga yo\'naltiradi va split-kassa hisoblaydi';
-export const version = '2.1.0';
+export const description = 'B2B yo\'llanma agenti — mos hamkor klinikani tavsiya qiladi va split-kassani hisoblaydi';
+export const version = '3.0.0';
+export const category = 'referral';
 
-const SYSTEM_PROMPT = `Siz "Falcon AI OS" ning B2B Referral agentsiz — klinikalararo yo'llanma tizimining sun'iy intellekti.
-Vazifangiz: bemorning muolaja turiga qarab eng mos hamkor klinikani tavsiya qilish va moliyaviy hisob-kitob qilish.
+export const schema = z.object({
+  patient_name: z.string().min(2).max(255),
+  service_required: z.string().min(2).max(255),
+  sender_clinic: z.string().max(255).optional(),
+  preferred_clinic: z.string().max(255).optional(),
+  estimated_amount: z.number().nonnegative().optional(),
+  referring_doctor: z.string().max(255).optional(),
+  save: z.boolean().optional(),
+});
 
-Split-kassa formulasi:
-- Hamkor klinika ulushi (partner_commission): 40%
-- Shifokor ulushi (doctor_share): 20%
-- Platforma to'lovi (platform_fee): 2000 so'm (fixed)
-- Yuboruvchi klinika ulushi: qolgan qismi
+// Split-kassa qoidalari (biznes qoidasi — AI o'ylab topmaydi)
+const PARTNER_RATE = 0.40;
+const DOCTOR_RATE = 0.20;
+const PLATFORM_FEE = 2000;
 
-JSON formatda qaytaring:
+const SYSTEM_PROMPT = `Siz klinikalararo yo'llanma bo'yicha yordamchisiz.
+Bemorning kerakli xizmatiga qarab tavsiya bering. Faqat JSON qaytaring:
 {
   "recommended_clinic": "string|null",
   "confidence": 0.0,
   "service_category": "string",
   "estimated_cost": 0,
-  "split": {
-    "partner_commission": 0,
-    "doctor_share": 0,
-    "platform_fee": 2000,
-    "sender_share": 0
-  },
   "reasoning": "string",
   "urgency": "low|normal|high"
-}`;
+}
+Javobni o'zbek tilida yozing. Narxni bilmasangiz estimated_cost ni 0 qoldiring.`;
 
-export const inputSchema = {
-  patient_name: { type: 'string', required: true, description: 'Bemor ismi' },
-  service_required: { type: 'string', required: true, description: 'Kerakli xizmat yoki muolaja' },
-  sender_clinic: { type: 'string', required: false, description: 'Yuboruvchi klinika' },
-  preferred_clinic: { type: 'string', required: false, description: 'Bemor tanlagan klinika' },
-  estimated_amount: { type: 'number', required: false, description: 'Taxminiy summa' },
-  referring_doctor: { type: 'string', required: false, description: 'Yuboruvchi shifokor ismi' },
-  auto_save: { type: 'boolean', required: false, description: 'Avtomatik DB ga saqlash' }
-};
+function computeSplit(total) {
+  const partner = Math.round(total * PARTNER_RATE);
+  const doctor = Math.round(total * DOCTOR_RATE);
+  const sender = Math.max(0, total - partner - doctor - PLATFORM_FEE);
+  return { total, partner_commission: partner, doctor_share: doctor, platform_fee: PLATFORM_FEE, sender_share: sender };
+}
 
-export async function handler(input, context = {}) {
-  const db = context.db;
-  const prompt = SYSTEM_PROMPT + `\n\nBemor: ${input.patient_name}\nKerakli xizmat: ${input.service_required}\nYuboruvchi klinika: ${input.sender_clinic || 'Noma\'lum'}\nTaxminiy summa: ${input.estimated_amount || 0}`;
+export async function handler(input, ctx) {
+  const { db, tenantId } = ctx;
 
-  const result = await llm(prompt, 'Yo\'llanma tahlil qil', { temperature: 0.1, maxTokens: 1000 });
-  if (result.error) return { error: `AI tahlil xatosi: ${result.error}` };
+  const context = [
+    `Bemor: ${input.patient_name}`,
+    `Kerakli xizmat: ${input.service_required}`,
+    input.sender_clinic ? `Yuboruvchi klinika: ${input.sender_clinic}` : null,
+    input.preferred_clinic ? `Bemor tanlagan klinika: ${input.preferred_clinic}` : null,
+    input.estimated_amount ? `Taxminiy summa: ${input.estimated_amount}` : null,
+  ].filter(Boolean).join('\n');
 
-  const total = input.estimated_amount || result.estimated_cost || 0;
-  const split = {
-    partner_commission: Math.round(total * 0.4),
-    doctor_share: Math.round(total * 0.2),
-    platform_fee: 2000,
-    sender_share: Math.round(total * 0.4) - 2000
-  };
+  const ai = await llmJson(SYSTEM_PROMPT, context, { temperature: 0.1, maxTokens: 900 });
+  const analysis = (ai && typeof ai === 'object') ? ai : { reasoning: String(ai || ''), confidence: 0 };
 
-  let savedReferral = null;
-  if (db?.isReady() && input.auto_save && input.patient_name) {
-    try {
+  const total = Number(input.estimated_amount ?? analysis.estimated_cost ?? 0) || 0;
+  const split = computeSplit(total);
+
+  let saved = null;
+  if (input.save) {
+    saved = await db.transaction(async (tx) => {
       const id = uuidv4();
       const referralId = 'REF-' + Date.now().toString(36).toUpperCase();
-      const token = uuidv4().replace(/-/g, '').slice(0, 16);
-      db.qExec('INSERT INTO referrals (id, referral_id, sender_clinic_id, patient_name, service_required, status, qr_code_token, referring_doctor, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, referralId, input.sender_clinic || null, input.patient_name, input.service_required, 'pending', token, input.referring_doctor || null, JSON.stringify(result)]);
-      db.qExec('INSERT INTO financial_transactions (id, referral_id, total_amount, partner_commission, doctor_share, platform_fee, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [uuidv4(), id, total, split.partner_commission, split.doctor_share, 2000, 'unpaid']);
-      savedReferral = { id, referral_id: referralId, qr_token: token, split };
-    } catch (e) {
-      savedReferral = { error: e.message };
-    }
+      const qrToken = 'QR-' + uuidv4().replace(/-/g, '').slice(0, 16).toUpperCase();
+
+      await tx.qExec(
+        `INSERT INTO referrals (id, tenant_id, referral_id, sender_clinic_id, receiver_clinic_id, patient_name,
+                                service_required, qr_code_token, referring_doctor, notes, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')`,
+        [id, tenantId, referralId, input.sender_clinic || null, analysis.recommended_clinic || input.preferred_clinic || null,
+         input.patient_name, input.service_required, qrToken, input.referring_doctor || null, JSON.stringify(analysis)]
+      );
+      await tx.qExec(
+        `INSERT INTO financial_transactions (id, tenant_id, referral_id, total_amount, partner_commission,
+                                             doctor_share, platform_fee, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'unpaid')`,
+        [uuidv4(), tenantId, id, total, split.partner_commission, split.doctor_share, split.platform_fee]
+      );
+      return { id, referral_id: referralId, qr_token: qrToken };
+    });
   }
 
   return {
     referral: {
       patient_name: input.patient_name,
       service_required: input.service_required,
-      recommended_clinic: result.recommended_clinic || null,
-      confidence: result.confidence || 0.5,
-      urgency: result.urgency || 'normal'
+      recommended_clinic: analysis.recommended_clinic || null,
+      confidence: analysis.confidence ?? 0,
+      urgency: analysis.urgency || 'normal',
+      reasoning: analysis.reasoning || null,
     },
     financial_split: split,
-    saved: !!savedReferral,
-    saved_referral: savedReferral,
-    ai_analysis: result
+    saved: !!saved,
+    saved_referral: saved,
   };
 }

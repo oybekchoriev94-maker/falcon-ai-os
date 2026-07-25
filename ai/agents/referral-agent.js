@@ -1,150 +1,201 @@
+// ============================================================
+// Referral Agent — hamkorlar (QR referral) va ularning balansi
+// ============================================================
+
+import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
+
 export const name = 'referral-agent';
-export const description = 'QR referral agenti — hamkorlar uchun QR kod yaratadi, referral tranzaksiyalarini boshqaradi va split-kassa balansini yangilaydi';
-export const version = '1.0.0';
+export const description = 'QR referral agenti — hamkorlar uchun kod yaratadi, konvertatsiya va balansni boshqaradi';
+export const version = '3.0.0';
+export const category = 'referral';
 
-export const inputSchema = {
-  action: { type: 'string', required: true, description: 'Amal turi: generate_qr, convert, adjust_balance, get_stats, get_partner' },
-  partner_name: { type: 'string', required: false, description: 'Hamkor ismi' },
-  partner_phone: { type: 'string', required: false, description: 'Hamkor telefoni' },
-  partner_id: { type: 'string', required: false, description: 'Hamkor ID si' },
-  patient_id: { type: 'string', required: false, description: 'Bemor ID si (convert uchun)' },
-  referral_id: { type: 'string', required: false, description: 'Referral ID si' },
-  amount: { type: 'number', required: false, description: 'Summa' },
-  note: { type: 'string', required: false, description: 'Izoh (adjust_balance uchun majburiy)' }
-};
+export const schema = z.object({
+  action: z.enum(['generate_qr', 'convert', 'adjust_balance', 'get_partner', 'get_stats']),
+  partner_name: z.string().max(255).optional(),
+  partner_phone: z.string().max(50).optional(),
+  partner_id: z.string().optional(),
+  partner_code: z.string().max(64).optional(),
+  referral_code: z.string().max(64).optional(),
+  patient_id: z.string().uuid().optional(),
+  total_amount: z.number().nonnegative().optional(),
+  amount: z.number().positive().optional(),
+  type: z.enum(['topup', 'payout']).optional(),
+  note: z.string().max(500).optional(),
+});
 
-export async function handler(input, context = {}) {
-  const db = context.db;
+const PARTNER_RATE = 0.40;
+const DOCTOR_RATE = 0.20;
+const PLATFORM_FEE = 2000;
+
+export async function handler(input, ctx) {
+  const { db, tenantId } = ctx;
   const { action } = input;
 
-  if (!db?.isReady()) return { error: 'Database mavjud emas' };
-
+  // ─── Yangi hamkor + QR kod ────────────────────────────────
   if (action === 'generate_qr') {
-    const { partner_name, partner_phone } = input;
-    if (!partner_name) return { error: 'partner_name talab qilinadi' };
+    if (!input.partner_name) return { error: 'partner_name talab qilinadi', code: 'MISSING_FIELDS' };
+    const id = uuidv4();
+    const referralCode = 'PRT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const qrToken = 'QR-' + uuidv4().replace(/-/g, '').slice(0, 16).toUpperCase();
 
-    const id = require('uuid').v4();
-    const referralCode = 'PRT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    const qrToken = 'QR-' + require('uuid').v4().replace(/-/g, '').substring(0, 16).toUpperCase();
-
-    db.qExec(
-      'INSERT INTO referral_partners (id, name, phone, referral_code, qr_code_base64, balance) VALUES (?, ?, ?, ?, ?, 0)',
-      [id, partner_name, partner_phone || '', referralCode, qrToken]
+    await db.qExec(
+      `INSERT INTO referral_partners (id, tenant_id, name, phone, referral_code, qr_code_base64, balance)
+       VALUES ($1, $2, $3, $4, $5, $6, 0)`,
+      [id, tenantId, input.partner_name, input.partner_phone || '', referralCode, qrToken]
     );
 
-    const qrData = JSON.stringify({ type: 'referral', code: referralCode, token: qrToken, partner: partner_name });
-
     return {
-      success: true, partner: { id, name: partner_name, referral_code: referralCode },
-      qr_code_token: qrToken, qr_data: qrData,
-      qr_endpoint: `/api/referral/qr/${qrToken}`
+      action, partner: { id, name: input.partner_name, referral_code: referralCode },
+      qr_code_token: qrToken,
+      qr_endpoint: `/api/referral/qr/${qrToken}`,
     };
   }
 
+  // ─── Bemorni hamkor bo'yicha konvertatsiya qilish ─────────
   if (action === 'convert') {
-    const { referral_code, patient_id, total_amount } = input;
-    if (!referral_code && !input.referral_id) return { error: 'referral_code yoki referral_id talab qilinadi' };
-    if (!patient_id) return { error: 'patient_id talab qilinadi' };
-
-    const partner = db.qGet('SELECT * FROM referral_partners WHERE referral_code = ? OR id = ?', [referral_code || '', input.referral_id || '']);
-    if (!partner) return { error: 'Hamkor topilmadi' };
-
-    const refId = 'REF-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    const qrToken = 'QR-' + require('uuid').v4().replace(/-/g, '').substring(0, 16).toUpperCase();
-    const id = require('uuid').v4();
-    const total = parseFloat(total_amount) || 0;
-    const partnerCommission = Math.round(total * 0.4);
-    const doctorShare = Math.round(total * 0.2);
-    const platformFee = 2000;
-
-    const patient = db.qGet('SELECT id, first_name, last_name FROM patients WHERE id = ?', [patient_id]);
-    const patientName = patient ? `${patient.first_name} ${patient.last_name || ''}` : 'Noma\'lum';
-
-    db.qExec(
-      'INSERT INTO referrals (id, referral_id, sender_clinic_id, patient_name, service_required, status, qr_code_token, referring_doctor, notes, partner_id, patient_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, refId, null, patientName, 'Face ID orqali', 'completed', qrToken, partner.name, null, partner.id, patient_id]
-    );
-
-    const txId = require('uuid').v4();
-    db.qExec(
-      'INSERT INTO financial_transactions (id, referral_id, total_amount, partner_commission, doctor_share, platform_fee, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [txId, id, total, partnerCommission, doctorShare, platformFee, 'paid']
-    );
-
-    db.qExec('UPDATE referral_partners SET balance = balance + ? WHERE id = ?', [partnerCommission, partner.id]);
-
-    db.qExec(
-      'INSERT INTO partner_transactions (partner_id, type, amount, note) VALUES (?, ?, ?, ?)',
-      [partner.id, 'referral_commission', partnerCommission, `Referal: ${patientName}`]
-    );
-
-    return {
-      success: true, referral: { id: refId, patient_name: patientName, total, status: 'completed' },
-      commission: { partner_commission: partnerCommission, doctor_share: doctorShare, platform_fee: platformFee },
-      partner_balance: partner.balance + partnerCommission
-    };
-  }
-
-  if (action === 'adjust_balance') {
-    const { partner_id, amount, note, type } = input;
-    if (!partner_id) return { error: 'partner_id talab qilinadi' };
-    if (!note) return { error: 'Izoh (note) majburiy' };
-    if (!type || !['topup', 'payout'].includes(type)) return { error: 'type topup yoki payout bo\'lishi kerak' };
-
-    const partner = db.qGet('SELECT * FROM referral_partners WHERE id = ?', [partner_id]);
-    if (!partner) return { error: 'Hamkor topilmadi' };
-
-    const adjAmount = Math.abs(parseFloat(amount) || 0);
-    if (adjAmount <= 0) return { error: 'amount musbat son bo\'lishi kerak' };
-
-    if (type === 'payout' && partner.balance < adjAmount) {
-      return { error: `Balans yetarli emas. Mavjud: ${partner.balance}, so'ralgan: ${adjAmount}` };
+    if (!input.referral_code && !input.partner_id) {
+      return { error: 'referral_code yoki partner_id talab qilinadi', code: 'MISSING_FIELDS' };
     }
+    if (!input.patient_id) return { error: 'patient_id talab qilinadi', code: 'MISSING_FIELDS' };
 
-    const delta = type === 'topup' ? adjAmount : -adjAmount;
-    db.qExec('UPDATE referral_partners SET balance = balance + ? WHERE id = ?', [delta, partner.id]);
+    return db.transaction(async (tx) => {
+      const partner = await tx.qGet(
+        `SELECT id, name, balance FROM referral_partners
+         WHERE tenant_id = $1 AND (referral_code = $2 OR id::text = $3)`,
+        [tenantId, input.referral_code || '', input.partner_id || '']
+      );
+      if (!partner) return { error: 'Hamkor topilmadi', code: 'PARTNER_NOT_FOUND' };
 
-    db.qExec(
-      'INSERT INTO partner_transactions (partner_id, type, amount, note) VALUES (?, ?, ?, ?)',
-      [partner_id, type, adjAmount, note]
-    );
+      const patient = await tx.qGet(
+        'SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2',
+        [input.patient_id, tenantId]
+      );
+      if (!patient) return { error: 'Bemor topilmadi', code: 'PATIENT_NOT_FOUND' };
 
-    const updated = db.qGet('SELECT * FROM referral_partners WHERE id = ?', [partner_id]);
-    return {
-      success: true, partner_id, type, amount: adjAmount, note,
-      previous_balance: partner.balance, new_balance: updated.balance
-    };
+      const total = Number(input.total_amount || 0);
+      const partnerCommission = Math.round(total * PARTNER_RATE);
+      const doctorShare = Math.round(total * DOCTOR_RATE);
+      const patientName = `${patient.first_name} ${patient.last_name || ''}`.trim();
+
+      const refId = 'REF-' + Date.now().toString(36).toUpperCase();
+      const qrToken = 'QR-' + uuidv4().replace(/-/g, '').slice(0, 16).toUpperCase();
+      const id = uuidv4();
+
+      await tx.qExec(
+        `INSERT INTO referrals (id, tenant_id, referral_id, patient_name, service_required, status,
+                                qr_code_token, referring_doctor, partner_id, patient_id)
+         VALUES ($1, $2, $3, $4, $5, 'completed', $6, $7, $8, $9)`,
+        [id, tenantId, refId, patientName, 'Hamkor yo\'llanmasi', qrToken, partner.name, partner.id, patient.id]
+      );
+      await tx.qExec(
+        `INSERT INTO financial_transactions (id, tenant_id, referral_id, total_amount, partner_commission,
+                                             doctor_share, platform_fee, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'unpaid')`,
+        [uuidv4(), tenantId, id, total, partnerCommission, doctorShare, PLATFORM_FEE]
+      );
+      await tx.qExec(
+        'UPDATE referral_partners SET balance = COALESCE(balance,0) + $1 WHERE id = $2 AND tenant_id = $3',
+        [partnerCommission, partner.id, tenantId]
+      );
+
+      return {
+        action,
+        referral: { id: refId, patient_name: patientName, total, status: 'completed' },
+        commission: { partner_commission: partnerCommission, doctor_share: doctorShare, platform_fee: PLATFORM_FEE },
+        partner_balance: Number(partner.balance || 0) + partnerCommission,
+      };
+    });
   }
 
+  // ─── Hamkor balansini to'ldirish/yechish ──────────────────
+  if (action === 'adjust_balance') {
+    if (!input.partner_id) return { error: 'partner_id talab qilinadi', code: 'MISSING_FIELDS' };
+    if (!input.note) return { error: 'Izoh (note) majburiy', code: 'MISSING_FIELDS' };
+    if (!input.type) return { error: 'type: topup yoki payout', code: 'MISSING_FIELDS' };
+    const amount = Math.abs(Number(input.amount || 0));
+    if (!amount) return { error: 'amount musbat son bo\'lishi kerak', code: 'INVALID_AMOUNT' };
+
+    return db.transaction(async (tx) => {
+      const partner = await tx.qGet(
+        'SELECT id, balance FROM referral_partners WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
+        [input.partner_id, tenantId]
+      );
+      if (!partner) return { error: 'Hamkor topilmadi', code: 'PARTNER_NOT_FOUND' };
+
+      const balance = Number(partner.balance || 0);
+      if (input.type === 'payout' && balance < amount) {
+        return { error: `Balans yetarli emas. Mavjud: ${balance}, so'ralgan: ${amount}`, code: 'INSUFFICIENT_BALANCE' };
+      }
+
+      const delta = input.type === 'topup' ? amount : -amount;
+      await tx.qExec(
+        'UPDATE referral_partners SET balance = COALESCE(balance,0) + $1 WHERE id = $2 AND tenant_id = $3',
+        [delta, partner.id, tenantId]
+      );
+      await tx.qExec(
+        'INSERT INTO partner_transactions (tenant_id, partner_id, type, amount, note) VALUES ($1, $2, $3, $4, $5)',
+        [tenantId, partner.id, input.type, amount, input.note]
+      );
+
+      return {
+        action, partner_id: partner.id, type: input.type, amount, note: input.note,
+        previous_balance: balance, new_balance: balance + delta,
+      };
+    });
+  }
+
+  // ─── Bitta hamkor ma'lumoti ───────────────────────────────
   if (action === 'get_partner') {
-    const partner = db.qGet(
-      'SELECT * FROM referral_partners WHERE id = ? OR referral_code = ?',
-      [input.partner_id || '', input.partner_code || '']
+    const partner = await db.qGet(
+      `SELECT id, name, phone, referral_code, balance, created_at FROM referral_partners
+       WHERE tenant_id = $1 AND (id::text = $2 OR referral_code = $3)`,
+      [tenantId, input.partner_id || '', input.partner_code || '']
     );
-    if (!partner) return { error: 'Hamkor topilmadi' };
-    const txs = db.q('SELECT * FROM partner_transactions WHERE partner_id = ? ORDER BY created_at DESC LIMIT 20', [partner.id]);
-    const refs = db.q(
-      "SELECT referral_id, patient_name, status, created_at FROM referrals WHERE partner_id = ? ORDER BY created_at DESC LIMIT 20",
-      [partner.id]
-    );
-    return { partner, transactions: txs, referrals: refs };
+    if (!partner) return { error: 'Hamkor topilmadi', code: 'PARTNER_NOT_FOUND' };
+
+    const [transactions, referrals] = await Promise.all([
+      db.q(
+        'SELECT type, amount, note, created_at FROM partner_transactions WHERE tenant_id = $1 AND partner_id = $2 ORDER BY created_at DESC LIMIT 20',
+        [tenantId, partner.id]
+      ),
+      db.q(
+        'SELECT referral_id, patient_name, status, created_at FROM referrals WHERE tenant_id = $1 AND partner_id = $2 ORDER BY created_at DESC LIMIT 20',
+        [tenantId, partner.id]
+      ),
+    ]);
+    return { action, partner, transactions, referrals };
   }
 
+  // ─── Umumiy statistika ────────────────────────────────────
   if (action === 'get_stats') {
-    const partners = db.q('SELECT COUNT(*) as total, COALESCE(SUM(balance), 0) as total_balance FROM referral_partners');
-    const referrals = db.qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL");
-    const conversions = db.qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL AND status = 'completed'");
-    const pending = db.qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL AND status = 'pending'");
-    const allPartners = db.q('SELECT id, name, referral_code, balance FROM referral_partners ORDER BY balance DESC');
+    const [totals, refStats, partners] = await Promise.all([
+      db.qGet(
+        'SELECT COUNT(*)::int AS total_partners, COALESCE(SUM(balance),0) AS total_balance FROM referral_partners WHERE tenant_id = $1',
+        [tenantId]
+      ),
+      db.qGet(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+                COUNT(*) FILTER (WHERE status = 'pending')::int AS pending
+         FROM referrals WHERE tenant_id = $1 AND partner_id IS NOT NULL`,
+        [tenantId]
+      ),
+      db.q(
+        'SELECT id, name, referral_code, balance FROM referral_partners WHERE tenant_id = $1 ORDER BY balance DESC LIMIT 50',
+        [tenantId]
+      ),
+    ]);
     return {
-      total_partners: partners[0]?.total || 0,
-      total_balance: partners[0]?.total_balance || 0,
-      total_referrals: referrals?.total || 0,
-      completed_referrals: conversions?.total || 0,
-      pending_referrals: pending?.total || 0,
-      partners: allPartners
+      action,
+      total_partners: totals?.total_partners || 0,
+      total_balance: Number(totals?.total_balance || 0),
+      total_referrals: refStats?.total || 0,
+      completed_referrals: refStats?.completed || 0,
+      pending_referrals: refStats?.pending || 0,
+      partners,
     };
   }
 
-  return { error: `Noma'lum action: ${action}` };
+  return { error: `Noma'lum amal: ${action}`, code: 'UNKNOWN_ACTION' };
 }

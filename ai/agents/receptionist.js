@@ -1,240 +1,198 @@
 // ============================================================
-// Falcon AI OS — Receptionist Agent (Local Tool Calling)
-// Ollama + Local STT → To'liq offline AI operator
+// Receptionist Agent — ovozli AI qabulxona (tool-calling bilan)
+//
+// LLM shifokor grafigini tekshiradi va bemorni navbatga yozadi —
+// barcha DB amallari tenant chegarasida.
 // ============================================================
 
+import { z } from 'zod';
+import { runToolLoop } from '../core/tools.js';
 import { transcribe } from '../engines/stt.js';
 
 export const name = 'receptionist';
-export const description = '24/7 AI Voice Receptionist — shifokor grafigini tekshirib, jonli band qilish (Tool Calling)';
+export const description = '24/7 AI qabulxona — shifokor grafigini tekshirib, bemorni jonli band qiladi';
 export const version = '3.0.0';
+export const category = 'clinical';
 
-const OLLAMA_URL = 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
+export const schema = z.object({
+  text: z.string().max(2000).optional(),
+  audio: z.any().optional(),
+  language: z.enum(['uz', 'ru']).optional(),
+  history: z.array(z.object({ role: z.string(), content: z.string().nullable().optional() }).passthrough()).optional(),
+}).refine((d) => d.text || d.audio || (d.history && d.history.length), {
+  message: 'text, audio yoki history talab qilinadi',
+});
 
-function isLocal() { return process.env.LOCAL_ONLY !== 'false'; }
-
-// Ollama OpenAI-compatible API orqali tool calling
-async function ollamaChat(messages, tools = null) {
-  const body = {
-    model: OLLAMA_MODEL,
-    messages,
-    options: { temperature: 0.1, num_predict: 2000 },
-    stream: false
-  };
-  if (tools) body.tools = tools;
-
-  const res = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000)
-  });
-  if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
-  const data = await res.json();
-  return data.choices?.[0]?.message;
-}
-
-// Cloud fallback
-async function cloudChat(messages, tools) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key || key === '***') throw new Error('GROQ_API_KEY sozlanmagan');
-
-  const body = {
-    model: 'llama-3.3-70b-versatile',
-    messages,
-    temperature: 0.1,
-    max_tokens: 2000
-  };
-  if (tools) body.tools = tools;
-
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  return data.choices?.[0]?.message;
-}
-
-const TODAY = new Date().toISOString().slice(0, 10);
-
-async function checkAvailability(args, db) {
-  try {
-    const { doctor_name, date } = args;
-    if (!doctor_name || !date) return JSON.stringify({ success: false, error: 'doctor_name va date majburiy' });
-
-    const doctor = db.qGet("SELECT id, name, department FROM doctors WHERE (name LIKE ? OR department LIKE ?) AND status = 'Faol' LIMIT 1", [`%${doctor_name}%`, `%${doctor_name}%`]);
-    if (!doctor) return JSON.stringify({ success: false, error: `Kechirasiz, ${doctor_name} ismli shifokor yoki bunday bo'lim topilmadi.` });
-
-    const dayNames = { 0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
-    const dayOfWeek = dayNames[new Date(date + 'T12:00:00').getDay()];
-    const schedule = db.qGet("SELECT * FROM doctor_schedules WHERE doctor_id = ? AND day_of_week = ?", [doctor.id.toString(), dayOfWeek]);
-    if (!schedule) return JSON.stringify({ success: false, error: `${doctor.name} ushbu kunda qabul qilmaydi.` });
-
-    const booked = db.q("SELECT appointment_time FROM bookings WHERE doctor_id = ? AND appointment_date = ? AND status != 'Bekor qilingan'", [doctor.id.toString(), date]);
-    const busySet = new Set(booked.map(b => b.appointment_time));
-
-    const slots = [];
-    let [sh, sm] = schedule.start_time.split(':').map(Number);
-    let [eh, em] = schedule.end_time.split(':').map(Number);
-    let cur = sh * 60 + sm;
-    const end = eh * 60 + em;
-    const dur = schedule.slot_duration || 30;
-    while (cur + dur <= end) {
-      const t = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
-      if (!busySet.has(t)) slots.push(t);
-      cur += dur;
-    }
-
-    return JSON.stringify({ success: true, doctor_id: doctor.id, doctor_name: doctor.name, department: doctor.department, available_slots: slots });
-  } catch (e) {
-    return JSON.stringify({ success: false, error: e.message });
-  }
-}
-
-async function confirmBooking(args, db) {
-  try {
-    const { doctor_id, patient_name, phone, date, time } = args;
-    if (!doctor_id || !patient_name || !date || !time) {
-      return JSON.stringify({ success: false, error: 'doctor_id, patient_name, date, time majburiy' });
-    }
-
-    const existing = db.qGet("SELECT id FROM bookings WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'Bekor qilingan'", [doctor_id.toString(), date, time]);
-    if (existing) {
-      return JSON.stringify({ success: false, error: 'Kechirasiz, ushbu vaqt hozirgina boshqa bemor tomonidan band qilindi.' });
-    }
-
-    const result = db.q(
-      "INSERT INTO bookings (doctor_id, patient_name, appointment_date, appointment_time, status) VALUES (?, ?, ?, ?, 'Kutilmoqda')",
-      [doctor_id.toString(), patient_name, date, time]
-    );
-
-    const aptId = 'APT-' + Date.now().toString(36).toUpperCase();
-    db.q("INSERT INTO appointments (appointment_id, patient_name, phone, doctor_name, status, source) VALUES (?, ?, ?, ?, 'pending', 'voice_ai')",
-      [aptId, patient_name, phone || '', `ID: ${doctor_id}`]);
-
-    return JSON.stringify({ success: true, booking_id: result.lastInsertRowid, appointment_id: aptId, message: 'Muvaffaqiyatli band qilindi.' });
-  } catch (e) {
-    return JSON.stringify({ success: false, error: e.message });
-  }
-}
-
-const agentToolsSchema = [
+// ─── Vositalar (tool) ta'riflari ────────────────────────────
+const TOOLS = [
   {
     type: 'function',
     function: {
       name: 'check_availability',
-      description: "Shifokorning nomi yoki bo'limi hamda berilgan sana bo'yicha bo'sh qabul vaqtlarini (slotlarini) tekshiradi.",
+      description: "Shifokorning ismi yoki mutaxassisligi va sana bo'yicha bo'sh qabul vaqtlarini tekshiradi.",
       parameters: {
         type: 'object',
         properties: {
-          doctor_name: { type: 'string', description: "Shifokorning ismi yoki mutaxassisligi (masalan: Kardio, Dr. Umarov)" },
-          date: { type: 'string', description: 'Qabul sanasi. Format: YYYY-MM-DD (masalan: 2026-06-15)' }
+          doctor_name: { type: 'string', description: 'Shifokor ismi yoki mutaxassisligi (masalan: Kardiolog, Umarov)' },
+          date: { type: 'string', description: 'Sana, format: YYYY-MM-DD' },
         },
-        required: ['doctor_name', 'date']
-      }
-    }
+        required: ['doctor_name', 'date'],
+      },
+    },
   },
   {
     type: 'function',
     function: {
       name: 'confirm_booking',
-      description: "Bemor roziligidan so'ng shifokor qabulini rasman tasdiqlaydi va bazaga yozadi.",
+      description: 'Bemor roziligidan keyin qabulni rasman band qiladi.',
       parameters: {
         type: 'object',
         properties: {
-          doctor_id: { type: 'integer', description: 'check_availability toolidan qaytgan doctor_id raqami' },
-          patient_name: { type: 'string', description: "Bemorning ismi va familiyasi" },
-          phone: { type: 'string', description: "Bemorning telefon raqami" },
-          date: { type: 'string', description: 'Tasdiqlangan sana. Format: YYYY-MM-DD' },
-          time: { type: 'string', description: 'Tasdiqlangan vaqt slot. Format: HH:MM (masalan: 14:30)' }
+          doctor_id: { type: 'string', description: 'check_availability qaytargan doctor_id' },
+          patient_name: { type: 'string', description: 'Bemor ismi va familiyasi' },
+          phone: { type: 'string', description: 'Telefon raqami' },
+          date: { type: 'string', description: 'Sana YYYY-MM-DD' },
+          time: { type: 'string', description: 'Vaqt HH:MM' },
         },
-        required: ['doctor_id', 'patient_name', 'phone', 'date', 'time']
-      }
-    }
-  }
+        required: ['doctor_id', 'patient_name', 'date', 'time'],
+      },
+    },
+  },
 ];
 
-export const inputSchema = {
-  text: { type: 'string', required: false, description: 'Bemor matni yoki transkripsiya' },
-  audio: { type: 'buffer', required: false, description: 'Audio buffer' },
-  history: { type: 'array', required: false, description: 'Suhbat tarixi (messages array)' },
-  auto_register: { type: 'boolean', required: false, description: 'Avtomatik ro\'yxatga olish' }
-};
+// ─── Vosita bajaruvchilari (tenant chegarasida) ─────────────
+function makeHandlers(db, tenantId) {
+  return {
+    async check_availability({ doctor_name, date }) {
+      if (!doctor_name || !date) return { success: false, error: 'doctor_name va date majburiy' };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { success: false, error: 'Sana formati YYYY-MM-DD bo\'lishi kerak' };
 
-export async function handler(input, context = {}) {
-  const db = context.db;
+      const doctor = await db.qGet(
+        `SELECT id, first_name, last_name, specialty FROM doctors
+         WHERE tenant_id = $1 AND status = 'Faol'
+           AND (LOWER(first_name || ' ' || COALESCE(last_name,'')) LIKE LOWER($2)
+                OR LOWER(COALESCE(specialty,'')) LIKE LOWER($2))
+         ORDER BY created_at LIMIT 1`,
+        [tenantId, `%${doctor_name}%`]
+      );
+      if (!doctor) return { success: false, error: `"${doctor_name}" bo'yicha shifokor topilmadi` };
+
+      const dayOfWeek = new Date(date + 'T12:00:00').getDay() || 7;
+      const schedule = await db.qGet(
+        'SELECT * FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 AND day_of_week = $3',
+        [tenantId, doctor.id, dayOfWeek]
+      );
+      const doctorLabel = `${doctor.first_name} ${doctor.last_name || ''}`.trim();
+      if (!schedule) return { success: false, error: `${doctorLabel} bu kuni qabul qilmaydi` };
+
+      const booked = await db.q(
+        `SELECT appointment_time FROM bookings
+         WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 AND status != 'Bekor qilingan'`,
+        [tenantId, doctor.id, date]
+      );
+      const busy = new Set(booked.map((b) => b.appointment_time));
+
+      const [sh, sm] = schedule.start_time.split(':').map(Number);
+      const [eh, em] = schedule.end_time.split(':').map(Number);
+      const dur = schedule.slot_duration || 30;
+      const slots = [];
+      for (let cur = sh * 60 + sm; cur + dur <= eh * 60 + em; cur += dur) {
+        const t = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
+        if (!busy.has(t)) slots.push(t);
+      }
+      return {
+        success: true,
+        doctor_id: doctor.id,
+        doctor_name: doctorLabel,
+        specialty: doctor.specialty,
+        date,
+        available_slots: slots,
+      };
+    },
+
+    async confirm_booking({ doctor_id, patient_name, phone, date, time }) {
+      if (!doctor_id || !patient_name || !date || !time) {
+        return { success: false, error: 'doctor_id, patient_name, date va time majburiy' };
+      }
+      const doctor = await db.qGet(
+        'SELECT id, first_name, last_name FROM doctors WHERE id = $1 AND tenant_id = $2',
+        [doctor_id, tenantId]
+      );
+      if (!doctor) return { success: false, error: 'Shifokor topilmadi' };
+
+      return db.transaction(async (tx) => {
+        const taken = await tx.qGet(
+          `SELECT id FROM bookings WHERE tenant_id = $1 AND doctor_id = $2
+             AND appointment_date = $3 AND appointment_time = $4 AND status != 'Bekor qilingan'`,
+          [tenantId, doctor_id, date, time]
+        );
+        if (taken) return { success: false, error: 'Bu vaqt hozirgina band qilindi, boshqa vaqt tanlang' };
+
+        const booking = await tx.q(
+          `INSERT INTO bookings (tenant_id, doctor_id, patient_name, phone, appointment_date, appointment_time, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Kutilmoqda') RETURNING id`,
+          [tenantId, doctor_id, patient_name, phone || '', date, time]
+        );
+
+        const aptId = 'APT-' + Date.now().toString(36).toUpperCase();
+        await tx.qExec(
+          `INSERT INTO appointments (tenant_id, appointment_id, patient_name, phone, doctor_name, status, source)
+           VALUES ($1, $2, $3, $4, $5, 'pending', 'voice_ai')`,
+          [tenantId, aptId, patient_name, phone || '', `${doctor.first_name} ${doctor.last_name || ''}`.trim()]
+        );
+
+        return {
+          success: true,
+          booking_id: booking[0]?.id,
+          appointment_id: aptId,
+          message: `${patient_name} — ${date} ${time} ga band qilindi`,
+        };
+      });
+    },
+  };
+}
+
+export async function handler(input, ctx) {
+  const { db, tenantId } = ctx;
   let text = input.text;
-  let history = input.history || [];
 
-  // Audio → Matn (STT)
   if (input.audio && !text) {
-    const sttResult = await transcribe(input.audio, 'reception_audio.webm');
-    if (sttResult.error) return { error: `Transkripsiya xatosi: ${sttResult.error}` };
-    text = sttResult.text;
+    const stt = await transcribe(input.audio, 'reception.webm', { language: input.language });
+    if (stt.error) return { error: `Transkripsiya xatosi: ${stt.error}`, code: 'STT_ERROR' };
+    text = stt.text;
   }
 
+  const today = new Date().toISOString().slice(0, 10);
   const messages = [
     {
       role: 'system',
-      content: `Siz klinikaning professional, tezkor va aqlli ovozli AI operatorisiz. Bugun sana: ${TODAY}.
-Vazifalaringiz:
-1. Bemorga qisqa va aniq javob bering (ovozli muloqot bo'lgani uchun uzun matnlar taqiqlanadi, maksimal 2-3 ta qisqa gap).
-2. Shifokor grafigini bilish uchun faqat 'check_availability' vositasidan foydalaning, o'zingizdan vaqt o'ylab topmang!
-3. Bo'sh vaqt topilgach, bemorga variantlarni ayting, u tanlagach ism-sharifi va telefonini so'rab 'confirm_booking' ni chaqiring.
-4. Har doim samimiy va o'zbek tilida gapiring.`
+      content: `Siz klinikaning professional ovozli AI qabulxonasisiz. Bugungi sana: ${today}.
+Qoidalar:
+1. Ovozli muloqot — javoblar qisqa bo'lsin (maksimal 2-3 gap).
+2. Shifokor grafigini bilish uchun FAQAT check_availability vositasidan foydalaning, vaqtni o'zingizdan o'ylab topmang.
+3. Bemor vaqtni tanlagach, ism va telefonini so'rab confirm_booking ni chaqiring.
+4. Bemor qaysi tilda gapirsa (o'zbek yoki rus), shu tilda javob bering.`,
     },
-    ...history
+    ...(input.history || []),
   ];
-
   if (text) messages.push({ role: 'user', content: text });
 
   try {
-    // 1-QADAM: Local Ollama orqali tool calling
-    const responseMessage = isLocal()
-      ? await ollamaChat(messages, agentToolsSchema)
-      : await cloudChat(messages, agentToolsSchema);
-
-    if (!responseMessage) return { error: 'LLM dan javob olinmadi' };
-
-    let updatedHistory = [...messages, responseMessage];
-
-    // 2-QADAM: Agar tool call bo'lsa, bajaramiz
-    if (responseMessage.tool_calls?.length > 0) {
-      for (const toolCall of responseMessage.tool_calls) {
-        const fnName = toolCall.function.name;
-        const fnArgs = JSON.parse(toolCall.function.arguments);
-        let toolResult = '';
-
-        if (fnName === 'check_availability') toolResult = await checkAvailability(fnArgs, db);
-        else if (fnName === 'confirm_booking') toolResult = await confirmBooking(fnArgs, db);
-
-        updatedHistory.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          name: fnName,
-          content: toolResult
-        });
-      }
-
-      // 3-QADAM: Tool natijalari bilan LLM ga qayta so'rov
-      const secondResponse = isLocal()
-        ? await ollamaChat(updatedHistory)
-        : await cloudChat(updatedHistory);
-
-      if (secondResponse) {
-        updatedHistory.push(secondResponse);
-        return {
-          text: secondResponse.content,
-          updatedHistory,
-          tool_calls_used: responseMessage.tool_calls.map(tc => tc.function.name)
-        };
-      }
-    }
-
-    return { text: responseMessage.content, updatedHistory, tool_calls_used: [] };
+    const result = await runToolLoop({
+      messages,
+      tools: TOOLS,
+      handlers: makeHandlers(db, tenantId),
+      maxRounds: 3,
+      temperature: 0.1,
+      maxTokens: 1200,
+    });
+    return {
+      text: result.text,
+      transcript: input.audio ? text : undefined,
+      tools_used: result.toolCalls,
+      history: result.messages,
+    };
   } catch (e) {
-    return { error: `AI Receptionist xatosi: ${e.message}` };
+    return { error: `Qabulxona agenti xatosi: ${e.message}`, code: 'AGENT_ERROR' };
   }
 }
