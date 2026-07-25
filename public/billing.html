@@ -157,7 +157,7 @@ async function searchPatient(mode) {
   } else {
     const q = searchInput.value.trim();
     if (!q) return showToast('Bemor ismini yoki telefon raqamini kiriting', 'error');
-    const res = await apiGet(`/api/face/patients?q=${encodeURIComponent(q)}`);
+    const res = await apiGet(`/api/patients?q=${encodeURIComponent(q)}`);
     if (!res.success || !res.patients || res.patients.length === 0) {
       errorEl.textContent = 'Bemor topilmadi. Boshqa ism yoki telefon bilan urinib ko\'ring.';
       errorEl.classList.remove('hidden');
@@ -171,7 +171,7 @@ async function searchPatient(mode) {
 
 async function loadPatientData(patientId) {
   const [patientRes, ledgerRes, invoicesRes] = await Promise.all([
-    apiGet(`/api/face/patients?q=${patientId}`),
+    apiGet(`/api/patients?q=${patientId}`),
     apiGet(`/api/billing/loyalty-ledger/${patientId}`),
     apiGet(`/api/billing/invoices/${patientId}`)
   ]);

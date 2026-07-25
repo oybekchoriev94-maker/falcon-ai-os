@@ -144,17 +144,6 @@
           </div>
           <div id="normsResult" class="mt-2 text-sm"></div>
         </div>
-        <!-- Face Registration -->
-        <div class="card">
-          <h3 class="text-lg font-semibold mb-4">😀 Face ID registratsiyasi</h3>
-          <p class="text-sm text-slate-400 mb-3">Doktorning yuz modelini ro'yxatga olish uchun <a href="/face_id" class="text-blue-400 underline">face_id.html</a> sahifasiga o'ting.</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label class="block text-sm text-slate-400 mb-1">Doktor ID</label><input type="text" id="faceDoctorId" class="input-field" placeholder="doktor id"></div>
-            <div><label class="block text-sm text-slate-400 mb-1">Descriptor JSON</label><input type="text" id="faceDescriptor" class="input-field" placeholder='[0.1, 0.2, ...]'></div>
-          </div>
-          <button onclick="registerFace()" class="btn-primary mt-3">Yuzni ro'yxatga olish</button>
-          <div id="faceResult" class="mt-2 text-sm"></div>
-        </div>
         <!-- Mijozdan-Mijozga Keshbek Aksiyasi Sozlamalari -->
         <div class="card">
           <h3 class="text-lg font-semibold mb-4">🎯 Mijozdan-Mijozga Keshbek Aksiyasi Sozlamalari</h3>
@@ -221,27 +210,6 @@
               </tr></thead>
               <tbody id="doctorsManageBody"></tbody>
             </table>
-          </div>
-        </div>
-        <!-- Xodimlar davomati panellari -->
-        <div class="card">
-          <h3 class="text-lg font-semibold mb-4">🕐 Xodimlar davomati (Bugun)</h3>
-          <div class="overflow-x-auto max-h-48 overflow-y-auto">
-            <table class="w-full text-sm">
-              <thead><tr class="text-slate-400 border-b border-slate-700">
-                <th class="text-left py-2 px-2">Xodim</th>
-                <th class="text-left py-2 px-2">Kelish vaqti</th>
-                <th class="text-left py-2 px-2">Holat</th>
-              </tr></thead>
-              <tbody id="attendanceBody"></tbody>
-            </table>
-          </div>
-        </div>
-        <!-- Bemor Face ID Check-ins -->
-        <div class="card">
-          <h3 class="text-lg font-semibold mb-4">🧑‍🤝‍🧑 Face ID orqali kelgan bemorlar (Bugun)</h3>
-          <div class="overflow-x-auto max-h-48 overflow-y-auto" id="checkinsBody">
-            <p class="text-sm text-slate-400 py-4 text-center">Yuklanmoqda...</p>
           </div>
         </div>
         <!-- Referal boshqaruv panellari -->
@@ -354,9 +322,9 @@
           <h3 class="text-lg font-semibold mb-4">📋 Bugungi navbat</h3>
           <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-slate-400 border-b border-slate-700"><th class="text-left py-2 px-2">#</th><th class="text-left py-2 px-2">Bemor</th><th class="text-left py-2 px-2">Shifokor</th><th class="text-left py-2 px-2">Status</th></tr></thead><tbody id="queueBody"></tbody></table></div>
         </div>
-        <!-- Bemorlarni ro'yxatdan o'tkazish (Face ID bilan) -->
+        <!-- Bemorlarni ro'yxatdan o'tkazish -->
         <div class="card">
-          <h3 class="text-lg font-semibold mb-4">😀 Bemorlarni Face ID orqali ro'yxatdan o'tkazish</h3>
+          <h3 class="text-lg font-semibold mb-4">🧑 Bemorni ro'yxatdan o'tkazish</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <form id="patientRegForm" class="space-y-3">
@@ -364,20 +332,9 @@
                 <input type="text" id="patLastName" class="input-field" placeholder="Familiya">
                 <input type="text" id="patPhone" class="input-field" placeholder="Telefon raqam">
                 <input type="date" id="patBirthDate" class="input-field">
-                <div id="patDescriptorData" class="hidden"></div>
                 <button type="submit" class="btn-primary w-full">Ro'yxatdan o'tkazish</button>
               </form>
               <div id="patRegResult" class="mt-2 text-sm"></div>
-            </div>
-            <div>
-              <div class="video-container mx-auto" style="max-width:320px">
-                <video id="patVideo" autoplay muted playsinline class="rounded-xl w-full bg-slate-900"></video>
-                <canvas id="patOverlay" class="hidden"></canvas>
-              </div>
-              <button id="patCaptureBtn" onclick="capturePatientFace()" class="btn-primary w-full mt-2 text-sm">
-                📸 Yuzni skanerlash
-              </button>
-              <p id="patCameraStatus" class="text-xs text-slate-400 mt-1 text-center">Kamerani yoqish uchun bosing</p>
             </div>
           </div>
           <!-- So'nggi ro'yxatdan o'tgan bemorlar -->
@@ -617,13 +574,11 @@
       document.getElementById('adminItemCount').textContent = (inv.items||[]).length;
       document.getElementById('adminLowStock').textContent = inv.low_count||0;
       // Doctors
-      const docs = await apiGet('/api/face/doctors');
+      const docs = await apiGet('/api/doctors/manage');
       document.getElementById('adminDoctorCount').textContent = (docs.doctors||[]).length;
       // Inventory table
       const tbody = document.getElementById('inventoryBody');
       tbody.innerHTML = (inv.items||[]).map(i => '<tr class="border-b border-slate-700/50"><td class="py-2 px-2">'+i.name+'</td><td class="py-2 px-2 text-slate-400">'+i.sku+'</td><td class="py-2 px-2 text-right'+(i.current_stock<=i.min_stock?' text-red-400 font-bold':'')+'">'+i.current_stock+' '+i.unit+'</td><td class="py-2 px-2 text-right text-slate-400">'+i.min_stock||'-'+'</td></tr>').join('');
-      loadAttendance();
-      loadCheckins();
       loadReferralStats();
       loadPartners();
       loadManageDoctors();
@@ -717,14 +672,6 @@
     document.getElementById('inventoryForm').reset();
     loadAdminData();
   };
-
-  async function registerFace() {
-    const doctorId = document.getElementById('faceDoctorId').value.trim();
-    const descriptor = document.getElementById('faceDescriptor').value.trim();
-    if(!doctorId||!descriptor) { document.getElementById('faceResult').textContent='❌ Ikkala maydonni to\'ldiring'; return; }
-    const res = await apiPost('/api/face/register', { doctor_id:doctorId, face_descriptor:JSON.parse(descriptor) });
-    document.getElementById('faceResult').textContent = res.success ? '✅ Yuz modeli saqlandi' : '❌ Xatolik: '+(res.error||'');
-  }
 
   // ---- SHIFOKORLARNI BOSHQARISH ----
   document.getElementById('doctorCreateForm').onsubmit = async (e) => {
@@ -1046,52 +993,6 @@
     } catch(e) { document.getElementById('docMicStatus').textContent = '❌ Mikrofon ruxsati yo\'q: '+e.message; }
   }
 
-  // ---- XODIMLAR DAVOMATI (Attendance) ----
-  async function loadAttendance() {
-    try {
-      const res = await fetch(API + '/api/face/attendance', { headers: authHeaders() });
-      const data = await res.json();
-      const tbody = document.getElementById('attendanceBody');
-      if (!data.logs || data.logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-slate-500 py-4 text-sm">Bugun hech kim kelmagan</td></tr>';
-        return;
-      }
-      tbody.innerHTML = data.logs.map(log => {
-        const isMatch = log.matched === 'yes';
-        return `<tr class="border-b border-slate-700/50">
-          <td class="py-2 px-2 font-medium">${log.doctor_name || 'Noma\'lum'}</td>
-          <td class="py-2 px-2 text-slate-400">${new Date(log.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</td>
-          <td class="py-2 px-2"><span class="badge ${isMatch ? 'bg-green-600' : 'bg-red-600'} text-white text-xs">${isMatch ? '✅ Kelgan' : '❌ Noma\'lum'}</span></td>
-        </tr>`;
-      }).join('');
-    } catch(e) { console.error('Attendance load error:', e); }
-  }
-
-  async function loadCheckins() {
-    try {
-      const res = await fetch(API + '/api/face/patient-checkins', { headers: authHeaders() });
-      const data = await res.json();
-      const container = document.getElementById('checkinsBody');
-      if (!data.logs || data.logs.length === 0) {
-        container.innerHTML = '<p class="text-sm text-slate-400 py-4 text-center">Bugun Face ID orqali kelgan bemor yo\'q</p>';
-        return;
-      }
-      container.innerHTML = data.logs.slice(0, 15).map(log => `
-        <div class="flex items-center gap-3 py-2 border-b border-slate-700/50 last:border-0">
-          <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm ${log.spoof_warning ? 'bg-red-900/40' : log.matched === 'yes' ? 'bg-green-900/40' : 'bg-slate-700'}">
-            ${log.spoof_warning ? '⚠️' : log.matched === 'yes' ? '✅' : '❓'}
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium truncate">${log.doctor_name || log.patient_name || 'Noma\'lum'}</p>
-            <p class="text-xs text-slate-500">${log.action === 'checked_in' ? 'Check-in' : log.action === 'patient_register' ? 'Ro\'yxatdan o\'tgan' : log.action}${log.liveness_score ? ' · Liveness: ' + (log.liveness_score * 100).toFixed(0) + '%' : ''}</p>
-          </div>
-          <span class="text-xs text-slate-500">${new Date(log.created_at).toLocaleTimeString('uz-UZ', {hour:'2-digit',minute:'2-digit'})}</span>
-          ${log.spoof_warning ? '<span class="badge bg-red-600 text-white text-xs">SPOOF</span>' : ''}
-        </div>
-      `).join('');
-    } catch(e) { console.error('Checkins load error:', e); }
-  }
-
   // ---- REFERAL BOSHQARUV ----
   async function loadReferralStats() {
     try {
@@ -1221,90 +1122,28 @@
     }
   };
 
-  // ---- BEMORLARNI FACE ID ORQALI RO'YXATDAN O'TKAZISH (foto-asosli, server-avtoritetli) ----
-  let patStream = null;
-  let patPhoto = null;
-
-  async function startPatientCamera() {
-    try {
-      if (patStream) { patStream.getTracks().forEach(t => t.stop()); }
-      patStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' } });
-      const video = document.getElementById('patVideo');
-      video.srcObject = patStream;
-      await video.play().catch(() => {});
-      document.getElementById('patCameraStatus').textContent = '✅ Kamera ishlamoqda';
-      return true;
-    } catch(e) {
-      document.getElementById('patCameraStatus').textContent = '❌ Kamera xatosi: ' + e.message;
-      return false;
-    }
-  }
-
-  async function capturePatientFace() {
-    const btn = document.getElementById('patCaptureBtn');
-    if (!patStream) {
-      const ok = await startPatientCamera();
-      if (!ok) return;
-      await new Promise(r => setTimeout(r, 400));
-    }
-    const video = document.getElementById('patVideo');
-    if (!video.videoWidth) {
-      document.getElementById('patCameraStatus').textContent = '❌ Kamera hali tayyor emas, biroz kuting';
-      return;
-    }
-    // Kadrni olamiz (yuz aniqlash serverda — SCRFD/ArcFace/liveness)
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(-1, 0, 0, 1, canvas.width, 0);
-    ctx.drawImage(video, 0, 0);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    patPhoto = canvas.toDataURL('image/jpeg', 0.9);
-    document.getElementById('patCameraStatus').textContent = '✅ Rasm olindi! "Ro\'yxatdan o\'tkazish"ni bosing.';
-    btn.textContent = '🔄 Qayta olish';
-  }
-
+  // ---- BEMORNI RO'YXATDAN O'TKAZISH ----
   document.getElementById('patientRegForm').onsubmit = async (e) => {
     e.preventDefault();
     const el = document.getElementById('patRegResult');
-    if (!patPhoto) {
-      el.innerHTML = '<span class="text-red-400">❌ Avval yuzni skanerlang</span>';
-      return;
-    }
     const firstName = document.getElementById('patFirstName').value.trim();
     if (firstName.length < 2) {
       el.innerHTML = '<span class="text-red-400">❌ Ism kamida 2 harf</span>';
       return;
     }
-    el.innerHTML = '⏳ Serverda tekshirilmoqda...';
+    el.innerHTML = '⏳ Saqlanmoqda...';
     el.className = 'mt-2 text-sm text-slate-400';
-    const nonce = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : Date.now().toString(36) + Math.random().toString(36).slice(2);
-    const res = await apiPost('/api/face/register-patient-photo', {
+    const res = await apiPost('/api/patients', {
       first_name: firstName,
       last_name: document.getElementById('patLastName').value.trim(),
       phone: document.getElementById('patPhone').value.trim(),
-      birth_date: document.getElementById('patBirthDate').value,
-      photo_base64: patPhoto,
-      nonce,
-      timestamp: Date.now()
+      birth_date: document.getElementById('patBirthDate').value
     });
     if (res.success) {
       el.innerHTML = `✅ Bemor ro'yxatdan o'tdi: ${res.patient.first_name} ${res.patient.last_name || ''}`;
       el.className = 'mt-2 text-sm text-green-400';
       document.getElementById('patientRegForm').reset();
-      patPhoto = null;
-      document.getElementById('patCameraStatus').textContent = '';
-      document.getElementById('patCaptureBtn').textContent = '📸 Yuzni skanerlash';
       loadRecentPatients();
-    } else if (res.spoof_warning) {
-      el.innerHTML = '🚫 Soxta yuz aniqlandi (foto/ekran). Jonli yuz talab qilinadi.';
-      el.className = 'mt-2 text-sm text-red-400';
-    } else if (res.existing_patient) {
-      el.innerHTML = `⚠️ Bu yuz oldin <b>${res.existing_patient.name}</b> sifatida ro'yxatdan o'tgan`;
-      el.className = 'mt-2 text-sm text-yellow-400';
     } else {
       el.innerHTML = '❌ ' + (res.error || 'Xatolik');
       el.className = 'mt-2 text-sm text-red-400';
@@ -1313,7 +1152,7 @@
 
   async function loadRecentPatients() {
     try {
-      const res = await fetch(API + '/api/face/patients', { headers: authHeaders() });
+      const res = await fetch(API + '/api/patients', { headers: authHeaders() });
       const data = await res.json();
       const tbody = document.getElementById('recentPatientsBody');
       if (!data.patients || data.patients.length === 0) {

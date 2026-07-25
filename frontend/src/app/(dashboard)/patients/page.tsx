@@ -80,7 +80,6 @@ interface Patient {
   medical_record_number?: string;
   notes?: string;
   created_at: string;
-  face_descriptor?: number[];
 }
 
 interface PatientFormData {
@@ -182,7 +181,7 @@ export default function PatientsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["patients"],
     queryFn: async () => {
-      const res = await api.get<{ patients: Patient[] }>("/api/face/patients");
+      const res = await api.get<{ patients: Patient[] }>("/api/patients");
       if (!res.success) throw new Error(res.error || "Bemorlarni yuklashda xatolik");
       return res.patients;
     },
@@ -209,7 +208,7 @@ export default function PatientsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: PatientFormData) => {
-      const res = await api.post<{ patient: Patient }>("/api/face/patients", data);
+      const res = await api.post<{ patient: Patient }>("/api/patients", data);
       if (!res.success) throw new Error(res.error || "Bemor qo'shishda xatolik");
       return res.patient;
     },
@@ -225,7 +224,7 @@ export default function PatientsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: PatientFormData }) => {
-      const res = await api.put<{ patient: Patient }>(`/api/face/patients/${id}`, data);
+      const res = await api.put<{ patient: Patient }>(`/api/patients/${id}`, data);
       if (!res.success) throw new Error(res.error || "Bemorni yangilashda xatolik");
       return res.patient;
     },
@@ -241,7 +240,7 @@ export default function PatientsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await api.delete(`/api/face/patients/${id}`);
+      const res = await api.delete(`/api/patients/${id}`);
       if (!res.success) throw new Error(res.error || "Bemorni o'chirishda xatolik");
     },
     onSuccess: () => {
@@ -394,11 +393,6 @@ export default function PatientsPage() {
                   <Badge variant="secondary" className="mt-0.5">
                     ID: {selectedPatient.id}
                   </Badge>
-                  {selectedPatient.face_descriptor && (
-                    <Badge variant="outline" className="mt-0.5 ml-1">
-                      Face ID
-                    </Badge>
-                  )}
                 </div>
               </div>
 

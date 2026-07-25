@@ -276,26 +276,6 @@ export const schemas = {
     notes: z.string().optional(),
     source: z.string().max(50).optional()
   }),
-  faceRegister: z.object({
-    doctor_id: z.string().uuid(),
-    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
-    liveness_score: z.number().min(0).max(1).optional(),
-    nonce: z.string().min(8).max(64),
-    timestamp: z.number(),
-    device_id: z.string().max(128).optional()
-  }),
-  faceVerify: z.object({
-    face_descriptor: z.array(z.number()).length(512, 'face_descriptor aynan 512 o\'lchamli bo\'lishi kerak (ArcFace embedding)'),
-    liveness_score: z.number().min(0).max(1).optional(),
-    nonce: z.string().min(8).max(64),
-    timestamp: z.number(),
-    device_id: z.string().max(128).optional()
-  }),
-  faceConsent: z.object({
-    user_type: z.enum(['doctor','patient']),
-    user_id: z.string().min(1).max(255),
-    consent_text: z.string().max(2000).optional()
-  }),
   doctorToggleStatus: z.object({
     doctor_id: z.string().uuid()
   }),

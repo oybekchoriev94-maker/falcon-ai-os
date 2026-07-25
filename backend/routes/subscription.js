@@ -25,7 +25,7 @@ export default function subscriptionRoutes() {
       const sub = await qGet(`
         SELECT s.*, sp.name as plan_name, sp.code as plan_code,
           sp.max_doctors, sp.max_patients, sp.ai_requests_limit,
-          sp.face_id_enabled, sp.b2b_referrals_enabled, sp.inpatient_enabled,
+          sp.b2b_referrals_enabled, sp.inpatient_enabled,
           sp.reports_enabled, sp.api_access_enabled,
           sp.monthly_price, sp.annual_price
         FROM subscriptions s

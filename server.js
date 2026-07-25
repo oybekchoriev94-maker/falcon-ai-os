@@ -20,7 +20,6 @@ import swaggerUi from 'swagger-ui-express';
 import * as Sentry from '@sentry/node';
 
 import { connectPg, disconnectPg, q, qGet, qExec, getPool, withTransaction } from './backend/db.js';
-import { findBestMatch, prepareForDb } from './backend/services/face-engine.js';
 import { generateReportPdf } from './backend/services/pdfGenerator.js';
 import { safeError } from './backend/services/safe-error.js';
 import { MEDICAL_SKILLS } from './ai/protocols/medical-skills.js';
@@ -40,7 +39,6 @@ import { llm, transcribe, speak, isLLMReady } from './ai/orchestrator.js';
 import { setDatabase } from './ai/agents/db.js';
 
 import authRoutes from './backend/routes/auth.js';
-import faceRoutes from './backend/routes/face.js';
 import paymentRoutes from './backend/routes/payments.js';
 import inventoryRoutes from './backend/routes/inventory.js';
 import aiRoutes from './backend/routes/ai.js';
@@ -49,6 +47,7 @@ import inpatientRoutes from './backend/routes/inpatient.js';
 import referralAgentRoutes from './backend/routes/referral.js';
 import referralPassRoutes from './backend/routes/referrals.js';
 import patientRoutes from './backend/routes/patient.js';
+import patientsRoutes from './backend/routes/patients.js';
 import appointmentRoutes from './backend/routes/appointments.js';
 import billingRoutes from './backend/routes/billing.js';
 import subscriptionRoutes from './backend/routes/subscription.js';
@@ -148,13 +147,6 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-256-bit-hex-secr
   process.exit(1);
 }
 const JWT_SECRET = process.env.JWT_SECRET;
-
-const FACE_ENCRYPTION_KEY = (() => {
-  if (process.env.FACE_ENCRYPTION_KEY && process.env.FACE_ENCRYPTION_KEY.length >= 32) return process.env.FACE_ENCRYPTION_KEY;
-  const generated = crypto.randomBytes(32).toString('hex');
-  process.env.FACE_ENCRYPTION_KEY = generated;
-  return generated;
-})();
 
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || crypto.randomBytes(32).toString('hex');
 
@@ -283,7 +275,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 // HTML PAGE SERVING
 // ============================================================
 const VALID_PAGES = new Set([
-  'login','dashboard','face_id','face-kiosk','admin-tma','mini-app','tma',
+  'login','dashboard','admin-tma','mini-app','tma',
   'reception','inventory','referral_portal','scribe','index',
   'qr-pay','qr-pay-kiosk'
 ]);
@@ -409,7 +401,7 @@ async function main() {
     function mountRoutes(prefix) {
       const p = prefix || '';
       app.use(`${p}/patient`, patientRoutes(getPool()));
-      app.use(`${p}/face`, tenantRateLimit('api'), faceRoutes(getPool(), authMiddleware, checkRole));
+      app.use(`${p}/patients`, tenantRateLimit('api'), patientsRoutes(getPool(), authMiddleware));
       app.use(`${p}`, paymentRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}/referral`, referralAgentRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}/referrals`, referralPassRoutes(getPool(), authMiddleware, checkRole));

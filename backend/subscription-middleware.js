@@ -11,7 +11,7 @@ export async function checkSubscription(req, res, next) {
     const sub = await qGet(`
       SELECT s.*, sp.code as plan_code, sp.name as plan_name,
         sp.max_doctors, sp.max_patients, sp.ai_requests_limit,
-        sp.face_id_enabled, sp.b2b_referrals_enabled, sp.inpatient_enabled,
+        sp.b2b_referrals_enabled, sp.inpatient_enabled,
         sp.reports_enabled, sp.api_access_enabled
       FROM subscriptions s
       JOIN subscription_plans sp ON sp.id = s.plan_id
@@ -24,7 +24,7 @@ export async function checkSubscription(req, res, next) {
         max_doctors: FREE_LIMITS.max_doctors,
         max_patients: FREE_LIMITS.max_patients,
         ai_requests_limit: FREE_LIMITS.ai_requests_limit,
-        face_id_enabled: false, b2b_referrals_enabled: false,
+        b2b_referrals_enabled: false,
         inpatient_enabled: false, reports_enabled: true,
         api_access_enabled: false,
       };
@@ -56,7 +56,6 @@ export function requireFeature(feature) {
     if (!sub) return res.status(403).json({ error: 'Obuna ma\'lumoti topilmadi' });
 
     const featureMap = {
-      face_id: 'face_id_enabled',
       b2b: 'b2b_referrals_enabled',
       inpatient: 'inpatient_enabled',
       reports: 'reports_enabled',

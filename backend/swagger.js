@@ -11,7 +11,6 @@ export const swaggerSpec = {
     description: `Falcon AI OS — Klinikalar uchun yaxlit AI ekotizim (DB + AI Agent Orchestrator + Botlar + API).
 
 **Capabilities:**
-- Face ID biometrik autentifikatsiya
 - AI Scribe (ovozli matn → tibbiy hisobot)
 - Inventar boshqaruvi (FEFO partiyaviy)
 - Bemor qabul va navbat tizimi
@@ -141,28 +140,6 @@ export const swaggerSpec = {
           reason: { type: 'string', example: 'Muolaja uchun' }
         }
       },
-      FaceRegister: {
-        type: 'object',
-        required: ['doctor_id', 'face_descriptor', 'nonce', 'timestamp'],
-        properties: {
-          doctor_id: { type: 'string' },
-          face_descriptor: { type: 'array', items: { type: 'number' }, description: '128-512 float array' },
-          device_id: { type: 'string' },
-          nonce: { type: 'string' },
-          timestamp: { type: 'integer' }
-        }
-      },
-      FaceVerify: {
-        type: 'object',
-        required: ['face_descriptor', 'nonce', 'timestamp'],
-        properties: {
-          face_descriptor: { type: 'array', items: { type: 'number' } },
-          liveness_score: { type: 'number', minimum: 0, maximum: 1 },
-          device_id: { type: 'string' },
-          nonce: { type: 'string' },
-          timestamp: { type: 'integer' }
-        }
-      },
       AIExecute: {
         type: 'object',
         required: ['agent', 'input'],
@@ -205,7 +182,6 @@ export const swaggerSpec = {
   ],
   tags: [
     { name: 'Auth', description: 'Autentifikatsiya va ruxsat boshqaruvi' },
-    { name: 'Face', description: 'Face ID biometrik tizimi' },
     { name: 'Reception', description: 'Qabul va navbat tizimi' },
     { name: 'Scribe', description: 'AI Scribe — ovozli matn va tibbiy hisobot' },
     { name: 'Inventory', description: 'Inventar boshqaruvi (FEFO partiyaviy)' },
@@ -316,214 +292,6 @@ export const swaggerSpec = {
           401: { description: 'Auth zarur' },
           403: { description: 'Ruxsat yo\'q' }
         }
-      }
-    },
-
-    // ================================================================
-    // FACE
-    // ================================================================
-    '/api/face/register': {
-      post: {
-        tags: ['Face'],
-        summary: 'Shifokorning yuz modelini ro\'yxatdan o\'tkazish',
-        security: [{ BearerAuth: ['admin'] }],
-        requestBody: {
-          required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/FaceRegister' } } }
-        },
-        responses: {
-          200: { description: 'Yuz modeli saqlandi' },
-          400: { description: 'Validatsiya xatosi' },
-          401: { description: 'Auth zarur' },
-          403: { description: 'Admin huquqi talab qilinadi' },
-          409: { description: 'Nonce takrori' }
-        }
-      }
-    },
-    '/api/face/verify': {
-      post: {
-        tags: ['Face'],
-        summary: 'Yuzni tekshirish (verify)',
-        description: 'Doctor va patient jadvallarida qidiradi. Liveness tekshiruvi bilan.',
-        security: [{ BearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: { 'application/json': { schema: { $ref: '#/components/schemas/FaceVerify' } } }
-        },
-        responses: {
-          200: { description: 'Natija — matched yoki unmatched' },
-          400: { description: 'Validatsiya xatosi' },
-          403: { description: 'Liveness tekshiruvi o\'tmadi' },
-          409: { description: 'Nonce takrori' }
-        }
-      }
-    },
-    '/api/face/register-patient': {
-      post: {
-        tags: ['Face'],
-        summary: 'Bemorni yuz orqali ro\'yxatdan o\'tkazish',
-        security: [{ BearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['first_name', 'face_descriptor', 'nonce', 'timestamp'],
-                properties: {
-                  first_name: { type: 'string' },
-                  last_name: { type: 'string' },
-                  phone: { type: 'string' },
-                  face_descriptor: { type: 'array', items: { type: 'number' } },
-                  liveness_score: { type: 'number' },
-                  nonce: { type: 'string' },
-                  timestamp: { type: 'integer' },
-                  device_id: { type: 'string' }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          200: { description: 'Bemor ro\'yxatdan o\'tdi' },
-          400: { description: 'Validatsiya xatosi' },
-          403: { description: 'Liveness tekshiruvi o\'tmadi / Spoof' },
-          409: { description: 'Bu yuz oldin ro\'yxatdan o\'tgan' }
-        }
-      }
-    },
-    '/api/face/attendance': {
-      get: {
-        tags: ['Face'],
-        summary: 'Bugungi kelgan shifokorlar (attendance)',
-        security: [{ BearerAuth: [] }],
-        responses: {
-          200: { description: 'Davomat ro\'yxati' }
-        }
-      }
-    },
-    '/api/face/patient-checkins': {
-      get: {
-        tags: ['Face'],
-        summary: 'Bugungi bemor check-in loglari',
-        security: [{ BearerAuth: [] }],
-        responses: { 200: { description: 'Check-in loglari' } }
-      }
-    },
-    '/api/face/patients': {
-      get: {
-        tags: ['Face'],
-        summary: 'Bemorlarni qidirish/ro\'yxati',
-        security: [{ BearerAuth: [] }],
-        parameters: [
-          { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Qidirish (ism, familiya, telefon)' }
-        ],
-        responses: { 200: { description: 'Bemorlar ro\'yxati' } }
-      }
-    },
-    '/api/face/doctors': {
-      get: {
-        tags: ['Face'],
-        summary: 'Face ID tizimiga ulangan shifokorlar',
-        security: [{ BearerAuth: ['admin', 'ceo'] }],
-        responses: { 200: { description: 'Shifokorlar ro\'yxati' } }
-      }
-    },
-    '/api/face/logs': {
-      get: {
-        tags: ['Face'],
-        summary: 'Bugungi face loglari',
-        security: [{ BearerAuth: ['admin', 'ceo'] }],
-        responses: { 200: { description: 'Loglar ro\'yxati' } }
-      }
-    },
-    '/api/face/doctors/status': {
-      get: {
-        tags: ['Face'],
-        summary: 'Shifokorlarning biometrik statusi',
-        security: [{ BearerAuth: ['admin', 'ceo'] }],
-        responses: { 200: { description: 'Biometrik status' } }
-      }
-    },
-    '/api/face/doctors/{id}/block': {
-      post: {
-        tags: ['Face'],
-        summary: 'Shifokorning biometrik kirishini bloklash',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { 200: { description: 'Bloklandi' }, 404: { description: 'Shifokor topilmadi' } }
-      }
-    },
-    '/api/face/doctors/{id}/unblock': {
-      post: {
-        tags: ['Face'],
-        summary: 'Shifokorning biometrik kirishini faollashtirish',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { 200: { description: 'Faollashtirildi' }, 404: { description: 'Shifokor topilmadi' } }
-      }
-    },
-    '/api/face/doctors/{id}/face': {
-      delete: {
-        tags: ['Face'],
-        summary: 'Shifokorning yuz modelini o\'chirish',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { 200: { description: 'Yuz modeli o\'chirildi' }, 404: { description: 'Shifokor topilmadi' } }
-      }
-    },
-    '/api/face/consent': {
-      post: {
-        tags: ['Face', 'Health'],
-        summary: 'Biometrik rozilik berish (GDPR/O\'zbekiston)',
-        security: [{ BearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['user_type', 'user_id'],
-                properties: {
-                  user_type: { type: 'string', enum: ['doctor', 'patient'] },
-                  user_id: { type: 'string' },
-                  consent_text: { type: 'string' }
-                }
-              }
-            }
-          }
-        },
-        responses: { 200: { description: 'Rozilik berildi / avval berilgan' }, 400: { description: 'Validatsiya xatosi' } }
-      }
-    },
-    '/api/face/consent/{userType}/{userId}': {
-      get: {
-        tags: ['Face'],
-        summary: 'Rozilik holatini tekshirish',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [
-          { name: 'userType', in: 'path', required: true, schema: { type: 'string' } },
-          { name: 'userId', in: 'path', required: true, schema: { type: 'string' } }
-        ],
-        responses: { 200: { description: 'Rozilik ma\'lumoti' } }
-      }
-    },
-    '/api/face/forget/doctor/{id}': {
-      delete: {
-        tags: ['Face'],
-        summary: 'Right to be forgotten — shifokor biometrik ma\'lumotlarini o\'chirish',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { 200: { description: 'Ma\'lumotlar o\'chirildi' }, 404: { description: 'Topilmadi' } }
-      }
-    },
-    '/api/face/forget/patient/{id}': {
-      delete: {
-        tags: ['Face'],
-        summary: 'Right to be forgotten — bemor biometrik ma\'lumotlarini o\'chirish',
-        security: [{ BearerAuth: ['admin'] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { 200: { description: 'Ma\'lumotlar o\'chirildi' }, 404: { description: 'Topilmadi' } }
       }
     },
 
@@ -991,7 +759,7 @@ export const swaggerSpec = {
     '/api/referral/convert': {
       post: {
         tags: ['Referrals'],
-        summary: 'Face ID orqali kelgan bemor referalini konvertatsiya qilish',
+        summary: 'Bemor referalini konvertatsiya qilish',
         security: [{ BearerAuth: ['admin', 'receptionist'] }],
         responses: { 200: { description: 'Konvertatsiya qilindi' } }
       }

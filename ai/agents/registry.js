@@ -3,9 +3,7 @@ import * as receptionist from './receptionist.js';
 import * as inventoryManager from './inventory-manager.js';
 import * as analyticsAgent from './analytics-agent.js';
 import * as b2bReferral from './b2b-referral.js';
-import * as faceRecognizer from './face-recognizer.js';
 import * as medicationCoach from './medication-coach.js';
-import * as faceIdAgent from './face-id-agent.js';
 import * as referralAgent from './referral-agent.js';
 
 const agents = {};
@@ -30,9 +28,7 @@ register(receptionist);
 register(inventoryManager);
 register(analyticsAgent);
 register(b2bReferral);
-register(faceRecognizer);
 register(medicationCoach);
-register(faceIdAgent);
 register(referralAgent);
 
 export function getAgent(name) {
@@ -49,9 +45,8 @@ export function getAgentsByCategory(category) {
     clinical: ['medical-scribe', 'receptionist'],
     logistics: ['inventory-manager'],
     analytics: ['analytics-agent'],
-    referral: ['b2b-referral', 'face-recognizer', 'referral-agent'],
-    patient: ['medication-coach'],
-    security: ['face-id-agent', 'face-recognizer']
+    referral: ['b2b-referral', 'referral-agent'],
+    patient: ['medication-coach']
   };
   const names = categories[category] || [];
   return names.map(n => agents[n]).filter(Boolean);

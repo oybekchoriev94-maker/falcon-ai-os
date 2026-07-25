@@ -46,7 +46,6 @@ const navItems = [
   { href: "/inventory", label: "Ombor", icon: Package, roles: ["superadmin", "ceo", "admin"] },
   { href: "/billing", label: "To'lovlar", icon: CreditCard, roles: ["superadmin", "ceo", "admin"] },
   { href: "/scribe", label: "AI Scribe", icon: Mic, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
-  { href: "/face-id", label: "Face ID", icon: Camera, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/b2b", label: "B2B Referal", icon: Share2, roles: ["superadmin", "ceo", "admin"] },
   { href: "/admin", label: "Admin", icon: Shield, roles: ["superadmin"] },
 ];

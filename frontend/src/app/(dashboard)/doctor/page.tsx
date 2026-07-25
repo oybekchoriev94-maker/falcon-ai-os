@@ -187,15 +187,6 @@ export default function DoctorPage() {
                   <span className="text-xs text-muted-foreground">{specLabel} shabloni</span>
                 </div>
               </Link>
-              <Link href="/face-id">
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-card/50 p-4 text-center hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
-                  <div className="size-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                    <Camera className="size-5 text-amber-500" />
-                  </div>
-                  <span className="text-sm font-medium">Face ID</span>
-                  <span className="text-xs text-muted-foreground">Yuz orqali kirish</span>
-                </div>
-              </Link>
             </div>
           </CardContent>
         </Card>
