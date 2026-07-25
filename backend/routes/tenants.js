@@ -82,8 +82,7 @@ export default function tenantRoutes() {
           (SELECT COUNT(*) FROM patients WHERE tenant_id = $1) as patients_count,
           (SELECT COUNT(*) FROM appointments WHERE tenant_id = $1) as appointments_count,
           (SELECT COUNT(*) FROM referrals WHERE tenant_id = $1) as referrals_count,
-          (SELECT COALESCE(SUM(amount), 0) FROM payment_transactions WHERE tenant_id = $1 AND status = 'paid') as total_revenue,
-          (SELECT COUNT(*) FROM face_logs WHERE tenant_id = $1) as face_events
+          (SELECT COALESCE(SUM(amount), 0) FROM payment_transactions WHERE tenant_id = $1 AND status = 'paid') as total_revenue
       `, [tenantId]);
       res.json({ success: true, stats });
     } catch (e) {

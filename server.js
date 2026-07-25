@@ -19,7 +19,7 @@ import { z } from 'zod';
 import swaggerUi from 'swagger-ui-express';
 import * as Sentry from '@sentry/node';
 
-import { connectPg, disconnectPg, q, qGet, qExec, getPool, withTransaction } from './backend/db.js';
+import { connectPg, disconnectPg, q, qGet, qExec, getPool, withTransaction, unsafeQuery } from './backend/db.js';
 import { generateReportPdf } from './backend/services/pdfGenerator.js';
 import { safeError } from './backend/services/safe-error.js';
 import { MEDICAL_SKILLS } from './ai/protocols/medical-skills.js';
@@ -425,7 +425,8 @@ async function main() {
     }
     const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@falconai.uz';
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    const existing = await qGet("SELECT id FROM users WHERE username = $1 AND role = 'superadmin'", [ADMIN_EMAIL]);
+    // Superadmin barcha klinikalardan tashqarida — ataylab tenantsiz so'rov
+    const existing = await unsafeQuery.qGet("SELECT id FROM users WHERE username = $1 AND role = 'superadmin'", [ADMIN_EMAIL]);
     if (!existing) {
       const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
       await q(
