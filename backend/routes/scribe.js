@@ -22,19 +22,35 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       let text;
       let sttLanguage = null;
       if (req.file) {
-        const result = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
-        if (result.error) return res.status(500).json({ success: false, error: result.error });
-        text = result.text;
-        sttLanguage = result.language || null;
+        const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
+        if (stt.error) {
+          // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code });
+        }
+        text = stt.text;
+        sttLanguage = stt.language || null;
       } else if (req.body?.raw_text) {
         text = req.body.raw_text;
       } else {
         return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
       }
+      // Mutaxassislik: so'rovda tanlangani ustun, aks holda shifokor profilidagi qiymat.
+      // /upload bilan bir xil qoida — UI qaysi endpointga yuborsa ham shablon bir xil.
+      const specialization =
+        resolveSpecialization(req.body?.specialty) ||
+        resolveSpecialization(req.user?.specialization) ||
+        null;
+      const basePrompt = specialization
+        ? MEDICAL_SKILLS[specialization].systemPrompt
+        : 'Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, ' +
+          'buyurilgan dorilarni ajratib, faqat JSON qaytaring: ' +
+          '{"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}';
       const result = await llm(
-        'Siz shifokor yordamchisisiz. Diktant o\'zbek yoki rus tilida bo\'lishi mumkin — ikkalasini ham tushunasiz. ' +
-        'Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: ' +
-        '{"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}. Agar muolaja aniqlansa, procedure maydoniga yozing.',
+        basePrompt +
+        "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." +
+        // procedure maydoni ombor sarfini avtomatik hisoblash uchun kerak —
+        // yo'nalish shablonida bo'lmasa ham qo'shimcha kalit sifatida so'raymiz.
+        "\nAgar diktantda biror muolaja/protsedura nomi aytilsa, JSONga qo'shimcha \"procedure\" kalitini ham qo'shing.",
         text
       );
       const consId = uuidv4();
