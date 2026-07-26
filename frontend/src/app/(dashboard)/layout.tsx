@@ -61,13 +61,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => { setMounted(true); }, []);
 
+  // MUHIM: redirect faqat mount'dan keyin (zustand persist localStorage'dan
+  // rehydratsiya qilib bo'lgach). Aks holda sahifani yangilaganda yoki bookmark'dan
+  // ochganda autentifikatsiyalangan foydalanuvchi ham /login'ga uloqtiriladi
+  // (rehydratsiyagacha isAuthenticated=false bo'ladi).
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (mounted && !isAuthenticated) {
       router.replace("/login");
     }
-  }, [isAuthenticated, router]);
+  }, [mounted, isAuthenticated, router]);
 
-  if (!isAuthenticated || !user) {
+  if (!mounted || !isAuthenticated || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
