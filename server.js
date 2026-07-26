@@ -57,6 +57,7 @@ import webhookRoutes from './backend/routes/webhooks.js';
 import scribeRoutes from './backend/routes/scribe.js';
 import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
+import servicesRoutes from './backend/routes/services.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -415,6 +416,7 @@ async function main() {
       app.use(`/api/tma`, tmaRoutes(getPool()));
       app.use(`${p}/appointments`, appointmentRoutes(getPool(), authMiddleware));
       app.use(`${p}/billing`, authMiddleware, billingRoutes(getPool(), authMiddleware, validate, schemas));
+      app.use(`${p}/services`, tenantRateLimit('api'), servicesRoutes(getPool(), authMiddleware, checkRole, serverError));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);
