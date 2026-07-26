@@ -137,8 +137,10 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     } catch (e) { serverError(res, e); }
   });
 
-  // POST /create — atomik yozilish
-  router.post('/create', telegramOrJwtAuth, async (req, res) => {
+  // POST /create — atomik yozilish. telegramOrJwtAuth() — chaqirib middleware olamiz
+  // (factory, argumentsiz — barcha autentifikatsiyalangan rollarga ruxsat: staff yoki
+  // Telegram bemori).
+  router.post('/create', telegramOrJwtAuth(), async (req, res) => {
     let attempts = 0;
     while (attempts < 3) {
       attempts++;
