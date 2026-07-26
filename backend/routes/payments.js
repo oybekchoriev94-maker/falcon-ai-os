@@ -257,6 +257,12 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
            WHERE id = $3 AND status = 'pending'`,
           [result.transactionId || null, JSON.stringify(result.raw || {}), txn.id]);
 
+        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
+        if (txn.appointment_id) {
+          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
+            [txn.appointment_id, txn.tenant_id]);
+        }
+
         // Bemorga cashback (3%)
         if (txn.patient_id) {
           const cashbackPercent = 3.0;
@@ -329,6 +335,12 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
            WHERE id = $3 AND status = 'pending'`,
           [result.transactionId || null, JSON.stringify(result.raw || {}), txn.id]);
 
+        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
+        if (txn.appointment_id) {
+          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
+            [txn.appointment_id, txn.tenant_id]);
+        }
+
         // Bemorga cashback
         if (txn.patient_id) {
           const cashback = Math.round(txn.amount * 3 / 100);
@@ -368,6 +380,11 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       if (txn && result.status === 'paid') {
         await q(`UPDATE payment_transactions SET status = 'paid', paid_at = NOW(), provider_transaction_id = $1 WHERE id = $2`,
           [result.transactionId || null, txn.id]);
+        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
+        if (txn.appointment_id) {
+          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
+            [txn.appointment_id, txn.tenant_id]);
+        }
       }
 
       await q('INSERT INTO payment_webhook_logs (provider, transaction_id, raw_json, status) VALUES ($1, $2, $3, $4)',

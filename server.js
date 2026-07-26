@@ -59,6 +59,7 @@ import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
 import servicesRoutes from './backend/routes/services.js';
 import bookingRoutes from './backend/routes/booking.js';
+import cashierRoutes from './backend/routes/cashier.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -419,6 +420,7 @@ async function main() {
       app.use(`${p}/billing`, authMiddleware, billingRoutes(getPool(), authMiddleware, validate, schemas));
       app.use(`${p}/services`, tenantRateLimit('api'), servicesRoutes(getPool(), authMiddleware, checkRole, serverError));
       app.use(`${p}/booking`, tenantRateLimit('api'), bookingRoutes(getPool(), authMiddleware, telegramOrJwtAuth, serverError));
+      app.use(`${p}/cashier`, tenantRateLimit('api'), cashierRoutes(getPool(), authMiddleware, checkRole, serverError));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);
