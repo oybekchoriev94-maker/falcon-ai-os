@@ -307,6 +307,20 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     } catch (e) { serverError(res, e); }
   });
 
+  // POST /cancel — bronni bekor qilish (slot bo'shaydi, partial index tufayli)
+  router.post('/cancel', authMiddleware, async (req, res) => {
+    try {
+      const id = req.body?.id;
+      if (!id) return res.status(400).json({ success: false, error: 'id kerak' });
+      const row = await qGet(
+        "UPDATE appointments SET status = 'cancelled' WHERE tenant_id = $1 AND id = $2 AND status NOT IN ('cancelled') RETURNING id",
+        [tid(req), id]
+      );
+      if (!row) return res.status(404).json({ success: false, error: 'Yozuv topilmadi yoki allaqachon bekor qilingan' });
+      res.json({ success: true, cancelled: row.id });
+    } catch (e) { serverError(res, e); }
+  });
+
   // GET /by-code/:code — kassir Telegramdan kelgan bemorni topadi
   router.get('/by-code/:code', authMiddleware, async (req, res) => {
     try {
