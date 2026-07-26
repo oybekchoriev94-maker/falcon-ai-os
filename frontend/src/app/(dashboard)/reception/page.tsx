@@ -228,7 +228,7 @@ export default function ReceptionPage() {
 
   const payMutation = useMutation({
     mutationFn: async (args: { appt: Appointment; cash: number }) => {
-      const res = await api.post<{ payment: { receipt_number: number; change: number }; receipt_url: string }>(
+      const res = await api.post<{ payment: { receipt_number: number; change: number }; receipt_html?: string }>(
         "/api/cashier/pay",
         { appointment_id: args.appt.id, cash_received: args.cash, method: "cash" }
       );
@@ -240,7 +240,11 @@ export default function ReceptionPage() {
       toast.success(`To'lov qabul qilindi — chek #${res.payment.receipt_number}`, {
         description: res.payment.change > 0 ? `Qaytim: ${fmtSum(res.payment.change)}` : "Qaytim yo'q",
       });
-      window.open(`${apiBase()}${res.receipt_url}`, "_blank");
+      // Chek HTML'ini yangi oynaga yozamiz (authli tab GET ishlamaydi)
+      if (res.receipt_html) {
+        const w = window.open("", "_blank");
+        if (w) { w.document.write(res.receipt_html); w.document.close(); }
+      }
       setPayFor(null);
       setCashReceived("");
     },
@@ -425,9 +429,9 @@ export default function ReceptionPage() {
                     </Button>
                   )}
                   {a.payment_status === "paid" && (
-                    <Button size="sm" variant="outline" onClick={() => window.open(`${apiBase()}/api/cashier/lookup?code=${a.access_code}`, "_blank")} disabled title="Chek to'lovdan keyin ochiladi">
-                      <Printer className="size-3.5" /> Chek
-                    </Button>
+                    <Badge variant="outline" className="gap-1 border-emerald-500/20 text-emerald-600">
+                      <Printer className="size-3.5" /> Chek berilgan
+                    </Badge>
                   )}
                   {a.payment_status !== "cancelled" && a.payment_status !== "paid" && (
                     <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate(a.id)} disabled={cancelMutation.isPending}>
@@ -599,6 +603,3 @@ export default function ReceptionPage() {
   );
 }
 
-function apiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || "";
-}

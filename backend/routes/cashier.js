@@ -38,6 +38,40 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
   }
   const tid = (req) => req.user?.tenant_id || req.tenant_id;
   const CASHIER_ROLES = ['cashier', 'admin', 'ceo', 'receptionist'];
+
+  // Chek obyektini yig'ish (pay javobida ham, GET /receipt da ham ishlatiladi)
+  async function buildReceiptObj(tenantId, paymentId, cashierName) {
+    const p = await qGet(
+      `SELECT pt.*, pt.amount::float8 AS amount_f, pt.cash_received::float8 AS cash_f, pt.change_given::float8 AS change_f,
+              a.appointment_id, a.patient_name AS a_patient, a.doctor_name, a.scheduled_at, a.access_code,
+              s.name AS service_name
+       FROM payment_transactions pt
+       LEFT JOIN appointments a ON a.id = pt.appointment_id AND a.tenant_id = pt.tenant_id
+       LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+       WHERE pt.tenant_id = $1 AND pt.id = $2`,
+      [tenantId, paymentId]);
+    if (!p) return null;
+    const clinic = await qGet('SELECT name, address, phone FROM tenants WHERE id = $1', [tenantId]);
+    const innRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'inn'", [tenantId]);
+    return {
+      receipt_number: p.receipt_number,
+      payment_id: p.id,
+      clinic_name: clinic?.name || 'Klinika',
+      clinic_address: clinic?.address || '',
+      clinic_phone: clinic?.phone || '',
+      clinic_inn: innRow?.value || '',
+      patient_name: p.a_patient || p.patient_name || 'Bemor',
+      doctor_name: p.doctor_name || '',
+      service_name: p.service_name || p.description || 'Xizmat',
+      amount: p.amount_f || 0,
+      cash_received: p.cash_f,
+      change: p.change_f,
+      method: p.provider === 'card' ? 'Karta' : (p.provider === 'cash' ? 'Naqd' : p.provider),
+      paid_at: p.paid_at,
+      scheduled_at: p.scheduled_at,
+      cashier_name: cashierName || '',
+    };
+  }
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   // cashier_id uuid — superadmin/soxta id UUID bo'lmasa null yozamiz
   const cashierId = (req) => (UUID_RE.test(String(req.user?.id || '')) ? req.user.id : null);
@@ -154,6 +188,10 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
         await client.query("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1", [appt.id]);
         await client.query('COMMIT');
 
+        // Chek HTML'ini darhol qaytaramiz — mijoz yangi oynaga yozib chop etadi
+        // (yangi tab GET so'rovi Authorization header yubora olmaydi, shuning uchun
+        // authli receipt_url o'rniga to'g'ridan-to'g'ri HTML).
+        const receiptObj = await buildReceiptObj(tenantId, paymentId, req.user?.name || req.user?.username || '');
         return res.status(200).json({
           success: true,
           payment: {
@@ -161,6 +199,7 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
             amount, cash_received: cashReceived, change, method: d.method,
           },
           receipt_url: `/api/cashier/receipt/${paymentId}?format=html`,
+          receipt_html: receiptObj ? renderReceiptHtml(receiptObj) : null,
         });
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -175,48 +214,15 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
     return res.status(500).json({ success: false, error: 'Chek raqami tayinlanmadi, qayta urinib ko\'ring' });
   });
 
-  // GET /receipt/:paymentId — JSON yoki ?format=html
+  // GET /receipt/:paymentId — JSON yoki ?format=html (keyinchalik qayta chop etish uchun)
   router.get('/receipt/:paymentId', authMiddleware, checkRole(...CASHIER_ROLES), async (req, res) => {
     try {
       const tenantId = tid(req);
-      const p = await qGet(
-        `SELECT pt.*, pt.amount::float8 AS amount_f, pt.cash_received::float8 AS cash_f, pt.change_given::float8 AS change_f,
-                a.appointment_id, a.patient_name AS a_patient, a.doctor_name, a.scheduled_at, a.access_code,
-                s.name AS service_name
-         FROM payment_transactions pt
-         LEFT JOIN appointments a ON a.id = pt.appointment_id AND a.tenant_id = pt.tenant_id
-         LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
-         WHERE pt.tenant_id = $1 AND pt.id = $2`,
-        [tenantId, req.params.paymentId]);
-      if (!p) return res.status(404).json({ success: false, error: 'Chek topilmadi' });
-
-      const clinic = await qGet('SELECT name, address, phone FROM tenants WHERE id = $1', [tenantId]);
-      const innRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'inn'", [tenantId]);
-
-      const receipt = {
-        receipt_number: p.receipt_number,
-        payment_id: p.id,
-        clinic_name: clinic?.name || 'Klinika',
-        clinic_address: clinic?.address || '',
-        clinic_phone: clinic?.phone || '',
-        clinic_inn: innRow?.value || '',
-        patient_name: p.a_patient || p.patient_name || 'Bemor',
-        doctor_name: p.doctor_name || '',
-        service_name: p.service_name || p.description || 'Xizmat',
-        amount: p.amount_f || 0,
-        cash_received: p.cash_f,
-        change: p.change_f,
-        method: p.provider === 'card' ? 'Karta' : (p.provider === 'cash' ? 'Naqd' : p.provider),
-        paid_at: p.paid_at,
-        scheduled_at: p.scheduled_at,
-        cashier_name: req.user?.name || req.user?.username || '',
-      };
+      const receipt = await buildReceiptObj(tenantId, req.params.paymentId, req.user?.name || req.user?.username || '');
+      if (!receipt) return res.status(404).json({ success: false, error: 'Chek topilmadi' });
 
       if (String(req.query.format) === 'html') {
-        // Chek chop etilganini belgilaymiz (birinchi ochilganda)
-        if (!p.printed_at) {
-          await pool.query('UPDATE payment_transactions SET printed_at = NOW() WHERE id = $1', [p.id]).catch(() => {});
-        }
+        await pool.query('UPDATE payment_transactions SET printed_at = NOW() WHERE id = $1 AND printed_at IS NULL', [receipt.payment_id]).catch(() => {});
         res.set('Content-Type', 'text/html; charset=utf-8');
         return res.send(renderReceiptHtml(receipt));
       }
