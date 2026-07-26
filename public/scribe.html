@@ -45,8 +45,7 @@
         <label for="specialtySelect">Shifokor yo'nalishi</label>
         <div class="specialty-select-wrapper">
           <select id="specialtySelect" class="specialty-select">
-            <option value="therapy">🩺 Terapevt ko'rigi</option>
-            <option value="ultrasound">📷 UZI tekshiruvi</option>
+            <option value="">Yuklanmoqda...</option>
           </select>
           <span class="material-symbols-outlined dropdown-arrow">expand_more</span>
         </div>
@@ -1405,7 +1404,43 @@
       checkSpeechSupport();
       // Fetch clinics for referral detection
       fetchClinics();
+      // Yo'nalish shablonlari va tillarni serverdan yuklash (yagona manba)
+      loadSpecialties();
     });
+
+    // ---- Yo'nalish shablonlari (backend MEDICAL_SKILLS dan) ----
+    async function loadSpecialties() {
+      try {
+        const headers = {};
+        const tok = localStorage.getItem('token');
+        if (tok) headers['Authorization'] = 'Bearer ' + tok;
+        const res = await fetch(API + '/api/scribe/specialties', { headers });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (!data.success || !Array.isArray(data.specialties)) throw new Error('format');
+
+        specialtySelect.innerHTML = data.specialties
+          .map((s) => `<option value="${s.key}">${s.label}</option>`)
+          .join('');
+
+        // Shifokorning o'z yo'nalishi bo'lsa — sukut bo'yicha o'sha tanlanadi
+        if (data.current) specialtySelect.value = data.current;
+
+        // Til tanlagichini ham server ro'yxatidan tiklaymiz
+        const langSel = document.getElementById('languageSelect');
+        if (langSel && Array.isArray(data.languages) && data.languages.length) {
+          const prev = langSel.value;
+          langSel.innerHTML = data.languages
+            .map((l) => `<option value="${l.code}">${l.label}</option>`)
+            .join('');
+          if (data.languages.some((l) => l.code === prev)) langSel.value = prev;
+        }
+      } catch (e) {
+        // Server ro'yxati olinmasa — bo'sh qoldirmaymiz, minimal variant
+        specialtySelect.innerHTML = '<option value="terapevt">🩺 Terapevt</option>';
+        console.warn('[SCRIBE] Yo\'nalishlar yuklanmadi:', e.message);
+      }
+    }
   </script>
 <script>if(window.self !== window.top) document.body.classList.add('in-iframe');</script></body>
 </html>

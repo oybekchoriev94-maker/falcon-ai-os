@@ -18,6 +18,10 @@ BEAM_SIZE = int(os.getenv("BEAM_SIZE", "3"))
 # tekshirilgan. Shuning uchun sukut bo'yicha o'chirilgan; boshqa model
 # ishlatilsa STT_USE_PROMPT=true bilan yoqish mumkin.
 USE_PROMPT = os.getenv("STT_USE_PROMPT", "false").lower() == "true"
+# Til siyosati: klinika faqat o'zbek va rus tillarida ishlaydi.
+# Boshqa til so'ralsa rad etamiz (model uni "o'zbekcha" deb axlat matn chiqaradi).
+ALLOWED_LANGUAGES = {"uz", "ru"}
+DEFAULT_LANGUAGE = "uz"
 # CPU-og'ir ishni cheklash: bir vaqtda nechta transkripsiya bajarilsin
 MAX_CONCURRENCY = int(os.getenv("STT_CONCURRENCY", "2"))
 # Audio hajmi chegarasi (OOM/DoS himoyasi)
@@ -102,6 +106,13 @@ async def transcribe(
     if model is None:
         raise HTTPException(503, "Model hali yuklanmagan")
 
+    lang = (language or DEFAULT_LANGUAGE).strip().lower()[:2]
+    if lang not in ALLOWED_LANGUAGES:
+        raise HTTPException(
+            400,
+            f"'{language}' tili qo'llab-quvvatlanmaydi. Faqat: {', '.join(sorted(ALLOWED_LANGUAGES))}",
+        )
+
     audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(400, "Bo'sh audio")
@@ -117,8 +128,8 @@ async def transcribe(
 
         # Konkurentlikni cheklab, bloklovchi ishni threadga topshiramiz
         async with _sem:
-            text = await asyncio.to_thread(_run_transcribe, tmp_path, language, temperature, prompt)
-        return {"text": text}
+            text = await asyncio.to_thread(_run_transcribe, tmp_path, lang, temperature, prompt)
+        return {"text": text, "language": lang}
     except HTTPException:
         raise
     except Exception as e:

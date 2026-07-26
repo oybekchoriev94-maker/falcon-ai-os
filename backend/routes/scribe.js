@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { MEDICAL_SKILLS } from '../../ai/protocols/medical-skills.js';
+import { MEDICAL_SKILLS, listSpecializations, resolveSpecialization } from '../../ai/protocols/medical-skills.js';
+import { SUPPORTED_LANGUAGES } from '../../ai/engines/stt.js';
 
 export default function scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger) {
   const router = Router();
@@ -64,7 +65,12 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
           return res.status(403).json({ success: false, error: 'Xizmat to\'xtatilgan. Platforma balansini to\'ldiring!', balance: docCheck.balance || 0 });
         }
       }
-      const specialization = req.user?.specialization || 'doctor';
+      // Mutaxassislik: so'rovda tanlangani ustun (shifokor bir necha yo'nalishda
+      // diktant qilishi mumkin), aks holda profilidagi qiymat.
+      const specialization =
+        resolveSpecialization(req.body?.specialty) ||
+        resolveSpecialization(req.user?.specialization) ||
+        'doctor';
       const prompt = (MEDICAL_SKILLS[specialization]?.systemPrompt) ||
         "Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {\"patient_name\":\"...\",\"diagnosis\":\"...\",\"procedure\":\"...\",\"medicines\":\"...\"}";
       const { text, error, language: sttLanguage } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
@@ -111,6 +117,19 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       trackAiRequest('scribe', tenantId);
       res.json({ success: true, transcription: text, language: sttLanguage || null, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId });
     } catch (e) { serverError(res, e); }
+  });
+
+  // GET /specialties — mavjud yo'nalish shablonlari va tillar (UI uchun yagona manba)
+  router.get('/specialties', authMiddleware, (req, res) => {
+    res.json({
+      success: true,
+      languages: SUPPORTED_LANGUAGES.map((code) => ({
+        code,
+        label: code === 'uz' ? "🇺🇿 O'zbekcha" : '🇷🇺 Ruscha',
+      })),
+      specialties: listSpecializations(),
+      current: resolveSpecialization(req.user?.specialization),
+    });
   });
 
   router.get('/history', authMiddleware, async (req, res) => {

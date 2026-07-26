@@ -42,6 +42,28 @@ export function normalizeLanguage(lang) {
   return SUPPORTED_LANGUAGES.includes(l) ? l : DEFAULT_LANGUAGE;
 }
 
+/**
+ * Tilni qat'iy tekshiradi. Tizim FAQAT o'zbek va rus tillarini qo'llab-quvvatlaydi:
+ * boshqa til so'ralsa jim almashtirilmaydi, aniq xato qaytariladi (aks holda
+ * model tushunmagan tilni "o'zbekcha" deb axlat matn chiqaradi).
+ *
+ * @returns {{ ok: true, language: string } | { ok: false, error: string }}
+ */
+export function validateLanguage(lang) {
+  // Ko'rsatilmagan bo'lsa — klinikaning asosiy tili
+  if (lang === undefined || lang === null || String(lang).trim() === '') {
+    return { ok: true, language: DEFAULT_LANGUAGE };
+  }
+  const l = String(lang).trim().toLowerCase().slice(0, 2);
+  if (!SUPPORTED_LANGUAGES.includes(l)) {
+    return {
+      ok: false,
+      error: `"${lang}" tili qo'llab-quvvatlanmaydi. Faqat o'zbek (uz) va rus (ru) tillari mavjud.`,
+    };
+  }
+  return { ok: true, language: l };
+}
+
 // ─── Transkripsiya ───────────────────────────────────────
 function makeForm(audioBuffer, filename, opts) {
   const isWav = filename.endsWith('.wav');
@@ -60,6 +82,13 @@ function makeForm(audioBuffer, filename, opts) {
 }
 
 export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}) {
+  // Til siyosati: faqat o'zbek va rus. Boshqa til so'ralsa — aniq xato.
+  const langCheck = validateLanguage(opts.language);
+  if (!langCheck.ok) {
+    return { text: '', language: null, error: langCheck.error, code: 'UNSUPPORTED_LANGUAGE' };
+  }
+  opts = { ...opts, language: langCheck.language };
+
   // 1-URINISH: Lokal whisper.cpp
   // MUHIM: whisper.cpp server OpenAI API formatini to'liq qo'llab-quvvatlaydi!
   // Aynan shu API (https://api.groq.com/openai/v1/audio/transcriptions) bilan bir xil
@@ -100,35 +129,6 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
     });
     const data = await res.json();
     return { text: data.text || '', segments: data.segments || null, language: normalizeLanguage(opts.language), error: data.error?.message || null };
-  } catch (e) {
-    return { text: '', error: e.message };
-  }
-}
-
-// ─── Translate (audioni ingliz tiliga tarjima) ───────────
-export async function translate(audioBuffer, filename = 'audio.webm', targetLang = 'en') {
-  if (isLocal()) {
-    try {
-      // whisper.cpp translate ni qo'llab-quvvatlamaydi, transcribe qilamiz
-      const result = await transcribe(audioBuffer, filename, { language: targetLang });
-      return result;
-    } catch (e) {
-      if (process.env.LOCAL_ONLY === 'true') return { text: '', error: e.message };
-    }
-  }
-
-  const key = groqKey();
-  if (!key) return { text: '', error: 'GROQ_API_KEY not set' };
-  try {
-    const form = makeForm(audioBuffer, filename, { language: targetLang });
-    form.append('model', 'whisper-large-v3');
-    const res = await fetch('https://api.groq.com/openai/v1/audio/translations', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}` },
-      body: form
-    });
-    const data = await res.json();
-    return { text: data.text || '', error: data.error?.message || null };
   } catch (e) {
     return { text: '', error: e.message };
   }

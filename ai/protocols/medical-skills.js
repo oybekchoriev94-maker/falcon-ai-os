@@ -476,4 +476,19 @@ JSON shabloni:
 
 const VALID_SPECIALIZATIONS = Object.keys(MEDICAL_SKILLS);
 
-export { MEDICAL_SKILLS, VALID_SPECIALIZATIONS };
+/** UI uchun yengil ro'yxat (prompt/schema yuborilmaydi) */
+function listSpecializations() {
+  return VALID_SPECIALIZATIONS.map((key) => ({
+    key,
+    label: MEDICAL_SKILLS[key].label,
+    fields: MEDICAL_SKILLS[key].fields.map((f) => ({ key: f.key, label: f.label, icon: f.icon, type: f.type || 'text' })),
+  }));
+}
+
+/** Mutaxassislik kalitini tekshiradi; noto'g'ri bo'lsa null */
+function resolveSpecialization(key) {
+  const k = String(key || '').trim().toLowerCase();
+  return MEDICAL_SKILLS[k] ? k : null;
+}
+
+export { MEDICAL_SKILLS, VALID_SPECIALIZATIONS, listSpecializations, resolveSpecialization };
