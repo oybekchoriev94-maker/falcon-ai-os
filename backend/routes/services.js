@@ -8,13 +8,14 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
-const VALID_ICONS = /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\p{Emoji}\s]{0,4}$/u;
-
 const serviceSchema = z.object({
   name: z.string().trim().min(1).max(255),
   category: z.string().trim().max(100).optional().nullable(),
   specialty: z.string().trim().max(50).optional().nullable(),
-  icon: z.string().refine((v) => !v || VALID_ICONS.test(v), 'faqat emoji').optional().nullable(),
+  // Ikonka: uzunligini cheklaymiz, aniq emoji tekshiruvi Unicode DB'ga bog'liq
+  // bo'lganligi uchun (masalan 🩺 U+1FA7A hamma versiyalarda \p{Emoji} ga tushmaydi)
+  // ishonchli oddiy chegara — 8 belgi (2-3 emoji ZWJ bilan sig'adi).
+  icon: z.string().trim().max(8).optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
   price: z.coerce.number().min(0).max(1_000_000_000),
   duration_min: z.coerce.number().int().min(1).max(24 * 60).optional().nullable(),
