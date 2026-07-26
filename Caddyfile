@@ -1,6 +1,6 @@
 falconmedai.uz {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
-    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
+    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /reception-booking.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
     handle @api {
         reverse_proxy http://app:3000
     }
@@ -21,7 +21,7 @@ falconmedai.uz {
 
 http://167.233.44.193 {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
-    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
+    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /reception-booking.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
     handle @api {
         reverse_proxy http://app:3000
     }

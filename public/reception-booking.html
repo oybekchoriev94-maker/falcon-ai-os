@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<title>Falcon AI OS — Qabulxona (bron + to'lov)</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--card2:#1c2230;--text:#e6edf3;--muted:#8b949e;--border:#30363d;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:0 0 40px}
+.header{background:linear-gradient(135deg,#1e3a5f,#2563eb);color:#fff;padding:18px 16px}
+.header h1{font-size:19px;font-weight:700}
+.header p{font-size:13px;opacity:.85;margin-top:2px}
+.wrap{max-width:560px;margin:0 auto;padding:12px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid var(--border)}
+.step-title{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+.input,select,textarea{width:100%;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px 12px;font-size:15px;font-family:inherit}
+.input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;border:none;transition:.15s;margin-top:8px}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-green{background:var(--green);color:#fff}
+.btn-outline{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.mic-row{display:flex;align-items:center;gap:12px}
+.mic-btn{width:56px;height:56px;border-radius:50%;border:none;font-size:24px;cursor:pointer;flex-shrink:0;transition:.2s}
+.mic-btn.idle{background:rgba(88,166,255,.15);color:var(--accent)}
+.mic-btn.rec{background:rgba(248,81,81,.2);color:var(--red);animation:pulse 1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,81,81,.4)}50%{box-shadow:0 0 0 10px rgba(248,81,81,0)}100%{box-shadow:0 0 0 0 rgba(248,81,81,0)}}
+.lang-tabs{display:flex;gap:6px;margin-bottom:8px}
+.lang-tab{flex:1;text-align:center;padding:7px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card2);border:1px solid var(--border);color:var(--muted)}
+.lang-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.slot-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.slot{padding:9px 4px;text-align:center;border-radius:8px;font-size:14px;cursor:pointer;background:var(--card2);border:1px solid var(--border)}
+.slot.free:hover{border-color:var(--accent)}
+.slot.busy{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.slot.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pay-opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.pay-opt{padding:14px;border-radius:10px;text-align:center;cursor:pointer;background:var(--card2);border:2px solid var(--border);font-weight:600}
+.pay-opt.sel{border-color:var(--accent);background:rgba(88,166,255,.1)}
+.pay-opt .ic{font-size:24px;display:block;margin-bottom:4px}
+.alert{padding:12px;border-radius:10px;font-size:13px;font-weight:600;margin-top:10px}
+.alert-red{background:rgba(248,81,81,.12);border:1px solid rgba(248,81,81,.3);color:var(--red)}
+.alert-green{background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.3);color:var(--green)}
+.hidden{display:none}
+.muted{color:var(--muted)}
+.price-badge{font-weight:700;color:var(--green)}
+.result-code{font-size:34px;font-weight:800;letter-spacing:4px;text-align:center;color:var(--accent);margin:8px 0;font-family:'Courier New',monospace}
+.summary-row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid rgba(48,54,61,.4)}
+.summary-row:last-child{border-bottom:none}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🏥 Qabulxona — bron va to'lov</h1>
+  <p id="clinicName">Bemorni yozish · shifokor · vaqt · to'lov</p>
+</div>
+
+<div class="wrap">
+  <!-- 1. Bemor -->
+  <div class="card">
+    <div class="step-title"><span class="step-num">1</span> Bemor ma'lumotlari</div>
+    <div class="lang-tabs">
+      <div class="lang-tab active" data-lang="uz" onclick="setLang('uz')">🇺🇿 O'zbekcha</div>
+      <div class="lang-tab" data-lang="ru" onclick="setLang('ru')">🇷🇺 Ruscha</div>
+    </div>
+    <div class="mic-row">
+      <button id="micBtn" class="mic-btn idle" onclick="toggleMic()">🎤</button>
+      <div style="flex:1">
+        <div id="micStatus" class="muted" style="font-size:13px">Ovoz bilan to'ldirish uchun bosing</div>
+        <div id="micHint" class="muted" style="font-size:11px;margin-top:2px">"Aziz Karimov, terapevt, telefon 90 123 45 67"</div>
+      </div>
+    </div>
+    <label>Bemor ismi *</label>
+    <input id="patientName" class="input" placeholder="Ism familiya">
+    <label>Telefon</label>
+    <input id="patientPhone" class="input" placeholder="+998 __ ___ __ __">
+  </div>
+
+  <!-- 2. Shifokor + xizmat -->
+  <div class="card">
+    <div class="step-title"><span class="step-num">2</span> Shifokor va xizmat</div>
+    <label>Shifokor *</label>
+    <select id="doctorSel" onchange="onDoctorChange()"><option value="">Yuklanmoqda...</option></select>
+    <label>Xizmat *</label>
+    <select id="serviceSel" onchange="onServiceChange()"><option value="">Yuklanmoqda...</option></select>
+    <div id="priceRow" class="hidden" style="margin-top:10px;text-align:right">
+      Narx: <span id="priceVal" class="price-badge"></span>
+    </div>
+  </div>
+
+  <!-- 3. Sana + vaqt -->
+  <div class="card">
+    <div class="step-title"><span class="step-num">3</span> Sana va vaqt</div>
+    <label>Sana</label>
+    <input id="dateSel" type="date" class="input" onchange="loadSlots()">
+    <div id="slotsWrap">
+      <div id="slotsMsg" class="muted" style="font-size:13px;margin-top:8px">Shifokor va sanani tanlang</div>
+      <div id="slotGrid" class="slot-grid"></div>
+    </div>
+  </div>
+
+  <!-- 4. To'lov -->
+  <div class="card">
+    <div class="step-title"><span class="step-num">4</span> To'lov turi</div>
+    <div class="pay-opts">
+      <div class="pay-opt sel" data-pm="cashier" onclick="setPayMethod('cashier')">
+        <span class="ic">💵</span> Kassada
+        <div class="muted" style="font-size:11px;font-weight:400">Naqd yoki karta</div>
+      </div>
+      <div class="pay-opt" data-pm="online" onclick="setPayMethod('online')">
+        <span class="ic">💳</span> Online
+        <div class="muted" style="font-size:11px;font-weight:400">Payme / Click</div>
+      </div>
+    </div>
+    <button id="bookBtn" class="btn btn-green" onclick="doBook()">✅ Bron qilish</button>
+    <div id="bookAlert"></div>
+  </div>
+
+  <!-- Natija -->
+  <div id="resultCard" class="card hidden" style="border-color:var(--green)">
+    <div class="step-title" style="color:var(--green)">✅ Bron qilindi</div>
+    <div id="resultBody"></div>
+  </div>
+</div>
+
+<script>
+const WebApp = window.Telegram?.WebApp;
+if (WebApp) { WebApp.ready(); WebApp.expand(); }
+const token = localStorage.getItem('falcon_token') || localStorage.getItem('token') || '';
+function headers(extra) {
+  const h = { ...(extra || {}) };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  if (WebApp?.initData) h['x-telegram-init-data'] = WebApp.initData;
+  return h;
+}
+async function apiGet(path) { const r = await fetch(path, { headers: headers() }); return r.json(); }
+async function apiPost(path, body) {
+  const r = await fetch(path, { method:'POST', headers: headers({ 'Content-Type':'application/json' }), body: JSON.stringify(body) });
+  return r.json();
+}
+const fmtSum = (n) => (Number(n)||0).toLocaleString('uz-UZ') + " so'm";
+
+let lang = 'uz';
+let doctors = [], services = [];
+let selDoctor = null, selService = null, selSlot = null, payMethod = 'cashier';
+
+function setLang(l){ lang=l; document.querySelectorAll('.lang-tab').forEach(t=>t.classList.toggle('active',t.dataset.lang===l)); }
+function setPayMethod(m){ payMethod=m; document.querySelectorAll('.pay-opt').forEach(o=>o.classList.toggle('sel',o.dataset.pm===m)); }
+
+// ---- Init ----
+document.addEventListener('DOMContentLoaded', async () => {
+  const today = new Date();
+  document.getElementById('dateSel').value = today.toISOString().slice(0,10);
+  document.getElementById('dateSel').min = today.toISOString().slice(0,10);
+  await Promise.all([loadDoctors(), loadServices(), loadClinic()]);
+});
+
+async function loadClinic(){
+  const d = await apiGet('/api/auth/me').catch(()=>({}));
+  if (d?.user?.tenant_name) document.getElementById('clinicName').textContent = d.user.tenant_name;
+}
+
+async function loadDoctors(){
+  const d = await apiGet('/api/doctors?limit=100');
+  const sel = document.getElementById('doctorSel');
+  if (!d.success || !d.doctors?.length){ sel.innerHTML='<option value="">Shifokor topilmadi</option>'; return; }
+  doctors = d.doctors;
+  sel.innerHTML = '<option value="">— tanlang —</option>' + doctors.map(dr =>
+    `<option value="${dr.id}" data-spec="${dr.specialization||''}">${(dr.first_name||'')+' '+(dr.last_name||'')} ${dr.specialty?('· '+dr.specialty):''}</option>`
+  ).join('');
+}
+
+async function loadServices(){
+  const d = await apiGet('/api/services?active_only=true');
+  services = d.success ? d.services : [];
+  renderServices();
+}
+function renderServices(specFilter){
+  const sel = document.getElementById('serviceSel');
+  let list = services;
+  if (specFilter) { const f = services.filter(s => s.specialty === specFilter); if (f.length) list = f; }
+  if (!list.length){ sel.innerHTML='<option value="">Xizmat qo\'shilmagan</option>'; return; }
+  sel.innerHTML = '<option value="">— tanlang —</option>' + list.map(s =>
+    `<option value="${s.id}">${s.name} — ${fmtSum(s.price)}</option>`).join('');
+}
+
+function onDoctorChange(){
+  const opt = document.getElementById('doctorSel').selectedOptions[0];
+  selDoctor = opt?.value || null;
+  const spec = opt?.dataset?.spec || '';
+  renderServices(spec);       // shifokor yo'nalishiga mos xizmatlar oldinga
+  selSlot = null; loadSlots();
+}
+function onServiceChange(){
+  const id = document.getElementById('serviceSel').value;
+  selService = services.find(s => s.id === id) || null;
+  const pr = document.getElementById('priceRow');
+  if (selService){ document.getElementById('priceVal').textContent = fmtSum(selService.price); pr.classList.remove('hidden'); }
+  else pr.classList.add('hidden');
+  selSlot = null; loadSlots();
+}
+
+async function loadSlots(){
+  const grid = document.getElementById('slotGrid');
+  const msg = document.getElementById('slotsMsg');
+  grid.innerHTML=''; selSlot=null;
+  const date = document.getElementById('dateSel').value;
+  if (!selDoctor || !date){ msg.textContent='Shifokor va sanani tanlang'; msg.classList.remove('hidden'); return; }
+  msg.textContent='Yuklanmoqda...'; msg.classList.remove('hidden');
+  let url = `/api/booking/slots?doctor_id=${selDoctor}&date=${date}`;
+  if (selService) url += `&service_id=${selService.id}`;
+  const d = await apiGet(url);
+  if (!d.success){ msg.textContent = d.error||'Xatolik'; return; }
+  const free = d.slots.filter(s=>s.available);
+  if (!d.slots.length){ msg.textContent = d.reason || 'Bu kunga bo\'sh vaqt yo\'q'; return; }
+  msg.classList.add('hidden');
+  grid.innerHTML = d.slots.map(s =>
+    `<div class="slot ${s.available?'free':'busy'}" ${s.available?`onclick="pickSlot('${s.scheduled_at}',this)"`:''}>${s.time}</div>`
+  ).join('');
+  if (!free.length){ msg.textContent='Barcha vaqtlar band'; msg.classList.remove('hidden'); }
+}
+function pickSlot(iso, el){
+  selSlot = iso;
+  document.querySelectorAll('.slot').forEach(s=>s.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+async function doBook(){
+  const alert = document.getElementById('bookAlert'); alert.innerHTML='';
+  const name = document.getElementById('patientName').value.trim();
+  if (!name) return alert.innerHTML='<div class="alert alert-red">Bemor ismini kiriting</div>';
+  if (!selDoctor) return alert.innerHTML='<div class="alert alert-red">Shifokorni tanlang</div>';
+  if (!selService) return alert.innerHTML='<div class="alert alert-red">Xizmatni tanlang</div>';
+  if (!selSlot) return alert.innerHTML='<div class="alert alert-red">Vaqtni tanlang</div>';
+
+  const btn = document.getElementById('bookBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Bron qilinmoqda...';
+  const body = {
+    patient_name: name,
+    phone: document.getElementById('patientPhone').value.trim() || null,
+    doctor_id: selDoctor,
+    service_id: selService.id,
+    scheduled_at: selSlot,
+    payment_method: payMethod,
+    source: 'reception',
+  };
+  const d = await apiPost('/api/booking/create', body);
+  btn.disabled=false; btn.innerHTML='✅ Bron qilish';
+  if (!d.success){
+    if (d.code === 'SLOT_TAKEN'){ alert.innerHTML='<div class="alert alert-red">⚠️ Bu vaqt endi band. Boshqa vaqt tanlang.</div>'; loadSlots(); }
+    else alert.innerHTML='<div class="alert alert-red">❌ '+(d.error||'Xatolik')+'</div>';
+    return;
+  }
+  showResult(d, name);
+}
+
+function showResult(d, name){
+  const a = d.appointment;
+  const card = document.getElementById('resultCard');
+  const body = document.getElementById('resultBody');
+  let html = `
+    <div class="summary-row"><span class="muted">Bemor</span><span>${name}</span></div>
+    <div class="summary-row"><span class="muted">Shifokor</span><span>${a.doctor_name}</span></div>
+    <div class="summary-row"><span class="muted">Xizmat</span><span>${a.service_name}</span></div>
+    <div class="summary-row"><span class="muted">Vaqt</span><span>${new Date(a.scheduled_at).toLocaleString('uz-UZ',{dateStyle:'short',timeStyle:'short'})}</span></div>
+    <div class="summary-row"><span class="muted">Summa</span><span class="price-badge">${fmtSum(a.amount)}</span></div>`;
+  if (a.payment_method === 'online' && d.payment?.payment_url){
+    html += `<a class="btn btn-accent" href="${d.payment.payment_url}" target="_blank" style="text-decoration:none">💳 Onlayn to'lov havolasi</a>`;
+  } else {
+    html += `<div style="text-align:center;margin-top:12px"><div class="muted" style="font-size:12px">Kassa uchun kod</div>
+      <div class="result-code">${a.access_code}</div></div>
+      <button class="btn btn-green" onclick="payNow('${a.access_code}', ${a.amount})">💵 Hozir kassada to'lash</button>`;
+  }
+  html += `<button class="btn btn-outline" onclick="location.reload()">➕ Yangi bron</button>`;
+  body.innerHTML = html;
+  card.classList.remove('hidden');
+  card.scrollIntoView({ behavior:'smooth' });
+}
+
+async function payNow(code, amount){
+  const received = prompt(`To'lov summasi: ${fmtSum(amount)}\nBerilgan naqd summani kiriting (Enter — aynan summa):`, amount);
+  if (received === null) return;
+  const cash = Number(received) || amount;
+  const d = await apiPost('/api/cashier/pay', { access_code: code, cash_received: cash, method:'cash' });
+  if (!d.success){ alert('❌ '+(d.error||'Xatolik')); return; }
+  const p = d.payment;
+  const url = d.receipt_url;
+  const body = document.getElementById('resultBody');
+  body.innerHTML = `
+    <div class="alert alert-green">✅ To'lov qabul qilindi — chek #${p.receipt_number}</div>
+    <div class="summary-row"><span class="muted">Jami</span><span>${fmtSum(p.amount)}</span></div>
+    <div class="summary-row"><span class="muted">Berildi</span><span>${fmtSum(p.cash_received)}</span></div>
+    <div class="summary-row"><span class="muted">Qaytim</span><span class="price-badge">${fmtSum(p.change)}</span></div>
+    <a class="btn btn-accent" href="${url}" target="_blank" style="text-decoration:none">🖨️ Chekni chop etish</a>
+    <button class="btn btn-outline" onclick="location.reload()">➕ Yangi bron</button>`;
+}
+
+// ---- Ovoz ----
+let mediaRecorder=null, chunks=[], stream=null;
+async function toggleMic(){
+  const btn = document.getElementById('micBtn');
+  if (mediaRecorder && mediaRecorder.state === 'recording'){ mediaRecorder.stop(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    chunks=[]; mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size>0) chunks.push(e.data); };
+    mediaRecorder.onstop = onRecStop;
+    mediaRecorder.start();
+    btn.className='mic-btn rec'; btn.textContent='⏹️';
+    document.getElementById('micStatus').textContent='Yozilmoqda... to\'xtatish uchun bosing';
+  } catch(e){ document.getElementById('micStatus').textContent='Mikrofon ruxsati kerak'; }
+}
+async function onRecStop(){
+  const btn = document.getElementById('micBtn');
+  btn.className='mic-btn idle'; btn.textContent='🎤';
+  if (stream) stream.getTracks().forEach(t=>t.stop());
+  const status = document.getElementById('micStatus');
+  status.innerHTML='<span class="spinner"></span> Tahlil qilinmoqda...';
+  const blob = new Blob(chunks, { type:'audio/webm' });
+  const fd = new FormData();
+  fd.append('audio', blob, 'rec.webm');
+  fd.append('language', lang);
+  const r = await fetch('/api/reception/voice-register', { method:'POST', headers: headers(), body: fd });
+  const d = await r.json();
+  if (!d.success){ status.textContent = '❌ '+(d.error||'Tushunarli emas'); return; }
+  const ex = d.extraction || {};
+  if (ex.patient_name) document.getElementById('patientName').value = ex.patient_name;
+  if (ex.phone) document.getElementById('patientPhone').value = ex.phone;
+  // Shifokor mutaxassisligiga mos shifokorni tanlab qo'yamiz
+  if (ex.doctor_specialty){
+    const match = doctors.find(dr =>
+      (dr.specialty||'').toLowerCase().includes(ex.doctor_specialty.toLowerCase()) ||
+      (dr.specialization||'').toLowerCase().includes(ex.doctor_specialty.toLowerCase()));
+    if (match){ document.getElementById('doctorSel').value = match.id; onDoctorChange(); }
+  }
+  status.textContent = '✅ To\'ldirildi: ' + (ex.patient_name||'') + (ex.doctor_specialty?(' · '+ex.doctor_specialty):'');
+}
+</script>
+</body>
+</html>
