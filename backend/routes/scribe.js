@@ -56,7 +56,11 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
 
   router.post('/upload', authMiddleware, upload.single('audio'), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
+      // Audio yoki tayyor matn (shifokor diktantni yozib kiritishi yoki
+      // transkriptni tahrirlab qayta yuborishi mumkin — shablon baribir qo'llanadi)
+      if (!req.file && !req.body?.raw_text) {
+        return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
+      }
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { transcribe, llm } = await import('../../ai/orchestrator.js');
       if (req.user?.id) {
@@ -73,8 +77,19 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         'doctor';
       const prompt = (MEDICAL_SKILLS[specialization]?.systemPrompt) ||
         "Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {\"patient_name\":\"...\",\"diagnosis\":\"...\",\"procedure\":\"...\",\"medicines\":\"...\"}";
-      const { text, error, language: sttLanguage } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
-      if (error) return res.status(500).json({ success: false, error });
+      let text, sttLanguage = null;
+      if (req.file) {
+        const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
+        if (stt.error) {
+          // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code });
+        }
+        text = stt.text;
+        sttLanguage = stt.language || null;
+      } else {
+        text = String(req.body.raw_text).trim();
+      }
+      if (!text) return res.status(400).json({ success: false, error: 'Diktant matni bo\'sh' });
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
       const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz.", text);
       const consId = uuidv4();
