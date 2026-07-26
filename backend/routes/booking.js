@@ -282,6 +282,31 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     await handleCreate(req, res, tid(req), parsed.data);
   });
 
+  // GET /list?date=YYYY-MM-DD&status= — reception dashboard uchun kunlik bronlar
+  router.get('/list', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = tid(req);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? req.query.date : null;
+      const params = [tenantId];
+      let where = 'a.tenant_id = $1';
+      if (date) { params.push(date); where += ` AND a.scheduled_at::date = $${params.length}::date`; }
+      if (req.query.status) { params.push(String(req.query.status)); where += ` AND a.status = $${params.length}`; }
+      if (req.query.payment_status) { params.push(String(req.query.payment_status)); where += ` AND a.payment_status = $${params.length}`; }
+      const rows = await q(
+        `SELECT a.id, a.appointment_id, a.patient_name, a.phone, a.doctor_name,
+                a.scheduled_at, a.amount::float8 AS amount, a.status, a.payment_status,
+                a.payment_method, a.access_code, a.source, s.name AS service_name
+         FROM appointments a
+         LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+         WHERE ${where}
+         ORDER BY a.scheduled_at NULLS LAST, a.created_at DESC
+         LIMIT 200`,
+        params
+      );
+      res.json({ success: true, total: rows.length, appointments: rows });
+    } catch (e) { serverError(res, e); }
+  });
+
   // GET /by-code/:code — kassir Telegramdan kelgan bemorni topadi
   router.get('/by-code/:code', authMiddleware, async (req, res) => {
     try {
