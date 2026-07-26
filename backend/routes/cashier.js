@@ -38,6 +38,9 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
   }
   const tid = (req) => req.user?.tenant_id || req.tenant_id;
   const CASHIER_ROLES = ['cashier', 'admin', 'ceo', 'receptionist'];
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // cashier_id uuid — superadmin/soxta id UUID bo'lmasa null yozamiz
+  const cashierId = (req) => (UUID_RE.test(String(req.user?.id || '')) ? req.user.id : null);
 
   // GET /lookup?code=XXX yoki ?appointment_id=NN — to'lovdan oldin ko'rish
   router.get('/lookup', authMiddleware, checkRole(...CASHIER_ROLES), async (req, res) => {
@@ -135,7 +138,7 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
             `UPDATE payment_transactions SET status = 'paid', paid_at = NOW(), provider = $1, type = 'payment',
                     receipt_number = $2, cash_received = $3, change_given = $4, cashier_id = $5
              WHERE id = $6`,
-            [d.method === 'card' ? 'card' : 'cash', receiptNumber, cashReceived, change, req.user?.id || null, paymentId]);
+            [d.method === 'card' ? 'card' : 'cash', receiptNumber, cashReceived, change, cashierId(req), paymentId]);
         } else {
           paymentId = uuidv4();
           await client.query(
@@ -145,7 +148,7 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
              VALUES ($1,$2,$3,$4,$5,$6,$7,'payment','paid',NOW(),$8,$9,$10,$11,NOW())`,
             [paymentId, tenantId, appt.id, appt.patient_name, amount,
              `${appt.doctor_name || 'Qabul'} — ${appt.patient_name}`,
-             d.method === 'card' ? 'card' : 'cash', receiptNumber, cashReceived, change, req.user?.id || null]);
+             d.method === 'card' ? 'card' : 'cash', receiptNumber, cashReceived, change, cashierId(req)]);
         }
 
         await client.query("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1", [appt.id]);
