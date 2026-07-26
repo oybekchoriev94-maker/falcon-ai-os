@@ -195,8 +195,9 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   router.post('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), upload.single('audio'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
-      const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
-      if (error) return res.status(500).json({ success: false, error });
+      const { text, error, code } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
+      // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
+      if (error) return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error, code });
       if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
       // Imlo tuzatish faqat o'zbekcha diktant uchun — ruscha matnni buzmasligi kerak
       const isRu = String(req.body?.language || '').toLowerCase().startsWith('ru');

@@ -396,8 +396,9 @@ export default function inventoryRoutes(
         // or require them here. The orchestrator is a peer dependency.
         const { transcribe, llm } = await import('../../ai/orchestrator.js');
 
-        const { text, error } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
-        if (error) return res.status(500).json({ success: false, error });
+        const { text, error, code } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
+        // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
+        if (error) return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error, code });
 
         const result = await llm(
           'Siz omborchi asistentsiz. Ovozli buyruqdan: material nomi, miqdor, partiya raqami va yaroqlilik muddatini (YYYY-MM-DD) ajrating. Agar partiya raqami aytilmagan bo\'lsa, batch_number ga null qo\'ying. Agar sana aytilmagan bo\'lsa, expiration_date ga null qo\'ying. JSON format: {"name":"...","quantity":1,"batch_number":"...","expiration_date":"YYYY-MM-DD"}',
