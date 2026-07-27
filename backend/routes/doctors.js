@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { safeError } from '../services/safe-error.js';
+import { optionalAuth } from '../shared.js';
 import { llm, transcribe } from '../../ai/orchestrator.js';
 
 export default function doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload) {
@@ -28,9 +29,10 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // ============================================================
 
   // GET /api/doctors — klinikaning shifokorlar ro'yxati (public, tenant bo'yicha)
-  router.get('/doctors', async (req, res) => {
+  router.get('/doctors', optionalAuth, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      // JWT ustun: x-tenant-id sarlavhasini mijoz soxtalashtira oladi
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const offset = (page - 1) * limit;
@@ -214,9 +216,9 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // ============================================================
 
   // GET /api/campaign/settings — joriy kampaniya sozlamalarini olish (tenant bo'yicha)
-  router.get('/campaign/settings', async (req, res) => {
+  router.get('/campaign/settings', optionalAuth, async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
       const mode = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_campaign_mode'", [tenantId]);
       const pct = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_referral_percent'", [tenantId]);
       res.json({

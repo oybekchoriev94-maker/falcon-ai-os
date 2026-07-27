@@ -47,6 +47,26 @@ export async function authMiddleware(req, res, next) {
   }
 }
 
+/**
+ * Ochiq (public) endpointlar uchun: token BO'LSA uni tekshirib req.user va
+ * req.tenant_id ni o'rnatadi, bo'lmasa jim o'tkazadi.
+ *
+ * Nega kerak: tenantContext req.tenant_id ni x-tenant-id SARLAVHASIDAN oladi —
+ * uni mijoz o'zi yozadi. Ya'ni autentifikatsiyasiz endpointda bir klinika
+ * boshqasining ma'lumotini so'ray oladi. JWT esa soxtalashtirilmaydi, shuning
+ * uchun token mavjud bo'lsa u har doim ustun turishi kerak.
+ */
+export function optionalAuth(req, _res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) return next();
+  try {
+    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
+    req.user = decoded;
+    if (decoded.tenant_id) req.tenant_id = decoded.tenant_id;
+  } catch { /* yaroqsiz token — ochiq foydalanuvchi sifatida davom etadi */ }
+  next();
+}
+
 export function checkRole(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Autentifikatsiya talab qilinadi' });
