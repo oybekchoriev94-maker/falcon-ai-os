@@ -221,7 +221,8 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   "department": "bo'lim (Terapiya/Kardiologiya/Nevrologiya/Pediatriya/Xirurgiya/Stomatologiya yoki bo'sh)",
   "preferred_time": "vaqt yoki bo'sh",
   "notes": "qo'shimcha ma'lumot yoki bo'sh"
-}`,
+}
+MUHIM: telefon raqami va boshqa sonlarni RAQAMLARDA yozing, so'z bilan emas. Masalan "to'qson to'qqiz uch..." -> "99 3...". Telefonni faqat raqam va + belgisi bilan.`,
         cleaned,
         { temperature: 0.0 }
       );

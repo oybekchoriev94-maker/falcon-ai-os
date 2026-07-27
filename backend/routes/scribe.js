@@ -3,6 +3,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { MEDICAL_SKILLS, listSpecializations, resolveSpecialization } from '../../ai/protocols/medical-skills.js';
 import { SUPPORTED_LANGUAGES } from '../../ai/engines/stt.js';
 
+// Whisper sonlarni so'z bilan chiqaradi ("qirq besh"). LLM ajratishda raqamga o'giramiz.
+const NUMBER_RULE =
+  "\nMUHIM: barcha sonlarni RAQAMLARDA yozing, so'z bilan emas. " +
+  "Masalan: \"qirq besh\" -> 45, \"o'ttiz yetti nuqta besh\" -> 37.5, \"yuz yigirma\" -> 120, " +
+  "\"to'qson\" -> 90, \"besh yuz ming\" -> 500000. Yosh, harorat, bosim, puls, doza, " +
+  "telefon raqami, miqdor, narx — hammasi raqamda bo'lsin.";
+
 export default function scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger) {
   const router = Router();
 
@@ -48,6 +55,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       const result = await llm(
         basePrompt +
         "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." +
+        NUMBER_RULE +
         // procedure maydoni ombor sarfini avtomatik hisoblash uchun kerak —
         // yo'nalish shablonida bo'lmasa ham qo'shimcha kalit sifatida so'raymiz.
         "\nAgar diktantda biror muolaja/protsedura nomi aytilsa, JSONga qo'shimcha \"procedure\" kalitini ham qo'shing.",
@@ -110,7 +118,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       }
       if (!text) return res.status(400).json({ success: false, error: 'Diktant matni bo\'sh' });
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
-      const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz.", text);
+      const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." + NUMBER_RULE, text);
       const consId = uuidv4();
       await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
         [consId, tenantId, req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);

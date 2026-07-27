@@ -401,7 +401,7 @@ export default function inventoryRoutes(
         if (error) return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error, code });
 
         const result = await llm(
-          'Siz omborchi asistentsiz. Ovozli buyruqdan: material nomi, miqdor, partiya raqami va yaroqlilik muddatini (YYYY-MM-DD) ajrating. Agar partiya raqami aytilmagan bo\'lsa, batch_number ga null qo\'ying. Agar sana aytilmagan bo\'lsa, expiration_date ga null qo\'ying. JSON format: {"name":"...","quantity":1,"batch_number":"...","expiration_date":"YYYY-MM-DD"}',
+          'Siz omborchi asistentsiz. Ovozli buyruqdan: material nomi, miqdor, partiya raqami va yaroqlilik muddatini (YYYY-MM-DD) ajrating. Agar partiya raqami aytilmagan bo\'lsa, batch_number ga null qo\'ying. Agar sana aytilmagan bo\'lsa, expiration_date ga null qo\'ying. JSON format: {"name":"...","quantity":1,"batch_number":"...","expiration_date":"YYYY-MM-DD"}. MUHIM: miqdor va boshqa sonlarni RAQAMLARDA yozing, so\'z bilan emas (masalan "yigirma besh" -> 25).',
           text
         );
         if (!result || !result.name) {
