@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { motion } from "framer-motion";
@@ -25,11 +25,13 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 
 /* ── Types ── */
 interface Doctor { id: string; first_name: string; last_name?: string; specialty?: string; specialization?: string; }
-interface Service { id: string; name: string; price: number; icon?: string; }
+interface Service { id: string; name: string; price: number; icon?: string; category?: string | null; }
 interface Slot { time: string; scheduled_at: string; available: boolean; }
 interface Extraction {
   patient_name?: string; phone?: string; doctor_specialty?: string;
@@ -53,6 +55,7 @@ export default function ReceptionVoicePage() {
   const [phone, setPhone] = useState("");
   const [doctor, setDoctor] = useState("");
   const [service, setService] = useState("");
+  const [category, setCategory] = useState("");  // xizmat bo'limi filtri
   const [date, setDate] = useState(todayStr());
   const [slot, setSlot] = useState<string | null>(null);
   const [pay, setPay] = useState<"cashier" | "online">("cashier");
@@ -82,6 +85,28 @@ export default function ReceptionVoicePage() {
   });
   const services = svcData?.services ?? [];
   const selectedService = services.find((s) => s.id === service) || null;
+
+  // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin,
+  // tekis ro'yxatdan topish qiyin. Chip bilan bo'lim tanlanadi, ro'yxat esa
+  // baribir sarlavhalar bilan guruhlanadi.
+  const categories = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of services) m.set(s.category || "Boshqa", (m.get(s.category || "Boshqa") || 0) + 1);
+    return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [services]);
+
+  const groupedServices = useMemo(() => {
+    const list = category ? services.filter((s) => (s.category || "Boshqa") === category) : services;
+    const m = new Map<string, Service[]>();
+    for (const s of list) {
+      const k = s.category || "Boshqa";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(s);
+    }
+    return [...m.entries()]
+      .map(([name, items]) => ({ name, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [services, category]);
 
   const { data: slotData, isFetching: slotsFetching } = useQuery({
     queryKey: ["slots", doctor, date, service],
@@ -172,7 +197,7 @@ export default function ReceptionVoicePage() {
   });
 
   function reset() {
-    setName(""); setPhone(""); setDoctor(""); setService(""); setSlot(null);
+    setName(""); setPhone(""); setDoctor(""); setService(""); setCategory(""); setSlot(null);
     setDate(todayStr()); setPay("cashier"); setTranscript(""); setResult(null);
   }
 
@@ -268,9 +293,35 @@ export default function ReceptionVoicePage() {
             </div>
             <div className="space-y-1.5">
               <Label>Xizmat *</Label>
+              {/* Bo'lim chiplari — 80+ xizmatni bitta ro'yxatdan topish qiyin */}
+              {categories.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  <button type="button" onClick={() => setCategory("")}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${!category ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                    Barchasi ({services.length})
+                  </button>
+                  {categories.map((c) => (
+                    <button key={c.name} type="button" onClick={() => setCategory(c.name)}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${category === c.name ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                      {c.name} ({c.count})
+                    </button>
+                  ))}
+                </div>
+              )}
               <Select value={service} onValueChange={(v) => { setService(v ?? ""); setSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder="Xizmatni tanlang" /></SelectTrigger>
-                <SelectContent>{services.map((s) => <SelectItem key={s.id} value={s.id}>{s.icon ? s.icon + " " : ""}{s.name} — {fmtSum(s.price)}</SelectItem>)}</SelectContent>
+                <SelectTrigger><SelectValue placeholder={category ? `${category} — xizmatni tanlang` : "Xizmatni tanlang"} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {groupedServices.map((g) => (
+                    <SelectGroup key={g.name}>
+                      <SelectLabel>{g.name}</SelectLabel>
+                      {g.items.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.icon ? s.icon + " " : ""}{s.name} — {fmtSum(s.price)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
               </Select>
               {selectedService && <p className="text-right text-sm font-semibold text-emerald-600">{fmtSum(selectedService.price)}</p>}
             </div>

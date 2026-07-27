@@ -41,6 +41,8 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 
 /* ── Types ── */
@@ -58,6 +60,7 @@ interface Service {
   specialty?: string;
   duration_min?: number;
   icon?: string;
+  category?: string | null;
 }
 interface Slot {
   time: string;
@@ -121,6 +124,7 @@ export default function ReceptionPage() {
   const [fPhone, setFPhone] = useState("");
   const [fDoctor, setFDoctor] = useState("");
   const [fService, setFService] = useState("");
+  const [fCategory, setFCategory] = useState("");  // xizmat bo'limi filtri
   const [fDate, setFDate] = useState(todayStr());
   const [fSlot, setFSlot] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState<"cashier" | "online">("cashier");
@@ -170,6 +174,26 @@ export default function ReceptionPage() {
 
   const selectedDoctor = doctors.find((d) => d.id === fDoctor) || null;
   const selectedService = services.find((s) => s.id === fService) || null;
+
+  // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin
+  const svcCategories = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of services) m.set(s.category || "Boshqa", (m.get(s.category || "Boshqa") || 0) + 1);
+    return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [services]);
+
+  const groupedServices = useMemo(() => {
+    const list = fCategory ? services.filter((s) => (s.category || "Boshqa") === fCategory) : services;
+    const m = new Map<string, Service[]>();
+    for (const s of list) {
+      const k = s.category || "Boshqa";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(s);
+    }
+    return [...m.entries()]
+      .map(([name, items]) => ({ name, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [services, fCategory]);
 
   const { data: slotData, isFetching: slotsFetching } = useQuery({
     queryKey: ["slots", fDoctor, fDate, fService],
@@ -285,7 +309,7 @@ export default function ReceptionPage() {
 
   /* ── Helpers ── */
   function resetBook() {
-    setFName(""); setFPhone(""); setFDoctor(""); setFService("");
+    setFName(""); setFPhone(""); setFDoctor(""); setFService(""); setFCategory("");
     setFSlot(null); setFDate(todayStr()); setPayMethod("cashier");
   }
 
@@ -497,13 +521,33 @@ export default function ReceptionPage() {
 
             <div className="space-y-1.5">
               <Label>Xizmat *</Label>
+              {/* Bo'lim chiplari — 80+ xizmatni tekis ro'yxatdan topish qiyin */}
+              {svcCategories.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  <button type="button" onClick={() => setFCategory("")}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${!fCategory ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                    Barchasi ({services.length})
+                  </button>
+                  {svcCategories.map((c) => (
+                    <button key={c.name} type="button" onClick={() => setFCategory(c.name)}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${fCategory === c.name ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                      {c.name} ({c.count})
+                    </button>
+                  ))}
+                </div>
+              )}
               <Select value={fService} onValueChange={(v) => { setFService(v ?? ""); setFSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder="Xizmatni tanlang" /></SelectTrigger>
-                <SelectContent>
-                  {services.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.icon ? s.icon + " " : ""}{s.name} — {fmtSum(s.price)}
-                    </SelectItem>
+                <SelectTrigger><SelectValue placeholder={fCategory ? `${fCategory} — xizmatni tanlang` : "Xizmatni tanlang"} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {groupedServices.map((g) => (
+                    <SelectGroup key={g.name}>
+                      <SelectLabel>{g.name}</SelectLabel>
+                      {g.items.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.icon ? s.icon + " " : ""}{s.name} — {fmtSum(s.price)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
