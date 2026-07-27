@@ -22,6 +22,7 @@ import {
   Sun,
   Moon,
   HeartPulse,
+  Sliders,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -40,6 +41,10 @@ import { motion, AnimatePresence } from "framer-motion";
 const navItems = [
   { href: "/doctor", label: "Shifokor paneli", icon: HeartPulse, roles: ["doctor"] },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin", "receptionist"] },
+  // Klinika sozlamalari — shifokor, ish jadvali, xizmat/narx, xodim va bemor
+  // havolasi shu yerda. Doimiy ochiq bo'lishi kerak: ro'yxatdan o'tgandan keyin
+  // qayta kirgan rahbar shifokor qo'sha olmay qolmasin.
+  { href: "/onboarding", label: "Klinika sozlamalari", icon: Sliders, roles: ["superadmin", "ceo", "admin"] },
   { href: "/patients", label: "Bemorlar", icon: Users, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/reception", label: "Navbat", icon: ClipboardList, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/reception-voice", label: "Ovozli qabul", icon: Mic, roles: ["superadmin", "ceo", "admin", "receptionist"] },
