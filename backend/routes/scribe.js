@@ -79,7 +79,10 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       }
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { transcribe, llm } = await import('../../ai/orchestrator.js');
-      if (req.user?.id) {
+      // Balans/billing tekshiruvi faqat AI_SCRIBE_BILLING=true bo'lganda qo'llanadi.
+      // Sukut bo'yicha o'chiq — klinika AI Scribe'dan darhol foydalana oladi;
+      // pullik metering kerak bo'lsa .env da yoqiladi.
+      if (process.env.AI_SCRIBE_BILLING === 'true' && req.user?.id) {
         const docCheck = await qGet("SELECT balance FROM doctors WHERE id = $1", [req.user.id]);
         if (docCheck && (docCheck.balance === null || docCheck.balance <= 0)) {
           return res.status(403).json({ success: false, error: 'Xizmat to\'xtatilgan. Platforma balansini to\'ldiring!', balance: docCheck.balance || 0 });
