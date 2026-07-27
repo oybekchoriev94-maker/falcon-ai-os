@@ -398,7 +398,7 @@ async function main() {
     app.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
     // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
     // authMiddleware oldin turadi: tenant JWT dan olinsin (x-tenant-id header orqali soxtalashtirib bo'lmasin).
-    app.use(`/api/scribe`, authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
+    app.use(`/api/scribe`, authMiddleware, checkSubscription, tenantRateLimit('ai'), checkAiLimit,
       scribeRoutes(getPool(), authMiddleware, checkRole, upload, serverError, logger));
     app.use(`/api/doctor`, doctorViewRoutes(getPool(), authMiddleware, checkRole, serverError));
     app.use(`/api/b2b`, b2bRoutes(getPool(), authMiddleware, checkRole, validate, schemas, serverError));
