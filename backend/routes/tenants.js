@@ -73,6 +73,66 @@ export default function tenantRoutes() {
     }
   });
 
+  // GET /me — klinika kartasi: nomi, kod (Telegram havolasi uchun), tarif,
+  // sinov muddati va sozlash checklist'i (onboarding sehrgari shundan foydalanadi).
+  router.get('/me', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const t = await qGet(
+        `SELECT t.id, t.code, t.name, t.phone, t.address, t.city, t.trial_ends_at,
+                COALESCE(sp.code, 'free') AS plan_code, COALESCE(sp.name, 'Bepul') AS plan_name,
+                s.status AS sub_status
+         FROM tenants t
+         LEFT JOIN subscriptions s ON s.tenant_id = t.id AND s.status IN ('active','trialing')
+         LEFT JOIN subscription_plans sp ON sp.id = s.plan_id
+         WHERE t.id = $1`,
+        [tenantId]
+      );
+      if (!t) return res.status(404).json({ success: false, error: 'Klinika topilmadi' });
+
+      // Haqiqiy sozlash bosqichlari — bularsiz bron ishlamaydi
+      const c = await qGet(
+        `SELECT
+           (SELECT COUNT(*) FROM doctors WHERE tenant_id = $1)::int AS doctors,
+           (SELECT COUNT(DISTINCT doctor_id) FROM doctor_schedules WHERE tenant_id = $1)::int AS scheduled_doctors,
+           (SELECT COUNT(*) FROM services_catalog WHERE tenant_id = $1 AND active = TRUE)::int AS services,
+           (SELECT COUNT(*) FROM users WHERE tenant_id = $1)::int AS users,
+           (SELECT COUNT(*) FROM appointments WHERE tenant_id = $1)::int AS appointments`,
+        [tenantId]
+      );
+
+      const steps = [
+        { key: 'doctor',   label: 'Shifokor qo\'shish',        done: c.doctors > 0,            count: c.doctors },
+        { key: 'schedule', label: 'Ish jadvalini belgilash',   done: c.scheduled_doctors > 0,  count: c.scheduled_doctors },
+        { key: 'service',  label: 'Xizmat va narx qo\'shish',  done: c.services > 0,           count: c.services },
+        { key: 'staff',    label: 'Xodimlarni taklif qilish',  done: c.users > 1,              count: c.users },
+      ];
+      // Bron qabul qilish uchun birinchi uchtasi yetarli (xodim ixtiyoriy)
+      const ready = steps.slice(0, 3).every((s) => s.done);
+
+      let daysLeft = null;
+      if (t.trial_ends_at) {
+        daysLeft = Math.max(0, Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 86400000));
+      }
+
+      res.json({
+        success: true,
+        tenant: {
+          id: t.id, code: t.code, name: t.name, phone: t.phone,
+          address: t.address, city: t.city,
+        },
+        subscription: {
+          plan_code: t.plan_code, plan_name: t.plan_name,
+          status: t.sub_status || 'none',
+          trial_ends_at: t.trial_ends_at, trial_days_left: daysLeft,
+        },
+        onboarding: { ready, steps, appointments: c.appointments },
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   router.get('/stats', authMiddleware, async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id || 'default';

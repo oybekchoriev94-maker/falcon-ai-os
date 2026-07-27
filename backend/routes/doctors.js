@@ -41,7 +41,9 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   });
 
   // POST /api/auth/register-doctor — admin yangi shifokor qo'shishi
-  router.post('/auth/register-doctor', authMiddleware, checkRole('admin'), validate(schemas.registerDoctor), async (req, res) => {
+  // Klinika rahbari (ceo) ham shifokor qo'sha olishi kerak — yangi klinika
+  // ro'yxatdan o'tganda birinchi hisob aynan 'ceo' bo'ladi.
+  router.post('/auth/register-doctor', authMiddleware, checkRole('admin', 'ceo', 'superadmin'), validate(schemas.registerDoctor), async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
       const { name, username, password, specialization } = req.body;
@@ -63,6 +65,63 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
           username, specialization, specialty: name, status: 'Faol'
         }
       });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ── Shifokor ish jadvali ──────────────────────────────────────────────
+  // Busiz /api/booking/slots hech qachon bo'sh vaqt qaytarmaydi ("jadval yo'q").
+  // day_of_week: PostgreSQL/JS konventsiyasi — 0=Yakshanba .. 6=Shanba
+  // (booking.js computeSlots getUTCDay() bilan bir xil).
+
+  router.get('/doctors/:id/schedule', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const rows = await q(
+        'SELECT day_of_week, start_time, end_time, slot_duration FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY day_of_week',
+        [tenantId, req.params.id]
+      );
+      res.json({ success: true, schedule: rows });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // PUT — haftalik jadvalni to'liq almashtiradi (eski yozuvlar o'chadi)
+  router.put('/doctors/:id/schedule', authMiddleware, checkRole('admin', 'ceo', 'superadmin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const doctorId = req.params.id;
+      const { days, start_time, end_time, slot_duration } = req.body || {};
+
+      if (!Array.isArray(days) || days.length === 0) {
+        return res.status(400).json({ success: false, error: 'Kamida bitta ish kuni tanlanishi kerak' });
+      }
+      const uniqDays = [...new Set(days.map(Number))];
+      if (uniqDays.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+        return res.status(400).json({ success: false, error: 'Kun 0 (Yakshanba) dan 6 (Shanba) gacha bo\'lishi kerak' });
+      }
+      const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+      if (!timeRe.test(String(start_time)) || !timeRe.test(String(end_time))) {
+        return res.status(400).json({ success: false, error: 'Vaqt HH:MM formatida bo\'lishi kerak' });
+      }
+      const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+      if (toMin(end_time) <= toMin(start_time)) {
+        return res.status(400).json({ success: false, error: 'Tugash vaqti boshlanishdan keyin bo\'lishi kerak' });
+      }
+      const slot = Number(slot_duration) || 30;
+      if (slot < 5 || slot > 240) {
+        return res.status(400).json({ success: false, error: 'Qabul davomiyligi 5-240 daqiqa oralig\'ida' });
+      }
+
+      const doctor = await qGet('SELECT id FROM doctors WHERE tenant_id = $1 AND id = $2', [tenantId, doctorId]);
+      if (!doctor) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+
+      await q('DELETE FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2', [tenantId, doctorId]);
+      for (const d of uniqDays) {
+        await q(
+          'INSERT INTO doctor_schedules (tenant_id, doctor_id, day_of_week, start_time, end_time, slot_duration) VALUES ($1,$2,$3,$4,$5,$6)',
+          [tenantId, doctorId, d, start_time, end_time, slot]
+        );
+      }
+      res.json({ success: true, days: uniqDays.sort(), start_time, end_time, slot_duration: slot });
     } catch (e) { safeError(res, e); }
   });
 
