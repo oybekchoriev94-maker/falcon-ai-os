@@ -218,6 +218,14 @@ if (Telegram) { Telegram.expand(); Telegram.enableClosingConfirmation?.(); Teleg
 
 const params = new URLSearchParams(window.location.search);
 const reportId = params.get('report_id');
+// Klinika kodi — ko'p klinikali (SaaS) rejim uchun. Havola: /mini-app.html?clinic=KOD
+// Telegram start_param orqali ham kelishi mumkin (t.me/bot?startapp=KOD).
+const clinicCode = params.get('clinic') || (window.Telegram?.WebApp?.initDataUnsafe?.start_param || '').trim();
+/** Public API'ga klinika kodini qo'shadi — busiz barcha bemor 'default' ga tushadi */
+function withClinic(url) {
+  if (!clinicCode) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'clinic=' + encodeURIComponent(clinicCode);
+}
 
 // Detect startapp from Telegram WebApp or URL
 let referralId = null;
@@ -582,8 +590,8 @@ async function initBooking(report) {
   try {
     // Yangi to'qnashuvsiz + to'lovli oqim (appointments jadvali — reception bilan bir xil)
     const [docs, svcs] = await Promise.all([
-      fetch('/api/booking/public/doctors').then(r => r.json()),
-      fetch('/api/booking/public/services').then(r => r.json()),
+      fetch(withClinic('/api/booking/public/doctors')).then(r => r.json()),
+      fetch(withClinic('/api/booking/public/services')).then(r => r.json()),
     ]);
     if (!docs.success) throw new Error(docs.error || 'Shifokorlar yuklanmadi');
     bookingState.doctors = docs.doctors;
@@ -756,7 +764,7 @@ async function selectDay(dateStr, el) {
   try {
     let url = '/api/booking/public/slots?doctor_id=' + encodeURIComponent(bookingState.selectedDoctor) + '&date=' + encodeURIComponent(dateStr);
     if (bookingState.selectedService) url += '&service_id=' + encodeURIComponent(bookingState.selectedService.id);
-    const resp = await fetch(url);
+    const resp = await fetch(withClinic(url));
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
 
@@ -811,7 +819,7 @@ async function confirmBooking() {
   const telegramId = Telegram?.initDataUnsafe?.user?.id || params.get('telegram_id') || null;
 
   try {
-    const resp = await fetch('/api/booking/public/create', {
+    const resp = await fetch(withClinic('/api/booking/public/create'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

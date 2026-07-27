@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-store";
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -175,7 +176,14 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <p className="text-center text-xs text-muted-foreground/50">
+            <p className="text-center text-sm text-muted-foreground">
+              Klinikangiz hali ulanmaganmi?{" "}
+              <Link href="/signup" className="font-medium text-primary hover:underline">
+                Bepul boshlash
+              </Link>
+            </p>
+
+            <p className="mt-4 text-center text-xs text-muted-foreground/50">
               Falcon AI OS v2.0
             </p>
           </CardContent>
