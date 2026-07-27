@@ -38,7 +38,6 @@ import {
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
   SelectGroup,
@@ -508,7 +507,14 @@ export default function ReceptionPage() {
             <div className="space-y-1.5">
               <Label>Shifokor *</Label>
               <Select value={fDoctor} onValueChange={(v) => { setFDoctor(v ?? ""); setFSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder="Shifokorni tanlang" /></SelectTrigger>
+                <SelectTrigger>
+                  {/* Base UI SelectValue tanlangan QIYMATNI (uuid) chiqaradi — yorliqni o'zimiz beramiz */}
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {selectedDoctor
+                      ? `${selectedDoctor.first_name} ${selectedDoctor.last_name || ""}`.trim()
+                      : <span className="text-muted-foreground">Shifokorni tanlang</span>}
+                  </span>
+                </SelectTrigger>
                 <SelectContent>
                   {doctors.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
@@ -537,8 +543,14 @@ export default function ReceptionPage() {
                 </div>
               )}
               <Select value={fService} onValueChange={(v) => { setFService(v ?? ""); setFSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder={fCategory ? `${fCategory} — xizmatni tanlang` : "Xizmatni tanlang"} /></SelectTrigger>
-                <SelectContent className="max-h-72">
+                <SelectTrigger>
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {selectedService
+                      ? `${selectedService.icon ? selectedService.icon + " " : ""}${selectedService.name} — ${fmtSum(selectedService.price)}`
+                      : <span className="text-muted-foreground">{fCategory ? `${fCategory} — xizmatni tanlang` : "Xizmatni tanlang"}</span>}
+                  </span>
+                </SelectTrigger>
+                <SelectContent className="max-h-[60vh] w-[min(94vw,520px)]" alignItemWithTrigger={false}>
                   {groupedServices.map((g) => (
                     <SelectGroup key={g.name}>
                       <SelectLabel>{g.name}</SelectLabel>

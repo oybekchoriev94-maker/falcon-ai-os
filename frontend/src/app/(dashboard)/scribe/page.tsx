@@ -24,7 +24,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
@@ -204,7 +203,11 @@ export default function ScribePage() {
                   <Label>Yo&apos;nalish</Label>
                   {specLoading ? <Skeleton className="h-9 w-full" /> : (
                     <Select value={specialty} onValueChange={(v) => setSpecialty(v ?? "")}>
-                      <SelectTrigger><SelectValue placeholder="Yo'nalish" /></SelectTrigger>
+                      <SelectTrigger>
+                        <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                          {currentSpec ? currentSpec.label : <span className="text-muted-foreground">Yo&apos;nalish</span>}
+                        </span>
+                      </SelectTrigger>
                       <SelectContent>
                         {specialties.map((s) => (
                           <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>

@@ -26,7 +26,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
@@ -255,7 +254,11 @@ export default function OnboardingPage() {
                 <Input value={dName} onChange={(e) => setDName(e.target.value)} placeholder="Akram Akramov" /></div>
               <div className="space-y-1.5"><Label>Yo&apos;nalish *</Label>
                 <Select value={dSpec} onValueChange={(v) => setDSpec(v ?? "terapevt")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                      {SPECIALIZATIONS.find((x) => x.key === dSpec)?.label || dSpec}
+                    </span>
+                  </SelectTrigger>
                   <SelectContent>{SPECIALIZATIONS.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
                 </Select></div>
               <div className="space-y-1.5"><Label>Login *</Label>
@@ -284,7 +287,16 @@ export default function OnboardingPage() {
             <div className="space-y-1.5">
               <Label>Shifokor *</Label>
               <Select value={schedDoctor} onValueChange={(v) => setSchedDoctor(v ?? "")}>
-                <SelectTrigger><SelectValue placeholder={doctors.length ? "Shifokorni tanlang" : "Avval shifokor qo'shing"} /></SelectTrigger>
+                <SelectTrigger>
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {(() => {
+                      const d = doctors.find((x) => x.id === schedDoctor);
+                      return d
+                        ? `${d.first_name} ${d.last_name || ""}`.trim()
+                        : <span className="text-muted-foreground">{doctors.length ? "Shifokorni tanlang" : "Avval shifokor qo'shing"}</span>;
+                    })()}
+                  </span>
+                </SelectTrigger>
                 <SelectContent>
                   {doctors.map((d) => <SelectItem key={d.id} value={d.id}>{d.first_name} {d.last_name || ""}</SelectItem>)}
                 </SelectContent>
@@ -330,7 +342,12 @@ export default function OnboardingPage() {
                 <Input type="number" min={0} step={1000} value={sPrice} onChange={(e) => setSPrice(e.target.value)} placeholder="80000" /></div>
               <div className="space-y-1.5"><Label>Yo&apos;nalish</Label>
                 <Select value={sSpec} onValueChange={(v) => setSSpec(v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Ixtiyoriy" /></SelectTrigger>
+                  <SelectTrigger>
+                    <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                      {SPECIALIZATIONS.find((x) => x.key === sSpec)?.label
+                        || <span className="text-muted-foreground">Ixtiyoriy</span>}
+                    </span>
+                  </SelectTrigger>
                   <SelectContent>{SPECIALIZATIONS.map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
                 </Select></div>
               <div className="space-y-1.5"><Label>Davomiyligi (daq)</Label>
@@ -359,7 +376,11 @@ export default function OnboardingPage() {
                 <Input type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} placeholder="nodira@klinika.uz" /></div>
               <div className="space-y-1.5"><Label>Roli</Label>
                 <Select value={uRole} onValueChange={(v) => setURole(v ?? "receptionist")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                      {{ receptionist: "Qabulxona", admin: "Administrator", doctor: "Shifokor" }[uRole] || uRole}
+                    </span>
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="receptionist">Qabulxona</SelectItem>
                     <SelectItem value="admin">Administrator</SelectItem>

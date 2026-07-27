@@ -22,7 +22,6 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
   SelectGroup,
@@ -85,6 +84,7 @@ export default function ReceptionVoicePage() {
   });
   const services = svcData?.services ?? [];
   const selectedService = services.find((s) => s.id === service) || null;
+  const selectedDoctor = doctors.find((d) => d.id === doctor) || null;
 
   // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin,
   // tekis ro'yxatdan topish qiyin. Chip bilan bo'lim tanlanadi, ro'yxat esa
@@ -287,7 +287,14 @@ export default function ReceptionVoicePage() {
             <div className="space-y-1.5">
               <Label>Shifokor *</Label>
               <Select value={doctor} onValueChange={(v) => { setDoctor(v ?? ""); setSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder="Shifokorni tanlang" /></SelectTrigger>
+                <SelectTrigger>
+                  {/* Base UI SelectValue tanlangan QIYMATNI (uuid) chiqaradi — yorliqni o'zimiz beramiz */}
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {selectedDoctor
+                      ? `${selectedDoctor.first_name} ${selectedDoctor.last_name || ""}`.trim()
+                      : <span className="text-muted-foreground">Shifokorni tanlang</span>}
+                  </span>
+                </SelectTrigger>
                 <SelectContent>{doctors.map((d) => <SelectItem key={d.id} value={d.id}>{d.first_name} {d.last_name || ""} {d.specialty ? `· ${d.specialty}` : ""}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -309,8 +316,14 @@ export default function ReceptionVoicePage() {
                 </div>
               )}
               <Select value={service} onValueChange={(v) => { setService(v ?? ""); setSlot(null); }}>
-                <SelectTrigger><SelectValue placeholder={category ? `${category} — xizmatni tanlang` : "Xizmatni tanlang"} /></SelectTrigger>
-                <SelectContent className="max-h-72">
+                <SelectTrigger>
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {selectedService
+                      ? `${selectedService.icon ? selectedService.icon + " " : ""}${selectedService.name} — ${fmtSum(selectedService.price)}`
+                      : <span className="text-muted-foreground">{category ? `${category} — xizmatni tanlang` : "Xizmatni tanlang"}</span>}
+                  </span>
+                </SelectTrigger>
+                <SelectContent className="max-h-[60vh] w-[min(94vw,520px)]" alignItemWithTrigger={false}>
                   {groupedServices.map((g) => (
                     <SelectGroup key={g.name}>
                       <SelectLabel>{g.name}</SelectLabel>
