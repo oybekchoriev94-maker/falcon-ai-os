@@ -42,6 +42,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/patients", label: "Bemorlar", icon: Users, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/reception", label: "Navbat", icon: ClipboardList, roles: ["superadmin", "ceo", "admin", "receptionist"] },
+  { href: "/reception-voice", label: "Ovozli qabul", icon: Mic, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/wards", label: "Palatalar", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/inventory", label: "Ombor", icon: Package, roles: ["superadmin", "ceo", "admin"] },
   { href: "/billing", label: "To'lovlar", icon: CreditCard, roles: ["superadmin", "ceo", "admin"] },
