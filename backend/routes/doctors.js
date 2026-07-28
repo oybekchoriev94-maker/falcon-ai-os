@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { safeError } from '../services/safe-error.js';
 import { optionalAuth } from '../shared.js';
+import { SURXONDARYO_DISTRICTS } from '../constants/regions.js';
 import { llm, transcribe } from '../../ai/orchestrator.js';
 
 export default function doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload) {
@@ -273,24 +274,79 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
         );
         if (typeof fixed === 'string') cleaned = fixed;
       }
+      // Klinikaning HAQIQIY ro'yxatlari — LLM taxmin qilmasin, shulardan tanlasin
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const [docs, svcs] = await Promise.all([
+        q("SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND (status IS NULL OR status = 'Faol') ORDER BY first_name", [tenantId]),
+        q("SELECT id, name, category FROM services_catalog WHERE tenant_id = $1 AND active = TRUE ORDER BY category NULLS LAST, name", [tenantId]),
+      ]);
+      const docLines = docs.map((d, i) =>
+        `${i + 1}. ${d.first_name} ${d.last_name || ''}${d.specialty ? ' — ' + d.specialty : ''}`.trim()).join('\n');
+      const svcLines = svcs.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
+
       const raw = await llm(
-        `Bemor ma'lumotlarini ajratib, faqat JSON qaytaring. Matn o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz:
+        `Siz klinika qabulxonasi yordamchisisiz. Bemor haqidagi gapdan ma'lumot ajratib, FAQAT JSON qaytaring.
+Matn o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz.
+
+KLINIKA SHIFOKORLARI (faqat shu ro'yxatdan tanlang, raqamini yozing):
+${docLines || '(yo\'q)'}
+
+KLINIKA XIZMATLARI (faqat shu ro'yxatdan tanlang, raqamlarini yozing):
+${svcLines || '(yo\'q)'}
+
+SURXONDARYO TUMANLARI (faqat shulardan biri):
+${SURXONDARYO_DISTRICTS.join(', ')}
+
+JSON format:
 {
-  "patient_name": "bemor ismi",
-  "phone": "telefon raqami yoki bo'sh",
-  "doctor_specialty": "shifokor mutaxassisligi yoki ismi",
-  "department": "bo'lim (Terapiya/Kardiologiya/Nevrologiya/Pediatriya/Xirurgiya/Stomatologiya yoki bo'sh)",
+  "patient_name": "bemor ismi familiyasi",
+  "phone": "faqat 9 raqam, masalan 901234567",
+  "district": "yuqoridagi tumanlardan biri yoki bo'sh",
+  "mahalla": "mahalla/qishloq nomi yoki bo'sh",
+  "doctor_index": shifokor raqami yoki null,
+  "service_indexes": [xizmat raqamlari] yoki [],
   "preferred_time": "vaqt yoki bo'sh",
-  "notes": "qo'shimcha ma'lumot yoki bo'sh"
+  "notes": "qo'shimcha yoki bo'sh"
 }
-MUHIM: telefon raqami va boshqa sonlarni RAQAMLARDA yozing, so'z bilan emas. Masalan "to'qson to'qqiz uch..." -> "99 3...". Telefonni faqat raqam va + belgisi bilan.`,
+
+QOIDALAR:
+- Sonlarni RAQAMDA yozing ("to'qson bir" -> 91). Telefon: +998 va bo'shliqsiz, faqat 9 raqam.
+- Shifokor ismi aytilsa o'sha shifokorni, faqat yo'nalish aytilsa (masalan "UZI ga") o'sha yo'nalishdagi birinchi shifokorni tanlang.
+- Bemor bir nechta xizmat aytishi mumkin — hammasini service_indexes ga qo'shing.
+- Xizmat nomi to'liq aytilmasa ham ma'nosiga qarab mos keladiganini toping ("qorin UZI" -> "UZI Брюшная полость").
+- Ishonchingiz komil bo'lmasa null yoki bo'sh qoldiring — TAXMIN QILMANG.`,
         cleaned,
         { temperature: 0.0 }
       );
+
       const transcript = cleaned;
-      const extraction = (typeof raw === 'object' && raw !== null && !raw.error)
-        ? raw
-        : { patient_name: '', phone: '', doctor_specialty: '', department: '', preferred_time: '', notes: text };
+      const r = (typeof raw === 'object' && raw !== null && !raw.error) ? raw : {};
+
+      // Indekslarni haqiqiy yozuvlarga aylantiramiz (chegaradan chiqsa e'tiborsiz)
+      const di = Number(r.doctor_index);
+      const doctor = Number.isInteger(di) && di >= 1 && di <= docs.length ? docs[di - 1] : null;
+      const svcIdx = Array.isArray(r.service_indexes) ? r.service_indexes : [];
+      const pickedSvcs = [...new Set(svcIdx.map(Number))]
+        .filter((i) => Number.isInteger(i) && i >= 1 && i <= svcs.length)
+        .map((i) => svcs[i - 1]);
+      const district = SURXONDARYO_DISTRICTS.includes(String(r.district || '').trim())
+        ? String(r.district).trim() : '';
+
+      const extraction = {
+        patient_name: r.patient_name || '',
+        phone: String(r.phone || '').replace(/\D/g, '').slice(-9),
+        district,
+        mahalla: String(r.mahalla || '').trim(),
+        // Frontend to'g'ridan-to'g'ri qo'llashi uchun tayyor id lar
+        doctor_id: doctor?.id || null,
+        doctor_name: doctor ? `${doctor.first_name} ${doctor.last_name || ''}`.trim() : '',
+        service_ids: pickedSvcs.map((s) => s.id),
+        service_names: pickedSvcs.map((s) => s.name),
+        // Eski maydonlar — orqaga moslik uchun saqlanadi
+        doctor_specialty: doctor?.specialty || doctor?.specialization || '',
+        preferred_time: r.preferred_time || '',
+        notes: r.notes || '',
+      };
       res.json({ success: true, transcript, extraction });
     } catch (e) { safeError(res, e); }
   });

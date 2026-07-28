@@ -40,7 +40,10 @@ interface Service {
 interface Slot { time: string; scheduled_at: string; available: boolean }
 interface Extraction {
   patient_name?: string; phone?: string; doctor_specialty?: string;
-  department?: string; preferred_time?: string; notes?: string;
+  district?: string; mahalla?: string;
+  doctor_id?: string | null; doctor_name?: string;
+  service_ids?: string[]; service_names?: string[];
+  preferred_time?: string; notes?: string;
 }
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
@@ -214,15 +217,35 @@ export default function ReceptionVoicePage() {
     onSuccess: (res) => {
       const ex = res.extraction || {};
       setTranscript(res.transcript || "");
-      if (ex.patient_name) setName(ex.patient_name);
+      const filled: string[] = [];
+
+      if (ex.patient_name) { setName(ex.patient_name); filled.push(ex.patient_name); }
       if (ex.phone) setPhone(toLocalPhone(ex.phone));
-      if (ex.doctor_specialty) {
+      if (ex.district) { setDistrict(ex.district); filled.push(ex.district); }
+      if (ex.mahalla) setMahalla(ex.mahalla);
+
+      // Shifokorni backend allaqachon aniqlab beradi (klinika ro'yxatidan)
+      if (ex.doctor_id && doctors.some((d) => d.id === ex.doctor_id)) {
+        setDoctor(ex.doctor_id); setSlot(null);
+        if (ex.doctor_name) filled.push(ex.doctor_name);
+      } else if (ex.doctor_specialty) {
         const m = doctors.find((d) =>
           (d.specialty || "").toLowerCase().includes(ex.doctor_specialty!.toLowerCase()) ||
           (d.specialization || "").toLowerCase().includes(ex.doctor_specialty!.toLowerCase()));
-        if (m) setDoctor(m.id);
+        if (m) { setDoctor(m.id); setSlot(null); }
       }
-      toast.success("Ovoz tahlil qilindi", { description: ex.patient_name || "Ma'lumot to'ldirildi" });
+
+      // Aytilgan xizmatlar — mavjudlariga qo'shamiz (takrorlanmasin)
+      const ids = (ex.service_ids || []).filter((id) => services.some((s) => s.id === id));
+      if (ids.length) {
+        setPicked((prev) => [...new Set([...prev, ...ids])]);
+        setSlot(null);
+        filled.push(`${ids.length} ta xizmat`);
+      }
+
+      toast.success("Ovoz tahlil qilindi", {
+        description: filled.length ? filled.join(" · ") : "Ma'lumot to'ldirildi",
+      });
     },
     onError: (e: Error) => toast.error("Xatolik", { description: e.message }),
   });
