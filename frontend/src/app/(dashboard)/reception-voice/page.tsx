@@ -382,6 +382,18 @@ export default function ReceptionVoicePage() {
               <p className="text-center text-sm text-muted-foreground">
                 {busy ? "Tahlil qilinmoqda..." : recording ? `Yozilmoqda — ${seconds}s` : "Gapirish uchun bosing"}
               </p>
+              {!recording && !busy && (
+                <div className="w-full rounded-lg bg-muted/60 p-2.5 text-xs leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-foreground">Namuna:</span> &quot;Nazokat Aliyeva,
+                  Denov tumani Navbahor mahallasi, telefon <span className="font-semibold text-foreground">to&apos;qqiz
+                  uch besh besh besh ikki bir nol to&apos;qqiz</span>, Musayeva Barnoga qorin UZI va
+                  umumiy qon tahlili&quot;
+                  <br />
+                  <span className="text-amber-600 dark:text-amber-500">
+                    Telefonni raqam-raqam ayting — shunda xatosiz yoziladi.
+                  </span>
+                </div>
+              )}
               {transcript && <p className="w-full rounded-lg bg-muted p-2 text-xs">{transcript}</p>}
             </CardContent>
           </Card>

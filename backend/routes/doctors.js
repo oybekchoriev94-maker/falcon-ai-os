@@ -310,7 +310,12 @@ JSON format:
 }
 
 QOIDALAR:
-- Sonlarni RAQAMDA yozing ("to'qson bir" -> 91). Telefon: +998 va bo'shliqsiz, faqat 9 raqam.
+- Sonlarni RAQAMDA yozing, so'z bilan emas.
+- TELEFON: 9 ta raqam. Odatda raqam-raqam aytiladi ("to'qqiz uch besh besh besh
+  ikki bir nol to'qqiz" -> 935552109). Guruh bilan aytilsa ham o'giring
+  ("to'qson uch" -> 93, "yigirma bir" -> 21, "nol to'qqiz" -> 09).
+  Agar 9 ta raqam to'liq eshitilmasa — BOR RAQAMLARNIGINA yozing, yetmaganini
+  O'YLAB TOPMANG (noto'g'ri raqam bo'sh maydondan yomonroq).
 - Shifokor ismi aytilsa o'sha shifokorni, faqat yo'nalish aytilsa (masalan "UZI ga") o'sha yo'nalishdagi birinchi shifokorni tanlang.
 - Bemor bir nechta xizmat aytishi mumkin — hammasini service_indexes ga qo'shing.
 - Xizmat nomi to'liq aytilmasa ham ma'nosiga qarab mos keladiganini toping ("qorin UZI" -> "UZI Брюшная полость").
