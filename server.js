@@ -394,7 +394,7 @@ async function main() {
     app.use('/api/auth', authLimiter, authRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
     app.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
     app.use(`/webhooks`, webhookRoutes());
-    app.use(`${API_PREFIX}/tenants`, tenantRoutes());
+    app.use(`${API_PREFIX}/tenants`, tenantRoutes(upload));
     app.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
     // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
     // authMiddleware oldin turadi: tenant JWT dan olinsin (x-tenant-id header orqali soxtalashtirib bo'lmasin).

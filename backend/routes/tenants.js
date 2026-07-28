@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
 import { q, qGet } from '../db.js';
 import { signToken, authMiddleware, checkRole } from '../shared.js';
@@ -7,7 +10,15 @@ import { afterRegistration } from '../services/onboarding.js';
 
 const TRIAL_DAYS = 14;
 
-export default function tenantRoutes() {
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOGO_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'logos');
+// Faqat rasm; svg ataylab yo'q — ichida skript bo'lishi mumkin (XSS)
+const LOGO_TYPES = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
+};
+const LOGO_MAX = 2 * 1024 * 1024; // 2 MB
+
+export default function tenantRoutes(upload) {
   const router = Router();
 
   router.post('/register', async (req, res) => {
@@ -91,6 +102,8 @@ export default function tenantRoutes() {
       if (!t) return res.status(404).json({ success: false, error: 'Klinika topilmadi' });
 
       // Haqiqiy sozlash bosqichlari — bularsiz bron ishlamaydi
+      const logoRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
+
       const c = await qGet(
         `SELECT
            (SELECT COUNT(*) FROM doctors WHERE tenant_id = $1)::int AS doctors,
@@ -119,7 +132,7 @@ export default function tenantRoutes() {
         success: true,
         tenant: {
           id: t.id, code: t.code, name: t.name, phone: t.phone,
-          address: t.address, city: t.city,
+          address: t.address, city: t.city, logo_url: logoRow?.value || null,
         },
         subscription: {
           plan_code: t.plan_code, plan_name: t.plan_name,
@@ -128,6 +141,66 @@ export default function tenantRoutes() {
         },
         onboarding: { ready, steps, appointments: c.appointments },
       });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // POST /logo — klinika logotipini yuklash (rahbar/admin)
+  router.post('/logo', authMiddleware, checkRole('ceo', 'admin', 'superadmin'),
+    upload.single('logo'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      if (!tenantId) return res.status(400).json({ success: false, error: 'Tenant aniqlanmadi' });
+      if (!req.file) return res.status(400).json({ success: false, error: 'Rasm tanlanmagan' });
+
+      const ext = LOGO_TYPES[req.file.mimetype];
+      if (!ext) {
+        return res.status(400).json({ success: false, error: 'Faqat PNG, JPG yoki WEBP rasm qabul qilinadi' });
+      }
+      if (req.file.size > LOGO_MAX) {
+        return res.status(413).json({ success: false, error: 'Rasm 2 MB dan katta bo\'lmasin' });
+      }
+
+      await fs.mkdir(LOGO_DIR, { recursive: true });
+      // Fayl nomi tenant id dan — bemor/klinika nomi URL ga chiqmaydi.
+      // Versiya qo'shamiz: brauzer eski logoni keshdan ko'rsatmasin.
+      const version = Date.now().toString(36);
+      const fileName = `${tenantId}-${version}${ext}`;
+
+      // Eski logolarni tozalaymiz (bir tenantda bittasi yetarli)
+      try {
+        const old = await fs.readdir(LOGO_DIR);
+        await Promise.all(old.filter((f) => f.startsWith(tenantId + '-'))
+          .map((f) => fs.unlink(path.join(LOGO_DIR, f)).catch(() => {})));
+      } catch { /* papka endi yaratildi */ }
+
+      await fs.writeFile(path.join(LOGO_DIR, fileName), req.file.buffer);
+      const url = `/uploads/logos/${fileName}`;
+
+      await q(
+        `INSERT INTO clinic_settings (tenant_id, key, value, updated_at)
+         VALUES ($1, 'logo_url', $2, NOW())
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2, updated_at = NOW()`,
+        [tenantId, url]
+      );
+      res.json({ success: true, logo_url: url });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // DELETE /logo — logotipni olib tashlash
+  router.delete('/logo', authMiddleware, checkRole('ceo', 'admin', 'superadmin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const row = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
+      if (row?.value) {
+        const f = path.join(LOGO_DIR, path.basename(row.value));
+        await fs.unlink(f).catch(() => {});
+      }
+      await q("DELETE FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
+      res.json({ success: true });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
     }

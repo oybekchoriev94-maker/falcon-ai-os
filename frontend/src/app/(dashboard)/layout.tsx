@@ -1,6 +1,8 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-store";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -67,6 +69,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => { setMounted(true); }, []);
 
+  // Klinika nomi va logotipi — qaysi klinikada ekanini bir qarashda bilish uchun
+  const { data: clinic } = useQuery({
+    queryKey: ["tenant-me"],
+    enabled: isAuthenticated,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const res = await api.get<{ tenant: { name: string; logo_url?: string | null } }>("/api/v1/tenants/me");
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const clinicName = clinic?.tenant?.name || "Falcon AI OS";
+  const clinicLogo = clinic?.tenant?.logo_url
+    ? `${process.env.NEXT_PUBLIC_API_URL || ""}${clinic.tenant.logo_url}`
+    : null;
+
   // MUHIM: redirect faqat mount'dan keyin (zustand persist localStorage'dan
   // rehydratsiya qilib bo'lgach). Aks holda sahifani yangilaganda yoki bookmark'dan
   // ochganda autentifikatsiyalangan foydalanuvchi ham /login'ga uloqtiriladi
@@ -110,11 +128,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <div className="flex h-14 items-center gap-3 border-b border-border px-4">
           <div className={cn("flex items-center gap-3", collapsed && "justify-center w-full")}>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
-              <HeartPulse className="size-4" />
+            <div className="flex size-8 flex-none items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+              {clinicLogo
+                ? <img src={clinicLogo} alt="" className="size-full object-contain" />
+                : <HeartPulse className="size-4" />}
             </div>
             {!collapsed && (
-              <span className="font-semibold text-sm tracking-tight">Falcon AI OS</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold leading-tight tracking-tight">{clinicName}</span>
+                <span className="block text-[10px] leading-tight text-muted-foreground">Falcon AI OS</span>
+              </span>
             )}
           </div>
           <Button

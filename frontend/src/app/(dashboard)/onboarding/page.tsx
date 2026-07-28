@@ -16,6 +16,8 @@ import {
   ArrowRight,
   Sparkles,
   UserPlus,
+  ImagePlus,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +35,7 @@ import {
 /* ── Types ── */
 interface Step { key: string; label: string; done: boolean; count: number }
 interface MeResponse {
-  tenant: { id: string; code: string; name: string };
+  tenant: { id: string; code: string; name: string; logo_url?: string | null };
   subscription: { plan_name: string; status: string; trial_days_left: number | null };
   onboarding: { ready: boolean; steps: Step[]; appointments: number };
 }
@@ -172,6 +174,32 @@ export default function OnboardingPage() {
     onError: (e: Error) => toast.error("Qo'shib bo'lmadi", { description: e.message }),
   });
 
+  const uploadLogo = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("logo", file);
+      const res = await api.upload<{ logo_url: string }>("/api/v1/tenants/logo", fd);
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => { toast.success("Logotip saqlandi"); qc.invalidateQueries({ queryKey: ["tenant-me"] }); },
+    onError: (e: Error) => toast.error("Yuklab bo'lmadi", { description: e.message }),
+  });
+
+  const removeLogo = useMutation({
+    mutationFn: async () => {
+      const res = await api.delete("/api/v1/tenants/logo");
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => { toast.success("Logotip olib tashlandi"); qc.invalidateQueries({ queryKey: ["tenant-me"] }); },
+    onError: (e: Error) => toast.error("Xatolik", { description: e.message }),
+  });
+
+  const logoUrl = me?.tenant.logo_url
+    ? `${process.env.NEXT_PUBLIC_API_URL || ""}${me.tenant.logo_url}`
+    : null;
+
   const steps = me?.onboarding.steps ?? [];
   const doneCount = steps.filter((s) => s.done).length;
   const ready = me?.onboarding.ready ?? false;
@@ -238,6 +266,40 @@ export default function OnboardingPage() {
             </Card>
           );
         })}
+      </motion.div>
+
+      {/* Logotip */}
+      <motion.div variants={itemAnim}>
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <div className="flex size-24 flex-none items-center justify-center overflow-hidden rounded-xl border bg-muted/40">
+              {logoUrl
+                ? <img src={logoUrl} alt="Klinika logotipi" className="size-full object-contain" />
+                : <ImagePlus className="size-8 text-muted-foreground" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold">Klinika logotipi</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Yon menyuda, chekda va bemor sahifasida ko&apos;rinadi. PNG, JPG yoki WEBP, 2 MB gacha.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo.mutate(f); e.currentTarget.value = ""; }} />
+                  <span className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                    {uploadLogo.isPending ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+                    {logoUrl ? "Almashtirish" : "Logotip yuklash"}
+                  </span>
+                </label>
+                {logoUrl && (
+                  <Button variant="outline" size="sm" onClick={() => removeLogo.mutate()} disabled={removeLogo.isPending}>
+                    <Trash2 className="size-4" /> Olib tashlash
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* 1 — Doctor */}

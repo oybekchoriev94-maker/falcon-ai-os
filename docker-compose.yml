@@ -49,6 +49,10 @@ services:
     build: .
     ports: ["3000:3000"]
     mem_limit: 700m
+    volumes:
+      # Klinika logotiplari va PDF hisobotlar konteyner qayta qurilganda saqlansin
+      - app-uploads:/app/public/uploads
+      - app-reports:/app/public/reports
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -125,6 +129,9 @@ services:
 
 volumes:
   postgres-data:
+  # Yuklangan fayllar image ichida emas — har deploy'da yo'qolmasligi uchun
+  app-uploads:
+  app-reports:
   falcon-backup:
   falcon-logs:
   caddy-data:

@@ -63,6 +63,7 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
       : [];
     const clinic = await qGet('SELECT name, address, phone FROM tenants WHERE id = $1', [tenantId]);
     const innRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'inn'", [tenantId]);
+    const logoRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
     return {
       receipt_number: p.receipt_number,
       payment_id: p.id,
@@ -70,6 +71,7 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
       clinic_address: clinic?.address || '',
       clinic_phone: clinic?.phone || '',
       clinic_inn: innRow?.value || '',
+      clinic_logo: logoRow?.value || '',
       patient_name: p.a_patient || p.patient_name || 'Bemor',
       doctor_name: p.doctor_name || '',
       service_name: p.service_name || p.description || 'Xizmat',
@@ -287,6 +289,7 @@ function renderReceiptHtml(r) {
 <body>
 <div class="receipt">
   <div class="center">
+    ${r.clinic_logo ? `<img src="${esc(r.clinic_logo)}" alt="" style="max-width:34mm;max-height:20mm;margin:0 auto 4px;display:block">` : ''}
     <h1 class="bold">${esc(r.clinic_name)}</h1>
     ${r.clinic_address ? `<div class="sm muted">${esc(r.clinic_address)}</div>` : ''}
     ${r.clinic_phone ? `<div class="sm muted">Tel: ${esc(r.clinic_phone)}</div>` : ''}
