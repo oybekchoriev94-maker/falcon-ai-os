@@ -51,6 +51,13 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
        WHERE pt.tenant_id = $1 AND pt.id = $2`,
       [tenantId, paymentId]);
     if (!p) return null;
+    // Tashrifdagi barcha xizmatlar (snapshot nomi/narxi bilan)
+    const items = p.appointment_id
+      ? (await pool.query(
+          'SELECT name, price::float8 AS price FROM appointment_services WHERE tenant_id = $1 AND appointment_id = $2 ORDER BY id',
+          [tenantId, p.appointment_id]
+        )).rows
+      : [];
     const clinic = await qGet('SELECT name, address, phone FROM tenants WHERE id = $1', [tenantId]);
     const innRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'inn'", [tenantId]);
     return {
@@ -63,6 +70,8 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
       patient_name: p.a_patient || p.patient_name || 'Bemor',
       doctor_name: p.doctor_name || '',
       service_name: p.service_name || p.description || 'Xizmat',
+      // Bir tashrifda bir nechta xizmat bo'lishi mumkin — chekda har biri alohida qator
+      items: items.length ? items : [{ name: p.service_name || p.description || 'Xizmat', price: p.amount_f || 0 }],
       amount: p.amount_f || 0,
       cash_received: p.cash_f,
       change: p.change_f,
@@ -288,7 +297,9 @@ function renderReceiptHtml(r) {
   ${r.doctor_name ? `<div class="row"><span>Shifokor:</span><span>${esc(r.doctor_name)}</span></div>` : ''}
   ${r.scheduled_at ? `<div class="row"><span>Qabul vaqti:</span><span>${fmtDate(r.scheduled_at)}</span></div>` : ''}
   ${line}
-  <div class="row"><span>${esc(r.service_name)}</span><span class="bold">${fmtSum(r.amount)}</span></div>
+  ${(r.items || []).map((it) =>
+    `<div class="row"><span>${esc(it.name)}</span><span class="bold">${fmtSum(it.price)}</span></div>`
+  ).join('')}
   ${line}
   <div class="row total"><span>JAMI:</span><span>${fmtSum(r.amount)} so'm</span></div>
   <div class="row"><span>To'lov turi:</span><span>${esc(r.method)}</span></div>

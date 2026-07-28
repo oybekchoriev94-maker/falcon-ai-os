@@ -33,20 +33,33 @@ const slotsQuery = z.object({
   doctor_id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   service_id: z.string().uuid().optional(),
+  // Bir nechta xizmat: "uuid,uuid" — davomiylik yig'indisi olinadi
+  service_ids: z.string().optional(),
 });
 
+// Bemor bir kelishida bir nechta xizmat olishi mumkin (UZI + tahlil + qabul).
+// Eski `service_id` (bitta) ham ishlayveradi — orqaga moslik.
 const createSchema = z.object({
   patient_name: z.string().trim().min(1).max(255),
   phone: z.string().trim().max(50).optional().nullable(),
   doctor_id: z.string().uuid(),
-  service_id: z.string().uuid(),
+  service_id: z.string().uuid().optional(),
+  service_ids: z.array(z.string().uuid()).min(1).max(20).optional(),
   scheduled_at: z.string().datetime(),
   payment_method: z.enum(['online', 'cashier']),
   source: z.enum(['reception', 'telegram', 'call', 'walk_in']).default('reception'),
   telegram_id: z.union([z.string(), z.number()]).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   provider: z.enum(['payme', 'click', 'uzum', 'auto']).optional(),
+}).refine((d) => d.service_id || (d.service_ids && d.service_ids.length), {
+  message: 'Kamida bitta xizmat tanlanishi kerak',
 });
+
+/** So'rovdagi xizmat ro'yxatini yagona ko'rinishga keltiradi (tartib saqlanadi, takror olib tashlanadi) */
+function normalizeServiceIds(d) {
+  const list = d.service_ids?.length ? d.service_ids : (d.service_id ? [d.service_id] : []);
+  return [...new Set(list)];
+}
 
 export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, serverError) {
   const router = Router();
@@ -71,7 +84,8 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
   }
 
   // ---- Umumiy: bo'sh vaqtlarni hisoblash ----
-  async function computeSlots(tenantId, doctor_id, date, service_id) {
+  // serviceIds — bir nechta xizmat bo'lsa, davomiylik va summa yig'iladi
+  async function computeSlots(tenantId, doctor_id, date, serviceIds = []) {
     const doctor = await qGet(
       'SELECT id, first_name, last_name, specialization FROM doctors WHERE tenant_id = $1 AND id = $2',
       [tenantId, doctor_id]
@@ -80,14 +94,16 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
 
     let stepMin = 30;
     let serviceAmount = 0;
-    if (service_id) {
-      const svc = await qGet(
-        'SELECT price::float8 AS price, duration_min FROM services_catalog WHERE tenant_id = $1 AND id = $2 AND active = TRUE',
-        [tenantId, service_id]
+    if (serviceIds.length) {
+      const svcs = await q(
+        'SELECT id, price::float8 AS price, duration_min FROM services_catalog WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND active = TRUE',
+        [tenantId, serviceIds]
       );
-      if (!svc) return { status: 404, body: { success: false, error: 'Xizmat topilmadi' } };
-      stepMin = svc.duration_min || 30;
-      serviceAmount = svc.price;
+      if (svcs.length !== serviceIds.length) {
+        return { status: 404, body: { success: false, error: 'Xizmat topilmadi yoki faol emas' } };
+      }
+      stepMin = svcs.reduce((sum, s) => sum + (s.duration_min || 30), 0);
+      serviceAmount = svcs.reduce((sum, s) => sum + (s.price || 0), 0);
     }
 
     // day_of_week — Postgres 0=Yakshanba .. 6=Shanba
@@ -100,7 +116,7 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       return { status: 200, body: { success: true, doctor_id, date, slots: [], reason: 'Bu kunga jadval yo\'q' } };
     }
 
-    const step = Math.max(5, service_id ? stepMin : (sched.slot_duration || 30));
+    const step = Math.max(5, serviceIds.length ? stepMin : (sched.slot_duration || 30));
     const [sh, sm] = sched.start_time.split(':').map(Number);
     const [eh, em] = sched.end_time.split(':').map(Number);
     const startMin = sh * 60 + sm;
@@ -141,12 +157,23 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     while (attempts < 3) {
       attempts++;
       try {
-        const [svc, doc] = await Promise.all([
-          qGet('SELECT id, name, price::float8 AS price, duration_min, specialty FROM services_catalog WHERE tenant_id = $1 AND id = $2 AND active = TRUE', [tenantId, d.service_id]),
+        const serviceIds = normalizeServiceIds(d);
+        const [svcRows, doc] = await Promise.all([
+          q('SELECT id, name, price::float8 AS price, duration_min, specialty FROM services_catalog WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND active = TRUE', [tenantId, serviceIds]),
           qGet('SELECT id, first_name, last_name, specialization FROM doctors WHERE tenant_id = $1 AND id = $2', [tenantId, d.doctor_id]),
         ]);
-        if (!svc) return res.status(404).json({ success: false, error: 'Xizmat topilmadi yoki faol emas' });
+        if (svcRows.length !== serviceIds.length) {
+          return res.status(404).json({ success: false, error: 'Xizmat topilmadi yoki faol emas' });
+        }
         if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+
+        // So'rovdagi tartibni saqlaymiz — birinchisi asosiy xizmat hisoblanadi
+        const services = serviceIds.map((id) => svcRows.find((s) => s.id === id));
+        const svc = services[0];
+        const totalAmount = services.reduce((sum, s) => sum + (s.price || 0), 0);
+        const summary = services.length > 1
+          ? `${svc.name} +${services.length - 1} ta xizmat`
+          : svc.name;
 
         const scheduledAt = new Date(d.scheduled_at);
         if (scheduledAt.getTime() < Date.now() - 60_000) {
@@ -169,11 +196,21 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
             [
               tenantId, appointmentId, d.patient_name, d.phone || null,
               d.doctor_id, `${doc.first_name} ${doc.last_name || ''}`.trim(),
-              d.service_id, scheduledAt, svc.price, doc.specialization || 'therapy',
+              svc.id, scheduledAt, totalAmount, doc.specialization || 'therapy',
               d.source, d.payment_method, accessCode, d.notes || null,
             ]
           );
           const appt = apptRow.rows[0];
+
+          // Barcha xizmatlar — nomi va narxi SNAPSHOT sifatida (narx keyin
+          // o'zgarsa ham eski chek o'zgarmasligi kerak)
+          for (const s of services) {
+            await client.query(
+              `INSERT INTO appointment_services (tenant_id, appointment_id, service_id, name, price, duration_min)
+               VALUES ($1,$2,$3,$4,$5,$6)`,
+              [tenantId, appt.id, s.id, s.name, s.price || 0, s.duration_min || null]
+            );
+          }
 
           let paymentUrl = null;
           let paymentId = null;
@@ -183,7 +220,7 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
               `INSERT INTO payment_transactions
                  (id, tenant_id, appointment_id, amount, description, provider, status, created_at)
                VALUES ($1,$2,$3,$4,$5,$6,'pending',NOW())`,
-              [paymentId, tenantId, appt.id, svc.price, `${svc.name} — ${d.patient_name}`, d.provider || 'auto']
+              [paymentId, tenantId, appt.id, totalAmount, `${summary} — ${d.patient_name}`, d.provider || 'auto']
             );
           }
 
@@ -192,8 +229,8 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
           if (d.payment_method === 'online' && paymentId) {
             const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
             const payment = await createPayment({
-              amount: svc.price,
-              description: `${svc.name} — ${d.patient_name}`,
+              amount: totalAmount,
+              description: `${summary} — ${d.patient_name}`,
               orderId: paymentId,
               returnUrl: `${baseUrl}/qr-pay.html?order=${paymentId}`,
               provider: d.provider || 'auto',
@@ -231,9 +268,10 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
               appointment_id: appt.appointment_id,
               access_code: appt.access_code,
               doctor_name: `${doc.first_name} ${doc.last_name || ''}`.trim(),
-              service_name: svc.name,
+              service_name: summary,
+              services: services.map((s) => ({ id: s.id, name: s.name, price: s.price })),
               scheduled_at: scheduledAt.toISOString(),
-              amount: svc.price,
+              amount: totalAmount,
               payment_method: d.payment_method,
             },
             payment: d.payment_method === 'online'
@@ -267,8 +305,10 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     try {
       const parsed = slotsQuery.safeParse(req.query);
       if (!parsed.success) return res.status(400).json({ success: false, error: 'Noto\'g\'ri parametrlar' });
-      const { doctor_id, date, service_id } = parsed.data;
-      const r = await computeSlots(tid(req), doctor_id, date, service_id);
+      const { doctor_id, date, service_id, service_ids } = parsed.data;
+      const ids = service_ids ? service_ids.split(',').map((x) => x.trim()).filter(Boolean)
+                              : (service_id ? [service_id] : []);
+      const r = await computeSlots(tid(req), doctor_id, date, ids);
       res.status(r.status).json(r.body);
     } catch (e) { serverError(res, e); }
   });
@@ -295,7 +335,9 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       const rows = await q(
         `SELECT a.id, a.appointment_id, a.patient_name, a.phone, a.doctor_name,
                 a.scheduled_at, a.amount::float8 AS amount, a.status, a.payment_status,
-                a.payment_method, a.access_code, a.source, s.name AS service_name
+                a.payment_method, a.access_code, a.source, s.name AS service_name,
+                (SELECT COUNT(*) FROM appointment_services x
+                  WHERE x.tenant_id = a.tenant_id AND x.appointment_id = a.id)::int AS service_count
          FROM appointments a
          LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
          WHERE ${where}
@@ -379,8 +421,10 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       const parsed = slotsQuery.safeParse(req.query);
       if (!parsed.success) return res.status(400).json({ success: false, error: 'Noto\'g\'ri parametrlar' });
       const tenantId = await resolvePublicTenant(req);
-      const { doctor_id, date, service_id } = parsed.data;
-      const r = await computeSlots(tenantId, doctor_id, date, service_id);
+      const { doctor_id, date, service_id, service_ids } = parsed.data;
+      const ids = service_ids ? service_ids.split(',').map((x) => x.trim()).filter(Boolean)
+                              : (service_id ? [service_id] : []);
+      const r = await computeSlots(tenantId, doctor_id, date, ids);
       res.status(r.status).json(r.body);
     } catch (e) { serverError(res, e); }
   });
