@@ -17,6 +17,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { createPayment } from '../services/payment-gateway.js';
+import { upsertPatientByPhone } from '../services/patient-store.js';
 
 // I/O/1/0 chalkashmasin
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -187,18 +188,28 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
         const appointmentId = 'A' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
         const accessCode = generateAccessCode(6);
 
+        // Bemor kartasini telefon bo'yicha bog'laymiz (yo'q bo'lsa MRN bilan ochiladi).
+        // Bu bir bemorning barcha bronlarini istoriyaga yig'ish uchun.
+        // Xato bo'lsa null qaytadi — bron baribir davom etadi.
+        const patientId = d.patient_id || await upsertPatientByPhone(pool, tenantId, {
+          phone: d.phone,
+          patient_name: d.patient_name,
+          district: d.district,
+          address: d.mahalla,
+        });
+
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
           const apptRow = await client.query(
             `INSERT INTO appointments
-               (tenant_id, appointment_id, patient_name, phone, doctor_id, doctor_name,
+               (tenant_id, appointment_id, patient_id, patient_name, phone, doctor_id, doctor_name,
                 service_id, scheduled_at, amount, department, source, status, payment_status,
                 payment_method, access_code, notes, region, district, mahalla)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scheduled','pending',$12,$13,$14,$15,$16,$17)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'scheduled','pending',$13,$14,$15,$16,$17,$18)
              RETURNING id, appointment_id, access_code`,
             [
-              tenantId, appointmentId, d.patient_name, d.phone || null,
+              tenantId, appointmentId, patientId, d.patient_name, d.phone || null,
               d.doctor_id, `${doc.first_name} ${doc.last_name || ''}`.trim(),
               svc.id, scheduledAt, totalAmount, doc.specialization || 'therapy',
               d.source, d.payment_method, accessCode, d.notes || null,

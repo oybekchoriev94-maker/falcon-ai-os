@@ -62,8 +62,10 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         text
       );
       const consId = uuidv4();
-      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
-        [consId, tenantId, req.body?.doctor_id || req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
+      // patient_id — UI kartani oldindan tanlagan bo'lsa yoziladi, aks holda NULL
+      // (istoriya keyin qo'lda biriktirish uchun ochiq).
+      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        [consId, tenantId, req.body?.doctor_id || req.user?.id || null, req.body?.patient_id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
       let consumption = null;
       if (result.procedure) {
         consumption = await q(
@@ -120,8 +122,8 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
       const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." + NUMBER_RULE, text);
       const consId = uuidv4();
-      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6)",
-        [consId, tenantId, req.user?.id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
+      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        [consId, tenantId, req.user?.id || null, req.body?.patient_id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
       const specLabel = MEDICAL_SKILLS[specialization]?.label || specialization;
       const reportId = uuidv4();
       const telegramId = req.body?.telegram_id || null;
