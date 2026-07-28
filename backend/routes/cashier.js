@@ -42,9 +42,12 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
   // Chek obyektini yig'ish (pay javobida ham, GET /receipt da ham ishlatiladi)
   async function buildReceiptObj(tenantId, paymentId, cashierName) {
     const p = await qGet(
-      `SELECT pt.*, pt.amount::float8 AS amount_f, pt.cash_received::float8 AS cash_f, pt.change_given::float8 AS change_f,
-              a.appointment_id, a.patient_name AS a_patient, a.doctor_name, a.scheduled_at, a.access_code,
-              s.name AS service_name
+      // DIQQAT: pt.appointment_id (bigint FK) va a.appointment_id (matn kod, "A1B2C3")
+      // nomi bir xil — aniq alias berilmasa ikkinchisi birinchisini bosib ketadi.
+      `SELECT pt.*, pt.appointment_id AS appt_ref, pt.amount::float8 AS amount_f,
+              pt.cash_received::float8 AS cash_f, pt.change_given::float8 AS change_f,
+              a.appointment_id AS appt_code, a.patient_name AS a_patient, a.doctor_name,
+              a.scheduled_at, a.access_code, s.name AS service_name
        FROM payment_transactions pt
        LEFT JOIN appointments a ON a.id = pt.appointment_id AND a.tenant_id = pt.tenant_id
        LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
@@ -52,10 +55,10 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
       [tenantId, paymentId]);
     if (!p) return null;
     // Tashrifdagi barcha xizmatlar (snapshot nomi/narxi bilan)
-    const items = p.appointment_id
+    const items = p.appt_ref
       ? (await pool.query(
           'SELECT name, price::float8 AS price FROM appointment_services WHERE tenant_id = $1 AND appointment_id = $2 ORDER BY id',
-          [tenantId, p.appointment_id]
+          [tenantId, p.appt_ref]
         )).rows
       : [];
     const clinic = await qGet('SELECT name, address, phone FROM tenants WHERE id = $1', [tenantId]);
