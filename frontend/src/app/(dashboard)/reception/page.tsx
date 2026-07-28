@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SURXONDARYO_DISTRICTS, DEFAULT_REGION, toStoredPhone, toLocalPhone, formatLocalPhone } from "@/lib/regions";
 import {
   Dialog,
   DialogContent,
@@ -120,7 +121,9 @@ export default function ReceptionPage() {
   /* Booking form state */
   const [lang, setLang] = useState<"uz" | "ru">("uz");
   const [fName, setFName] = useState("");
-  const [fPhone, setFPhone] = useState("");
+  const [fPhone, setFPhone] = useState("");          // faqat 9 raqam
+  const [fDistrict, setFDistrict] = useState("");
+  const [fMahalla, setFMahalla] = useState("");
   const [fDoctor, setFDoctor] = useState("");
   const [fService, setFService] = useState("");
   const [fCategory, setFCategory] = useState("");  // xizmat bo'limi filtri
@@ -171,6 +174,16 @@ export default function ReceptionPage() {
   });
   const services = svcData?.services ?? [];
 
+  const { data: mahallaData } = useQuery({
+    queryKey: ["mahallas", fDistrict],
+    enabled: !!fDistrict,
+    queryFn: async () => {
+      const res = await api.get<{ mahallas: string[] }>(`/api/booking/mahallas?district=${encodeURIComponent(fDistrict)}`);
+      if (res.success) return res; throw new Error(res.error);
+    },
+  });
+  const mahallaOptions = mahallaData?.mahallas ?? [];
+
   const selectedDoctor = doctors.find((d) => d.id === fDoctor) || null;
   const selectedService = services.find((s) => s.id === fService) || null;
 
@@ -214,7 +227,10 @@ export default function ReceptionPage() {
         "/api/booking/create",
         {
           patient_name: fName.trim(),
-          phone: fPhone.trim() || null,
+          phone: toStoredPhone(fPhone),
+          region: fDistrict ? DEFAULT_REGION : null,
+          district: fDistrict || null,
+          mahalla: fMahalla.trim() || null,
           doctor_id: fDoctor,
           service_id: fService,
           scheduled_at: fSlot,
@@ -308,7 +324,7 @@ export default function ReceptionPage() {
 
   /* ── Helpers ── */
   function resetBook() {
-    setFName(""); setFPhone(""); setFDoctor(""); setFService(""); setFCategory("");
+    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFService(""); setFCategory("");
     setFSlot(null); setFDate(todayStr()); setPayMethod("cashier");
   }
 
@@ -348,7 +364,7 @@ export default function ReceptionPage() {
       if (!res.success) throw new Error(res.error);
       const ex = res.extraction || {};
       if (ex.patient_name) setFName(ex.patient_name);
-      if (ex.phone) setFPhone(ex.phone);
+      if (ex.phone) setFPhone(toLocalPhone(ex.phone));
       if (ex.doctor_specialty) {
         const match = doctors.find(
           (d) =>
@@ -500,7 +516,32 @@ export default function ReceptionPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Telefon</Label>
-                <Input value={fPhone} onChange={(e) => setFPhone(e.target.value)} placeholder="+998..." />
+                <div className="flex items-center rounded-lg border border-input focus-within:border-ring">
+                  <span className="select-none border-r px-2.5 py-2 text-sm text-muted-foreground">+998</span>
+                  <input value={formatLocalPhone(fPhone)}
+                    onChange={(e) => setFPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 9))}
+                    inputMode="numeric" placeholder="90 123 45 67"
+                    className="w-full bg-transparent px-2.5 py-2 text-sm outline-none" />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Tuman</Label>
+                <select value={fDistrict} onChange={(e) => { setFDistrict(e.target.value); setFMahalla(""); }}
+                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus:border-ring">
+                  <option value="">— tanlang —</option>
+                  {SURXONDARYO_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mahalla</Label>
+                <Input list="mahalla-list-r" value={fMahalla} onChange={(e) => setFMahalla(e.target.value)}
+                  placeholder={fDistrict ? "Mahalla nomi" : "Avval tuman"} disabled={!fDistrict} />
+                <datalist id="mahalla-list-r">
+                  {mahallaOptions.map((m) => <option key={m} value={m} />)}
+                </datalist>
               </div>
             </div>
 

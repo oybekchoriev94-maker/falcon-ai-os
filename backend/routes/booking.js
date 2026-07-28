@@ -51,6 +51,10 @@ const createSchema = z.object({
   telegram_id: z.union([z.string(), z.number()]).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   provider: z.enum(['payme', 'click', 'uzum', 'auto']).optional(),
+  // Yashash joyi — tuman ro'yxatdan, mahalla erkin matn
+  region: z.string().trim().max(60).optional().nullable(),
+  district: z.string().trim().max(80).optional().nullable(),
+  mahalla: z.string().trim().max(120).optional().nullable(),
 }).refine((d) => d.service_id || (d.service_ids && d.service_ids.length), {
   message: 'Kamida bitta xizmat tanlanishi kerak',
 });
@@ -190,14 +194,15 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
             `INSERT INTO appointments
                (tenant_id, appointment_id, patient_name, phone, doctor_id, doctor_name,
                 service_id, scheduled_at, amount, department, source, status, payment_status,
-                payment_method, access_code, notes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scheduled','pending',$12,$13,$14)
+                payment_method, access_code, notes, region, district, mahalla)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scheduled','pending',$12,$13,$14,$15,$16,$17)
              RETURNING id, appointment_id, access_code`,
             [
               tenantId, appointmentId, d.patient_name, d.phone || null,
               d.doctor_id, `${doc.first_name} ${doc.last_name || ''}`.trim(),
               svc.id, scheduledAt, totalAmount, doc.specialization || 'therapy',
               d.source, d.payment_method, accessCode, d.notes || null,
+              d.region || null, d.district || null, d.mahalla || null,
             ]
           );
           const appt = apptRow.rows[0];
@@ -335,7 +340,7 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       const rows = await q(
         `SELECT a.id, a.appointment_id, a.patient_name, a.phone, a.doctor_name,
                 a.scheduled_at, a.amount::float8 AS amount, a.status, a.payment_status,
-                a.payment_method, a.access_code, a.source, s.name AS service_name,
+                a.payment_method, a.access_code, a.source, a.district, a.mahalla, s.name AS service_name,
                 (SELECT COUNT(*) FROM appointment_services x
                   WHERE x.tenant_id = a.tenant_id AND x.appointment_id = a.id)::int AS service_count
          FROM appointments a
@@ -360,6 +365,26 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       );
       if (!row) return res.status(404).json({ success: false, error: 'Yozuv topilmadi yoki allaqachon bekor qilingan' });
       res.json({ success: true, cancelled: row.id });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // GET /mahallas?district=X — avval kiritilgan mahallalar (autocomplete).
+  // Rasmiy respublika ro'yxati tizimda yo'q, shuning uchun takliflar klinikaning
+  // o'z yozuvlaridan yig'iladi — vaqt o'tgani sari ro'yxat boyib boradi.
+  router.get('/mahallas', authMiddleware, async (req, res) => {
+    try {
+      const params = [tid(req)];
+      let where = "tenant_id = $1 AND mahalla IS NOT NULL AND mahalla <> ''";
+      if (req.query.district) {
+        params.push(String(req.query.district));
+        where += ` AND district = $${params.length}`;
+      }
+      const rows = await q(
+        `SELECT mahalla, COUNT(*)::int AS uses FROM appointments
+         WHERE ${where} GROUP BY mahalla ORDER BY uses DESC, mahalla LIMIT 200`,
+        params
+      );
+      res.json({ success: true, mahallas: rows.map((r) => r.mahalla) });
     } catch (e) { serverError(res, e); }
   });
 

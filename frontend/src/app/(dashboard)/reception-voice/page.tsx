@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SURXONDARYO_DISTRICTS, DEFAULT_REGION, toStoredPhone, toLocalPhone, formatLocalPhone } from "@/lib/regions";
 
 /* ── Types ── */
 interface Doctor {
@@ -70,7 +71,9 @@ export default function ReceptionVoicePage() {
   const [transcript, setTranscript] = useState("");
 
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState("");            // faqat 9 raqam (901234567)
+  const [district, setDistrict] = useState("");
+  const [mahalla, setMahalla] = useState("");
   const [doctor, setDoctor] = useState("");
   const [picked, setPicked] = useState<string[]>([]);      // tanlangan xizmatlar
   const [openCat, setOpenCat] = useState<string | null>(null); // ochilgan bo'lim
@@ -107,6 +110,17 @@ export default function ReceptionVoicePage() {
     },
   });
   const services = svcData?.services ?? [];
+
+  // Mahalla takliflari — klinikaning o'z yozuvlaridan (tuman bo'yicha)
+  const { data: mahallaData } = useQuery({
+    queryKey: ["mahallas", district],
+    enabled: !!district,
+    queryFn: async () => {
+      const res = await api.get<{ mahallas: string[] }>(`/api/booking/mahallas?district=${encodeURIComponent(district)}`);
+      if (res.success) return res; throw new Error(res.error);
+    },
+  });
+  const mahallaOptions = mahallaData?.mahallas ?? [];
 
   const selectedDoctor = doctors.find((d) => d.id === doctor) || null;
   const pickedServices = useMemo(
@@ -201,7 +215,7 @@ export default function ReceptionVoicePage() {
       const ex = res.extraction || {};
       setTranscript(res.transcript || "");
       if (ex.patient_name) setName(ex.patient_name);
-      if (ex.phone) setPhone(ex.phone);
+      if (ex.phone) setPhone(toLocalPhone(ex.phone));
       if (ex.doctor_specialty) {
         const m = doctors.find((d) =>
           (d.specialty || "").toLowerCase().includes(ex.doctor_specialty!.toLowerCase()) ||
@@ -219,7 +233,11 @@ export default function ReceptionVoicePage() {
         appointment: { access_code?: string; amount: number; doctor_name: string; scheduled_at: string; services?: { name: string; price: number }[] };
         payment: { payment_url?: string };
       }>("/api/booking/create", {
-        patient_name: name.trim(), phone: phone.trim() || null,
+        patient_name: name.trim(),
+        phone: toStoredPhone(phone),
+        region: district ? DEFAULT_REGION : null,
+        district: district || null,
+        mahalla: mahalla.trim() || null,
         doctor_id: doctor, service_ids: picked,
         scheduled_at: slot, payment_method: pay, source: "reception",
       });
@@ -245,7 +263,7 @@ export default function ReceptionVoicePage() {
   });
 
   function reset() {
-    setName(""); setPhone(""); setDoctor(""); setPicked([]); setOpenCat(null);
+    setName(""); setPhone(""); setDistrict(""); setMahalla(""); setDoctor(""); setPicked([]); setOpenCat(null);
     setSvcSearch(""); setSlot(null); setDate(todayStr()); setPay("cashier");
     setTranscript(""); setResult(null);
   }
@@ -349,8 +367,42 @@ export default function ReceptionVoicePage() {
             <CardContent className="space-y-3 p-5">
               <div className="space-y-1.5"><Label>Bemor ismi *</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ism familiya" className="h-11 text-base" /></div>
-              <div className="space-y-1.5"><Label>Telefon</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+998..." className="h-11 text-base" /></div>
+              <div className="space-y-1.5">
+                <Label>Telefon</Label>
+                {/* +998 doimiy prefiks — xodim faqat 9 raqam kiritadi */}
+                <div className="flex items-center gap-0 rounded-lg border border-input focus-within:border-ring">
+                  <span className="select-none border-r px-3 py-2.5 text-base text-muted-foreground">+998</span>
+                  <input
+                    value={formatLocalPhone(phone)}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                    inputMode="numeric" placeholder="90 123 45 67"
+                    className="h-11 w-full bg-transparent px-3 text-base outline-none"
+                  />
+                </div>
+                {phone.length > 0 && phone.length < 9 && (
+                  <p className="text-xs text-amber-600">9 ta raqam kerak ({phone.length}/9)</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tuman</Label>
+                <select value={district} onChange={(e) => { setDistrict(e.target.value); setMahalla(""); }}
+                  className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-base outline-none focus:border-ring">
+                  <option value="">— tanlang —</option>
+                  {SURXONDARYO_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mahalla</Label>
+                <Input list="mahalla-list" value={mahalla} onChange={(e) => setMahalla(e.target.value)}
+                  placeholder={district ? "Mahalla nomi" : "Avval tumanni tanlang"}
+                  disabled={!district} className="h-11 text-base" />
+                <datalist id="mahalla-list">
+                  {mahallaOptions.map((m) => <option key={m} value={m} />)}
+                </datalist>
+                {mahallaOptions.length > 0 && (
+                  <p className="text-xs text-muted-foreground">{mahallaOptions.length} ta oldingi mahalla taklif qilinadi</p>
+                )}
+              </div>
               <div className="space-y-1.5"><Label>Sana</Label>
                 <Input type="date" min={todayStr()} value={date} onChange={(e) => { setDate(e.target.value); setSlot(null); }} className="h-11" /></div>
             </CardContent>
