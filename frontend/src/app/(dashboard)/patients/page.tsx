@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-store";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -162,6 +163,7 @@ function genderLabel(g: string): string {
 
 export default function PatientsPage() {
   useAuth();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -357,7 +359,7 @@ export default function PatientsPage() {
             <PatientCard
               key={patient.id}
               patient={patient}
-              onView={() => openDetail(patient)}
+              onView={() => router.push(`/patients/${patient.id}`)}
               onEdit={() => openEditForm(patient)}
               onDelete={() => confirmDelete(patient)}
             />

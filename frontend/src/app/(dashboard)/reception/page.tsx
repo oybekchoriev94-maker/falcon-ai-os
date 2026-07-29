@@ -142,6 +142,45 @@ export default function ReceptionPage() {
   const [payFor, setPayFor] = useState<Appointment | null>(null);
   const [cashReceived, setCashReceived] = useState("");
 
+  /* Bemor kartasi (telefon bo'yicha topilgan) — takroriy bemorni ko'rsatib qo'yish uchun */
+  const [foundPatient, setFoundPatient] = useState<{ id: string; mrn?: string; visits: number } | null>(null);
+
+  // Telefon 9 raqamga to'lganda kartani izlab, ism va tumani bo'sh bo'lsa to'ldiramiz
+  useEffect(() => {
+    if (fPhone.length !== 9) { setFoundPatient(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = toStoredPhone(fPhone);
+        if (!stored) return;
+        const res = await api.get<{ patient: {
+          id: string; first_name: string; last_name?: string; middle_name?: string;
+          district?: string; address?: string; medical_record_number?: string;
+        } | null }>(`/api/patients/lookup?phone=${encodeURIComponent(stored)}`);
+        if (cancelled) return;
+        if (res.success && res.patient) {
+          const p = res.patient;
+          const full = `${p.last_name || ""} ${p.first_name} ${p.middle_name || ""}`.replace(/\s+/g, " ").trim();
+          setFName((cur) => cur.trim() ? cur : full);
+          if (p.district) setFDistrict((cur) => cur || p.district!);
+          if (p.address) setFMahalla((cur) => cur || p.address!);
+          // Necha marta kelganini istoriyadan olamiz (yumshoq — xato bo'lsa ko'rsatmaymiz)
+          try {
+            const h = await api.get<{ appointments: unknown[] }>(`/api/patients/${p.id}/history`);
+            setFoundPatient({ id: p.id, mrn: p.medical_record_number, visits: h.success ? h.appointments.length : 0 });
+          } catch {
+            setFoundPatient({ id: p.id, mrn: p.medical_record_number, visits: 0 });
+          }
+        } else {
+          setFoundPatient(null);
+        }
+      } catch {
+        if (!cancelled) setFoundPatient(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fPhone]);
+
   /* ── Queries ── */
   const { data: apptData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["booking-list", date],
@@ -525,6 +564,24 @@ export default function ReceptionPage() {
                 </div>
               </div>
             </div>
+
+            {/* Bemor kartasi topildi — takroriy tashrifni darhol ko'rsatamiz */}
+            {foundPatient && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-primary">●</span>
+                  <span className="truncate">
+                    Bemor topildi
+                    {foundPatient.mrn && <span className="text-muted-foreground"> · {foundPatient.mrn}</span>}
+                    {foundPatient.visits > 0 && <span className="text-muted-foreground"> · {foundPatient.visits} ta tashrif</span>}
+                  </span>
+                </div>
+                <a href={`/patients/${foundPatient.id}`} target="_blank" rel="noopener"
+                   className="shrink-0 text-xs font-medium text-primary hover:underline">
+                  Kartani ochish →
+                </a>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
