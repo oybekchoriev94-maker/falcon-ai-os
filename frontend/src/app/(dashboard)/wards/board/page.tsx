@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   Building2, BedDouble, ArrowLeft, Phone, Mic, Square, Loader2,
   FolderOpen, Stethoscope, Save, ThermometerSun, Activity, HeartPulse,
+  Pill, CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ function fmtDate(iso: string | null) {
 export default function WardsBoardPage() {
   const [openBed, setOpenBed] = useState<Bed | null>(null);
   const [obhodOpen, setObhodOpen] = useState(false);
+  const [medsOpen, setMedsOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["wards-board"],
@@ -131,12 +133,17 @@ export default function WardsBoardPage() {
 
       <BedDialog
         bed={openBed}
-        onClose={() => { setOpenBed(null); setObhodOpen(false); }}
+        onClose={() => { setOpenBed(null); setObhodOpen(false); setMedsOpen(false); }}
         onObhodOpen={() => setObhodOpen(true)}
+        onMedsOpen={() => setMedsOpen(true)}
       />
       <ObhodDialog
         bed={obhodOpen ? openBed : null}
         onClose={() => setObhodOpen(false)}
+      />
+      <MedScheduleDialog
+        bed={medsOpen ? openBed : null}
+        onClose={() => setMedsOpen(false)}
       />
     </div>
   );
@@ -196,10 +203,11 @@ function BedTile({ bed, onClick }: { bed: Bed; onClick: () => void }) {
   );
 }
 
-function BedDialog({ bed, onClose, onObhodOpen }: {
+function BedDialog({ bed, onClose, onObhodOpen, onMedsOpen }: {
   bed: Bed | null;
   onClose: () => void;
   onObhodOpen: () => void;
+  onMedsOpen: () => void;
 }) {
   const open = !!bed && bed.status === "occupied";
   return (
@@ -238,8 +246,123 @@ function BedDialog({ bed, onClose, onObhodOpen }: {
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Yopish</Button>
+            <Button variant="outline" onClick={onMedsOpen}><Pill className="size-4" /> Dorilar</Button>
             <Button onClick={onObhodOpen}><Mic className="size-4" /> Ovozli obhod</Button>
           </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Bugungi dorilar jadval + bajarish (hamshira) ──
+interface MedRow {
+  id: string;
+  medicine_name: string;
+  dosage: string | null;
+  route: string | null;
+  frequency: string | null;
+  doctor_name: string | null;
+  status: string;
+  executions: Array<{ id: string; at: string; nurse: string; shift: string | null; notes: string | null }>;
+}
+
+function MedScheduleDialog({ bed, onClose }: { bed: Bed | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const admissionId = bed?.admission_id || null;
+  const open = !!bed;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["med-schedule", admissionId],
+    enabled: open && !!admissionId,
+    queryFn: async () => {
+      const res = await api.get<{ medicines: MedRow[]; diet_number: number | null }>(
+        `/api/inpatient/admissions/${admissionId}/med-schedule`
+      );
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+  });
+
+  const meds = data?.medicines ?? [];
+
+  const execute = useMutation({
+    mutationFn: async ({ id, shift }: { id: string; shift?: string }) => {
+      const res = await api.post(`/api/inpatient/prescriptions/${id}/execute`, { shift });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Dori berildi");
+      qc.invalidateQueries({ queryKey: ["med-schedule", admissionId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const shiftNow = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "ertalab";
+    if (h < 17) return "kunduz";
+    if (h < 22) return "kechqurun";
+    return "tun";
+  })();
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Bugungi dorilar — {bed?.patient_name}</DialogTitle>
+          <DialogDescription>
+            Hamshira dorini bergandan keyin tugmani bosadi. Bugungi bajarilishlar
+            saqlanadi.
+            {data?.diet_number != null && (
+              <span className="ml-2">Parhez stoli: <b>№{data.diet_number}</b></span>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        ) : meds.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-6">Faol dori tayinlanmagan</p>
+        ) : (
+          <div className="space-y-2">
+            {meds.map((m) => (
+              <div key={m.id} className="rounded-lg border border-border/50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{m.medicine_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[m.dosage, m.route, m.frequency].filter(Boolean).join(" · ")}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/70">Tayinladi: {m.doctor_name || "—"}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={m.executions.length > 0 ? "outline" : "default"}
+                    onClick={() => execute.mutate({ id: m.id, shift: shiftNow })}
+                    disabled={execute.isPending}
+                  >
+                    <CheckCircle2 className="size-4" /> Berdim ({shiftNow})
+                  </Button>
+                </div>
+                {m.executions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {m.executions.map((ex) => (
+                      <Badge key={ex.id} variant="secondary" className="text-[10px]">
+                        {new Date(ex.at).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}
+                        {ex.shift && ` · ${ex.shift}`} · {ex.nurse || "—"}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Yopish</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

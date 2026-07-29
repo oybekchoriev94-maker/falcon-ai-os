@@ -674,6 +674,92 @@ export default function(pool, authMiddleware, checkRole, upload) {
   });
 
   // ============================================================
+  // BOSQICH E: RETSEPT BAJARISH JURNALI
+  // ============================================================
+  // POST /prescriptions/:id/execute — hamshira dorini bajarganini yozib qo'yadi.
+  router.post('/inpatient/prescriptions/:id/execute',
+    authMiddleware, checkRole('ceo', 'admin', 'doctor', 'receptionist'),
+    async (req, res) => {
+      try {
+        const tenantId = getTenantId(req);
+        const pres = await qGet(
+          `SELECT p.id, p.admission_id, a.patient_id FROM prescriptions p
+           JOIN admissions a ON a.id = p.admission_id
+           WHERE p.id = $1 AND p.tenant_id = $2`,
+          [req.params.id, tenantId]
+        );
+        if (!pres) return res.status(404).json({ success: false, error: 'Retsept topilmadi' });
+        const { shift, notes } = req.body || {};
+        const id = uuidv4();
+        await q(
+          `INSERT INTO prescription_executions
+             (id, tenant_id, prescription_id, admission_id, patient_id,
+              nurse_id, nurse_name, shift, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [id, tenantId, pres.id, pres.admission_id, pres.patient_id,
+           req.user?.id || null, req.user?.name || req.user?.username || null,
+           shift || null, notes || null]
+        );
+        res.json({ success: true, id });
+      } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+    }
+  );
+
+  // GET /admissions/:id/med-schedule — bugungi dorilar va bajarilishlar
+  router.get('/inpatient/admissions/:id/med-schedule', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const admId = req.params.id;
+      const adm = await qGet(
+        'SELECT id, diet_number FROM admissions WHERE id = $1 AND tenant_id = $2',
+        [admId, tenantId]
+      );
+      if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+
+      const meds = await q(
+        `SELECT p.id, p.medicine_name, p.dosage, p.route, p.frequency,
+                p.start_date, p.end_date, p.status, p.doctor_name,
+                COALESCE(json_agg(
+                  json_build_object(
+                    'id', pe.id, 'at', pe.executed_at,
+                    'nurse', pe.nurse_name, 'shift', pe.shift, 'notes', pe.notes
+                  ) ORDER BY pe.executed_at
+                ) FILTER (WHERE pe.id IS NOT NULL), '[]') AS executions
+         FROM prescriptions p
+         LEFT JOIN prescription_executions pe
+           ON pe.prescription_id = p.id AND pe.tenant_id = p.tenant_id
+           AND DATE(pe.executed_at) = CURRENT_DATE
+         WHERE p.admission_id = $1 AND p.tenant_id = $2 AND p.status = 'active'
+         GROUP BY p.id
+         ORDER BY p.created_at`,
+        [admId, tenantId]
+      );
+
+      res.json({ success: true, admission_id: admId, diet_number: adm.diet_number, medicines: meds });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  // PATCH /admissions/:id/diet — parhez stoli raqami
+  router.patch('/inpatient/admissions/:id/diet',
+    authMiddleware, checkRole('ceo', 'admin', 'doctor'),
+    async (req, res) => {
+      try {
+        const tenantId = getTenantId(req);
+        const n = parseInt(req.body?.diet_number, 10);
+        if (!Number.isFinite(n) || n < 0 || n > 20) {
+          return res.status(400).json({ success: false, error: 'diet_number 0-20' });
+        }
+        const r = await pool.query(
+          'UPDATE admissions SET diet_number = $1 WHERE id = $2 AND tenant_id = $3',
+          [n, req.params.id, tenantId]
+        );
+        if (r.rowCount === 0) return res.status(404).json({ success: false, error: 'Topilmadi' });
+        res.json({ success: true });
+      } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+    }
+  );
+
+  // ============================================================
   // BOSQICH C: XARORAT VARAQASI (grafik uchun vaqt qatorlari)
   // ============================================================
   // GET /api/inpatient/admissions/:id/vitals — bir admission bo'yicha
