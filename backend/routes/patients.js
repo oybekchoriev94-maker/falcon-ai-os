@@ -200,7 +200,7 @@ export default function patientsRoutes(pool, authMiddleware) {
       );
       if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
 
-      const [appointments, consultations, reports, admissions, intakes, epis] = await Promise.all([
+      const [appointments, consultations, reports, admissions, intakes, epis, labs] = await Promise.all([
         q(
           `SELECT a.id, a.appointment_id, a.scheduled_at, a.doctor_name, a.status, a.payment_status,
                   a.amount::float8 AS amount, s.name AS service_name
@@ -250,6 +250,18 @@ export default function patientsRoutes(pool, authMiddleware) {
            ORDER BY collected_at DESC LIMIT 50`,
           [tenantId, patientId]
         ),
+        q(
+          `SELECT lo.id, lo.test_type, lo.test_name, lo.reason, lo.status,
+                  lo.ordered_at, lo.ordered_by_doctor_name,
+                  lo.completed_at, lo.performed_by_name,
+                  lr.values_json AS result_values, lr.conclusion AS result_conclusion,
+                  lr.pdf_path AS result_pdf
+           FROM lab_orders lo
+           LEFT JOIN lab_results lr ON lr.lab_order_id = lo.id AND lr.tenant_id = lo.tenant_id
+           WHERE lo.tenant_id = $1 AND lo.patient_id = $2
+           ORDER BY lo.ordered_at DESC LIMIT 100`,
+          [tenantId, patientId]
+        ),
       ]);
 
       res.json({
@@ -262,7 +274,7 @@ export default function patientsRoutes(pool, authMiddleware) {
           admissions: admissions.length,
           last_visit: appointments[0]?.scheduled_at || null,
         },
-        appointments, consultations, reports, admissions, intakes, epis,
+        appointments, consultations, reports, admissions, intakes, epis, labs,
       });
     } catch (e) { safeError(res, e); }
   });

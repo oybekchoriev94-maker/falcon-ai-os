@@ -17,6 +17,8 @@ import {
   ClipboardCheck,
   ShieldAlert,
   Activity,
+  FlaskConical,
+  Plus,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, Legend,
@@ -101,6 +103,35 @@ interface AdmissionRow {
   status: string;
 }
 
+interface LabRow {
+  id: string;
+  test_type: string;
+  test_name?: string | null;
+  reason?: string | null;
+  status: string;
+  ordered_at: string;
+  ordered_by_doctor_name?: string | null;
+  completed_at?: string | null;
+  performed_by_name?: string | null;
+  result_values?: Record<string, unknown> | null;
+  result_conclusion?: string | null;
+  result_pdf?: string | null;
+}
+
+const LAB_TYPE_LABELS: Record<string, string> = {
+  blood_general: "Umumiy qon",
+  urine_general: "Umumiy peshob",
+  biochem: "Bioximik tahlil",
+  coagulo: "Koagulogramma",
+  ekg: "EKG",
+  rentgen: "Rentgen",
+  uzi: "UTT / UZI",
+  efgds: "EFGDS",
+  msct_mrt: "MSKT / MRT",
+  specialist: "Mutaxasis maslahati",
+  custom: "Boshqa",
+};
+
 interface IntakeRow {
   id: string;
   admission_id?: string | null;
@@ -131,6 +162,7 @@ interface HistoryPayload {
   admissions: AdmissionRow[];
   intakes?: IntakeRow[];
   epis?: EpiRow[];
+  labs?: LabRow[];
 }
 
 function fmtDate(s?: string) {
@@ -157,6 +189,8 @@ export default function PatientHistoryPage() {
   const id = params?.id;
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [epiOpen, setEpiOpen] = useState(false);
+  const [labOpen, setLabOpen] = useState(false);
+  const [labResultFor, setLabResultFor] = useState<LabRow | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["patient-history", id],
@@ -202,11 +236,16 @@ export default function PatientHistoryPage() {
           <Button size="sm" variant="outline" onClick={() => setEpiOpen(true)}>
             <ShieldAlert className="size-4" /> Epi-anamnez
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setLabOpen(true)}>
+            <FlaskConical className="size-4" /> Tekshiruv buyurish
+          </Button>
         </div>
       </div>
 
       <IntakeDialog open={intakeOpen} patientId={id} onClose={() => setIntakeOpen(false)} />
       <EpiDialog open={epiOpen} patientId={id} onClose={() => setEpiOpen(false)} />
+      <LabOrderDialog open={labOpen} patientId={id} onClose={() => setLabOpen(false)} />
+      <LabResultDialog order={labResultFor} onClose={() => setLabResultFor(null)} />
 
       {/* Karta boshi — asosiy identifikatsiya */}
       <Card>
@@ -384,6 +423,59 @@ export default function PatientHistoryPage() {
             </div>
           );
         })}
+      </Section>
+
+      {/* Laborator tekshiruvlar (Bosqich D) */}
+      <Section
+        icon={<FlaskConical className="size-4" />}
+        title="Laborator tekshiruvlar"
+        count={data.labs?.length || 0}
+        emptyText="Tekshiruv buyurilmagan"
+      >
+        {(data.labs || []).map((lb) => (
+          <div key={lb.id} className="py-2 border-b border-border/40 last:border-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {LAB_TYPE_LABELS[lb.test_type] || lb.test_type}
+                  {lb.test_name && <span className="text-muted-foreground"> · {lb.test_name}</span>}
+                </p>
+                {lb.reason && <p className="text-xs text-muted-foreground">Sabab: {lb.reason}</p>}
+                <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  Buyurdi: {lb.ordered_by_doctor_name || "—"} · {fmtDate(lb.ordered_at)}
+                </p>
+                {lb.result_conclusion && (
+                  <p className="text-xs mt-1 rounded bg-emerald-500/5 border border-emerald-500/20 p-2">{lb.result_conclusion}</p>
+                )}
+                {lb.result_values && Object.keys(lb.result_values).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {Object.entries(lb.result_values).slice(0, 6).map(([k, v]) => (
+                      <Badge key={k} variant="secondary" className="text-[10px] font-mono">
+                        {k}: {String(v)}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge
+                  variant={lb.status === "completed" ? "default" : lb.status === "cancelled" ? "destructive" : "outline"}
+                  className="text-[10px]"
+                >
+                  {lb.status === "completed" ? "tayyor" : lb.status === "cancelled" ? "bekor" : "buyurildi"}
+                </Badge>
+                {lb.status !== "completed" && lb.status !== "cancelled" && (
+                  <button onClick={() => setLabResultFor(lb)}
+                    className="text-[10px] text-primary hover:underline">natija kirit</button>
+                )}
+                {lb.result_pdf && (
+                  <a href={`/uploads/${lb.result_pdf}`} target="_blank" rel="noopener"
+                    className="text-[10px] text-primary hover:underline">PDF</a>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </Section>
 
       {/* AI Scribe konsultatsiyalari */}
@@ -692,6 +784,141 @@ function IntakeDialog({ open, patientId, onClose }: { open: boolean; patientId?:
           <div className="space-y-1.5">
             <Label>Taxminiy tashxis</Label>
             <Input value={prelimDx} onChange={(e) => setPrelimDx(e.target.value)} placeholder="Klinik taxmin" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>Saqlash</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Laborator tekshiruv buyurish ──
+function LabOrderDialog({ open, patientId, onClose }: { open: boolean; patientId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [testType, setTestType] = useState<string>("blood_general");
+  const [testName, setTestName] = useState("");
+  const [reason, setReason] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Bemor ID topilmadi");
+      const res = await api.post("/api/labs/orders", {
+        patient_id: patientId,
+        test_type: testType,
+        test_name: testName || undefined,
+        reason: reason || undefined,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Tekshiruv buyurildi");
+      qc.invalidateQueries({ queryKey: ["patient-history", patientId] });
+      setTestName(""); setReason("");
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Laborator tekshiruv buyurish</DialogTitle>
+          <DialogDescription>003-forma 4-bet — tekshiruv rejasi</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Tekshiruv turi</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {Object.entries(LAB_TYPE_LABELS).map(([k, v]) => (
+                <button key={k} type="button" onClick={() => setTestType(k)}
+                  className={`rounded-md border px-3 py-2 text-xs font-medium text-left ${testType === k ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+          {testType === "custom" && (
+            <div className="space-y-1.5">
+              <Label>Tekshiruv nomi *</Label>
+              <Input value={testName} onChange={(e) => setTestName(e.target.value)} placeholder="Masalan: HbA1c" />
+            </div>
+          )}
+          {testType === "specialist" && (
+            <div className="space-y-1.5">
+              <Label>Qaysi mutaxasis</Label>
+              <Input value={testName} onChange={(e) => setTestName(e.target.value)} placeholder="Kardiolog / nevrolog..." />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Sabab (klinik yo&apos;nalish)</Label>
+            <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Nima uchun buyurayapsiz" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            <Plus className="size-4" /> Buyurish
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Laborator natijasi kiritish (laborant) ──
+function LabResultDialog({ order, onClose }: { order: LabRow | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [conclusion, setConclusion] = useState("");
+  const [valuesText, setValuesText] = useState(""); // "Hb: 12.5\nWBC: 7.2"
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!order) throw new Error("Buyurtma topilmadi");
+      const values: Record<string, string | number> = {};
+      valuesText.split(/\n+/).forEach((line) => {
+        const [k, ...rest] = line.split(":");
+        if (!k || rest.length === 0) return;
+        const v = rest.join(":").trim();
+        const num = Number(v);
+        values[k.trim()] = Number.isFinite(num) && v !== "" ? num : v;
+      });
+      const res = await api.post(`/api/labs/orders/${order.id}/result`, {
+        values_json: Object.keys(values).length ? values : undefined,
+        conclusion: conclusion || undefined,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Natija saqlandi");
+      qc.invalidateQueries();
+      setConclusion(""); setValuesText("");
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={!!order} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Natija: {order ? (LAB_TYPE_LABELS[order.test_type] || order.test_type) : ""}</DialogTitle>
+          <DialogDescription>{order?.test_name}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Qiymatlar (har qatorda `nom: qiymat`)</Label>
+            <Textarea rows={6} value={valuesText} onChange={(e) => setValuesText(e.target.value)}
+              placeholder="Hb: 12.5&#10;WBC: 7.2&#10;HCT: 40&#10;PLT: 250" className="font-mono text-sm" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Xulosa / izoh</Label>
+            <Textarea rows={3} value={conclusion} onChange={(e) => setConclusion(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
