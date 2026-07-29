@@ -16,7 +16,11 @@ import {
   BedDouble,
   ClipboardCheck,
   ShieldAlert,
+  Activity,
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, Legend,
+} from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -316,23 +320,7 @@ export default function PatientHistoryPage() {
         emptyText="Yotqizilmagan"
       >
         {data.admissions.map((ad) => (
-          <div key={ad.id} className="py-2 border-b border-border/40 last:border-0">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">
-                  {fmtDate(ad.admission_date)}
-                  {ad.discharge_date && ` — ${fmtDate(ad.discharge_date)}`}
-                </p>
-                <p className="text-xs text-muted-foreground">{ad.attending_doctor_name || "—"}</p>
-              </div>
-              <Badge variant="secondary" className="text-[10px]">{ad.status}</Badge>
-            </div>
-            {(ad.diagnosis_initial || ad.diagnosis_final) && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {ad.diagnosis_final || ad.diagnosis_initial}
-              </p>
-            )}
-          </div>
+          <AdmissionRow key={ad.id} admission={ad} />
         ))}
       </Section>
 
@@ -490,6 +478,112 @@ function LoadingSkeleton() {
 
 function safeParse(s: string): Record<string, unknown> | null {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+// ── Har admission uchun qator + inline "Xarorat varaqasi" grafigi ──
+function AdmissionRow({ admission: ad }: { admission: AdmissionRow }) {
+  const [showChart, setShowChart] = useState(false);
+  return (
+    <div className="py-2 border-b border-border/40 last:border-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {fmtDate(ad.admission_date)}
+            {ad.discharge_date && ` — ${fmtDate(ad.discharge_date)}`}
+          </p>
+          <p className="text-xs text-muted-foreground">{ad.attending_doctor_name || "—"}</p>
+          {(ad.diagnosis_initial || ad.diagnosis_final) && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {ad.diagnosis_final || ad.diagnosis_initial}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Badge variant="secondary" className="text-[10px]">{ad.status}</Badge>
+          <button
+            onClick={() => setShowChart((s) => !s)}
+            className="text-[10px] text-primary hover:underline flex items-center gap-1"
+          >
+            <Activity className="size-3" /> {showChart ? "yopish" : "xarorat varaqasi"}
+          </button>
+        </div>
+      </div>
+      {showChart && <VitalsChart admissionId={ad.id} />}
+    </div>
+  );
+}
+
+interface VitalsPoint {
+  id: string;
+  date: string;
+  shift: string;
+  at: string;
+  temperature: number | null;
+  bp_sys: number | null;
+  bp_dia: number | null;
+  blood_pressure?: string | null;
+  pulse: number | null;
+  respiration: number | null;
+  saturation: number | null;
+}
+
+function VitalsChart({ admissionId }: { admissionId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["vitals", admissionId],
+    queryFn: async () => {
+      const res = await api.get<{ points: VitalsPoint[] }>(`/api/inpatient/admissions/${admissionId}/vitals`);
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-40 w-full mt-3" />;
+  const points = data?.points ?? [];
+  if (points.length === 0) {
+    return <p className="text-xs text-muted-foreground mt-3">Bu yotqizishda obhod yozuvi yo&apos;q</p>;
+  }
+
+  // X o'qi uchun qisqa yorliq: 03/09 e (ertalab) / k (kechqurun)
+  const chartData = points.map((p) => ({
+    ...p,
+    label: `${new Date(p.date).toLocaleDateString("uz-UZ", { day: "2-digit", month: "2-digit" })} ${p.shift === "kechqurun" ? "k" : "e"}`,
+  }));
+
+  return (
+    <div className="mt-3 space-y-3">
+      {/* Harorat + puls */}
+      <div className="rounded-lg border border-border/40 p-2">
+        <p className="text-[10px] text-muted-foreground mb-1 px-1">Harorat va puls</p>
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="temp" domain={[35, 41]} tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="pulse" orientation="right" domain={[40, 140]} tick={{ fontSize: 10 }} />
+            <ChartTooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            <Line yAxisId="temp" type="monotone" dataKey="temperature" name="t°" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+            <Line yAxisId="pulse" type="monotone" dataKey="pulse" name="Puls" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {/* Qon bosimi */}
+      <div className="rounded-lg border border-border/40 p-2">
+        <p className="text-[10px] text-muted-foreground mb-1 px-1">Qon bosimi (sistolik/diastolik)</p>
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+            <YAxis domain={[50, 200]} tick={{ fontSize: 10 }} />
+            <ChartTooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            <Line type="monotone" dataKey="bp_sys" name="Sistolik" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+            <Line type="monotone" dataKey="bp_dia" name="Diastolik" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 // ── Birlamchi qabul ko'rigi dialogi ──

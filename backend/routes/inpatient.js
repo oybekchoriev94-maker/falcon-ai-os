@@ -674,6 +674,63 @@ export default function(pool, authMiddleware, checkRole, upload) {
   });
 
   // ============================================================
+  // BOSQICH C: XARORAT VARAQASI (grafik uchun vaqt qatorlari)
+  // ============================================================
+  // GET /api/inpatient/admissions/:id/vitals — bir admission bo'yicha
+  // barcha daily_notes qiymatlari (t°, A/D, puls, nafas, saturation)
+  // — front-end Recharts bilan grafik chizadi.
+  router.get('/inpatient/admissions/:id/vitals', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const admissionId = req.params.id;
+      const adm = await qGet(
+        `SELECT id, admission_date, discharge_date, patient_id, patient_name
+         FROM admissions WHERE id = $1 AND tenant_id = $2`,
+        [admissionId, tenantId]
+      );
+      if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+
+      const notes = await q(
+        `SELECT id, date, shift, created_at,
+                temperature, blood_pressure, pulse, respiration, saturation
+         FROM daily_notes
+         WHERE tenant_id = $1 AND admission_id = $2
+         ORDER BY date ASC, created_at ASC`,
+        [tenantId, admissionId]
+      );
+
+      // A/D "120/80" formatidan sistolik va diastolik ajratish
+      const parseBP = (s) => {
+        if (!s) return { sys: null, dia: null };
+        const m = String(s).match(/^\s*(\d{2,3})\s*\/\s*(\d{2,3})/);
+        return m ? { sys: parseInt(m[1], 10), dia: parseInt(m[2], 10) } : { sys: null, dia: null };
+      };
+
+      const points = notes.map((n) => {
+        const bp = parseBP(n.blood_pressure);
+        return {
+          id: n.id,
+          date: n.date,
+          shift: n.shift,
+          at: n.created_at,
+          temperature: n.temperature != null ? Number(n.temperature) : null,
+          bp_sys: bp.sys, bp_dia: bp.dia, blood_pressure: n.blood_pressure,
+          pulse: n.pulse, respiration: n.respiration, saturation: n.saturation,
+        };
+      });
+
+      res.json({
+        success: true,
+        admission: {
+          id: adm.id, patient_id: adm.patient_id, patient_name: adm.patient_name,
+          admission_date: adm.admission_date, discharge_date: adm.discharge_date,
+        },
+        points,
+      });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  // ============================================================
   // YANGI: OVOZLI OBHOD
   // ============================================================
 
