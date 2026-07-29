@@ -196,10 +196,16 @@ export default function WardsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Palatalar</h1>
           <p className="text-sm text-muted-foreground">Klinika o'rinlari va palatalar holati</p>
         </div>
-        <Button onClick={() => setAddWardOpen(true)}>
-          <Plus className="size-4 mr-1.5" />
-          Yangi palata
-        </Button>
+        <div className="flex gap-2">
+          <a href="/wards/board"
+             className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-accent">
+            <BedDouble className="size-4" /> Palata xaritasi
+          </a>
+          <Button onClick={() => setAddWardOpen(true)}>
+            <Plus className="size-4 mr-1.5" />
+            Yangi palata
+          </Button>
+        </div>
       </div>
 
       <motion.div variants={item} className="grid gap-3 grid-cols-2 lg:grid-cols-4">

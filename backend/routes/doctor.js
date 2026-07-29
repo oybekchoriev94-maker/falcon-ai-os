@@ -7,7 +7,14 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
-export default function doctorRoutes(pool, authMiddleware, checkRole, serverError) {
+export default function doctorRoutes(pool, authMiddleware, checkRole, _validate, _schemas, _telegramOrJwtAuth, _upload) {
+  // Standart xato yordamchisi. Ilgari server.js'dan `serverError` uzatilishi
+  // kutilardi, lekin haqiqatda `validate` funksiyasi yetkazilardi (signatura
+  // mos kelmasdi). Endi lokal fallback bilan barqarorlaymiz.
+  const serverError = (res, e) => {
+    console.error('[DOCTOR]', e);
+    res.status(500).json({ success: false, error: e?.message || 'Server xatosi' });
+  };
   const router = Router();
 
   async function q(sql, params = []) {

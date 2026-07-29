@@ -6,8 +6,9 @@
 
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { upsertPatientByPhone } from '../services/patient-store.js';
 
-export default function(pool, authMiddleware, checkRole) {
+export default function(pool, authMiddleware, checkRole, upload) {
   const router = Router();
 
   // ─── DB helperlar ────────────────────────────────────────
@@ -237,39 +238,52 @@ export default function(pool, authMiddleware, checkRole) {
     try {
       const tenantId = getTenantId(req);
       const {
-        patient_name, patient_phone, patient_id,
+        patient_name, patient_phone, patient_id: bodyPatientId,
+        appointment_id,
         ward_id, bed_id,
-        admission_type, diagnosis_initial,
+        admission_type, diagnosis_initial, admission_date,
         attending_doctor_id, attending_doctor_name,
         payment_type, notes
       } = req.body;
 
       if (!patient_name) return res.status(400).json({ success: false, error: 'Bemor ismi majburiy' });
 
-      // Koyka bandligini tekshirish
+      // Bemor kartasi: berilmagan bo'lsa telefon bo'yicha upsert.
+      // Statsionar tarixi ham bir kartada yig'iladi (poliklinik bilan bir joyda).
+      let patientId = bodyPatientId || null;
+      if (!patientId && patient_phone) {
+        patientId = await upsertPatientByPhone(pool, tenantId, {
+          phone: patient_phone,
+          patient_name,
+        });
+      }
+
+      // Koyka bandligini tekshirish (tenant izolyatsiya bilan)
       if (bed_id) {
-        const bed = await qGet('SELECT * FROM beds WHERE id = $1', [bed_id]);
+        const bed = await qGet(
+          'SELECT b.* FROM beds b JOIN wards w ON w.id = b.ward_id WHERE b.id = $1 AND w.tenant_id = $2',
+          [bed_id, tenantId]
+        );
         if (!bed) return res.status(400).json({ success: false, error: 'Koyka topilmadi' });
         if (bed.status === 'occupied') return res.status(400).json({ success: false, error: 'Koyka band' });
-
-        // Koykani band qilish
         await q('UPDATE beds SET status = $1 WHERE id = $2', ['occupied', bed_id]);
       }
 
       const id = uuidv4();
       await q(
-        `INSERT INTO admissions (id, tenant_id, patient_id, patient_name, patient_phone,
-           ward_id, bed_id, admission_type, diagnosis_initial,
+        `INSERT INTO admissions (id, tenant_id, patient_id, appointment_id, patient_name, patient_phone,
+           ward_id, bed_id, admission_date, admission_type, diagnosis_initial,
            attending_doctor_id, attending_doctor_name, payment_type, notes, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-        [id, tenantId, patient_id || null, patient_name, patient_phone || null,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [id, tenantId, patientId, appointment_id || null, patient_name, patient_phone || null,
          ward_id || null, bed_id || null,
+         admission_date || new Date().toISOString(),
          admission_type || 'rejali', diagnosis_initial || null,
          attending_doctor_id || null, attending_doctor_name || null,
          payment_type || 'kassa', notes || null, 'active']
       );
 
-      res.json({ success: true, data: { id }, message: 'Bemor yotqizildi' });
+      res.json({ success: true, data: { id, patient_id: patientId }, message: 'Bemor yotqizildi' });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -337,27 +351,33 @@ export default function(pool, authMiddleware, checkRole) {
   // DAILY NOTES (Kunlik kuzatuv)
   // ============================================================
 
-  // POST /api/inpatient/daily-notes — Kunlik kuzatuv qo'shish
+  // POST /api/inpatient/daily-notes — Kunlik kuzatuv (obhod) qo'shish
   router.post('/inpatient/daily-notes', authMiddleware, checkRole('ceo', 'admin', 'doctor'), async (req, res) => {
     try {
       const tenantId = getTenantId(req);
       const {
         admission_id, date, shift,
         temperature, blood_pressure, pulse, respiration, saturation,
-        complaints, objective_status, treatment_plan, notes
+        complaints, objective_status, treatment_plan, notes,
+        raw_text, ai_summary, data_json,
       } = req.body;
 
       if (!admission_id) return res.status(400).json({ success: false, error: 'Admission ID majburiy' });
-      const admCheck = await qGet('SELECT id FROM admissions WHERE id = $1 AND tenant_id = $2', [admission_id, tenantId]);
-      if (!admCheck) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+      const adm = await qGet(
+        'SELECT id, patient_id FROM admissions WHERE id = $1 AND tenant_id = $2',
+        [admission_id, tenantId]
+      );
+      if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
 
       const id = uuidv4();
       await q(
-        `INSERT INTO daily_notes (id, admission_id, doctor_id, doctor_name, nurse_id, nurse_name,
-           date, shift, temperature, blood_pressure, pulse, respiration, saturation,
-           complaints, objective_status, treatment_plan, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-        [id, admission_id,
+        `INSERT INTO daily_notes (id, tenant_id, admission_id, patient_id, doctor_id, doctor_name,
+           nurse_id, nurse_name, date, shift,
+           temperature, blood_pressure, pulse, respiration, saturation,
+           complaints, objective_status, treatment_plan, notes,
+           raw_text, ai_summary, data_json)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+        [id, tenantId, admission_id, adm.patient_id,
          req.user?.id || null, req.user?.name || null,
          null, null,
          date || new Date().toISOString().split('T')[0],
@@ -365,7 +385,9 @@ export default function(pool, authMiddleware, checkRole) {
          temperature || null, blood_pressure || null,
          pulse || null, respiration || null, saturation || null,
          complaints || null, objective_status || null,
-         treatment_plan || null, notes || null]
+         treatment_plan || null, notes || null,
+         raw_text || null, ai_summary || null,
+         data_json ? JSON.stringify(data_json) : null]
       );
 
       res.json({ success: true, data: { id }, message: 'Kuzatuv qo\'shildi' });
@@ -610,6 +632,134 @@ export default function(pool, authMiddleware, checkRole) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
+
+  // ============================================================
+  // YANGI: PALATA XARITASI (koyka-koyka)
+  // ============================================================
+
+  // GET /api/inpatient/wards/board — Barcha palatalar + koykalar + kimda kim yotgan
+  // Nima uchun bir endpoint: hamshira/doctor bir qarashda hammasini ko'rsin,
+  // N+1 so'rovsiz. Kichik klinikada wards ~20, beds ~200 — bitta so'rov yetadi.
+  router.get('/inpatient/wards/board', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const wards = await q(
+        `SELECT id, name, floor, room_number, department, status
+         FROM wards WHERE tenant_id = $1 ORDER BY floor NULLS LAST, name`,
+        [tenantId]
+      );
+      const beds = await q(
+        `SELECT b.id, b.ward_id, b.bed_number, b.bed_type, b.status,
+                a.id AS admission_id, a.patient_id, a.patient_name,
+                a.admission_date, a.diagnosis_initial, a.attending_doctor_name,
+                p.medical_record_number, p.phone
+         FROM beds b
+         JOIN wards w ON w.id = b.ward_id
+         LEFT JOIN admissions a ON a.bed_id = b.id AND a.status = 'active' AND a.tenant_id = w.tenant_id
+         LEFT JOIN patients p ON p.id = a.patient_id AND p.tenant_id = w.tenant_id
+         WHERE w.tenant_id = $1
+         ORDER BY w.name, b.bed_number`,
+        [tenantId]
+      );
+      // Palatalarga koykalarni guruhlash
+      const byWard = new Map(wards.map((w) => [w.id, { ...w, beds: [] }]));
+      for (const bed of beds) {
+        const bucket = byWard.get(bed.ward_id);
+        if (bucket) bucket.beds.push(bed);
+      }
+      res.json({ success: true, wards: [...byWard.values()] });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ============================================================
+  // YANGI: OVOZLI OBHOD
+  // ============================================================
+
+  // POST /api/inpatient/daily-notes/voice — Ovoz -> STT -> LLM -> daily_notes
+  //
+  // Shifokor obhod paytida gapiradi: "Bemor holati o'rtacha, temp 37.2,
+  // bosim 130/80, shikoyati bosh og'rig'i, davom qilinsin".
+  // LLM: temperature, blood_pressure, pulse, complaints, treatment_plan
+  // maydonlariga ajratadi + qisqa ai_summary yozadi.
+  //
+  // Xato bo'lsa saqlanmaydi — shifokor qo'lda kiritish oynasiga tushadi.
+  router.post('/inpatient/daily-notes/voice',
+    authMiddleware, checkRole('ceo', 'admin', 'doctor'),
+    upload ? upload.single('audio') : (req, _res, next) => next(),
+    async (req, res) => {
+      try {
+        const tenantId = getTenantId(req);
+        const { admission_id, language } = req.body;
+        if (!admission_id) return res.status(400).json({ success: false, error: 'admission_id majburiy' });
+        if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
+
+        const adm = await qGet(
+          'SELECT id, patient_id FROM admissions WHERE id = $1 AND tenant_id = $2',
+          [admission_id, tenantId]
+        );
+        if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+
+        // STT + LLM chaqiruv (scribe bilan bir xil orchestrator)
+        const { transcribe, llm } = await import('../../ai/orchestrator.js');
+        const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language });
+        if (stt.error) {
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500)
+            .json({ success: false, error: stt.error, code: stt.code });
+        }
+        const text = stt.text || '';
+
+        const prompt =
+          "Siz shifokor yordamchisisiz. Statsionar bemorining obhod paytidagi ovozli " +
+          "yozuvidan quyidagi JSON kalitlarini ajratib qaytaring (yo'q bo'lsa null yoki bo'sh string): " +
+          '{"temperature": null, "blood_pressure": "", "pulse": null, "respiration": null, ' +
+          '"saturation": null, "complaints": "", "objective_status": "", "treatment_plan": "", ' +
+          '"ai_summary": ""}. ' +
+          "temperature — o'ndan bir aniqlikda son (37.5), pulse/respiration — butun son, " +
+          "saturation — foizsiz butun (98). blood_pressure — '120/80' formatida. " +
+          "ai_summary — 1-2 gap qisqa xulosa (shifokor tez o'qishi uchun). " +
+          "Sonlarni RAQAMLARDA yozing, so'z bilan emas. Diktant o'zbek yoki rus tilida bo'lishi mumkin.";
+
+        const parsed = await llm(prompt, text);
+
+        // Bazaga yozamiz
+        const id = uuidv4();
+        await q(
+          `INSERT INTO daily_notes (id, tenant_id, admission_id, patient_id,
+             doctor_id, doctor_name, date, shift,
+             temperature, blood_pressure, pulse, respiration, saturation,
+             complaints, objective_status, treatment_plan,
+             raw_text, ai_summary, data_json)
+           VALUES ($1,$2,$3,$4,$5,$6,CURRENT_DATE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+          [id, tenantId, admission_id, adm.patient_id,
+           req.user?.id || null, req.user?.name || req.user?.username || null,
+           'ertalab',
+           parsed.temperature ?? null, parsed.blood_pressure || null,
+           parsed.pulse ?? null, parsed.respiration ?? null, parsed.saturation ?? null,
+           parsed.complaints || null, parsed.objective_status || null, parsed.treatment_plan || null,
+           text, parsed.ai_summary || null, JSON.stringify(parsed)]
+        );
+
+        // Ai_requests hisobiga qo'shamiz
+        await q(
+          `INSERT INTO usage_metering (tenant_id, metric, count, date)
+           VALUES ($1, 'ai_requests', 1, CURRENT_DATE)
+           ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`,
+          [tenantId]
+        ).catch(() => {});
+
+        res.json({
+          success: true,
+          data: { id, transcription: text, language: stt.language || null, extracted: parsed },
+          message: 'Obhod yozib olindi',
+        });
+      } catch (e) {
+        console.error('[INPATIENT voice]', e);
+        res.status(500).json({ success: false, error: e.message });
+      }
+    }
+  );
 
   return router;
 }
