@@ -36,6 +36,16 @@ interface Patient {
   passport_number?: string;
   notes?: string;
   created_at?: string;
+  // Bosqich A
+  blood_group?: string;
+  rh_factor?: string;
+  allergies?: string;
+  occupation?: string;
+  workplace?: string;
+  disability_group?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relation?: string;
 }
 
 interface AppointmentRow {
@@ -181,6 +191,43 @@ export default function PatientHistoryPage() {
               {p.notes && <p className="text-sm text-muted-foreground mt-3">{p.notes}</p>}
             </div>
           </div>
+
+          {/* Tibbiy identifikatsiya — favqulodda holatda birinchi ko'rish kerak bo'lgan */}
+          {(p.blood_group || p.rh_factor || p.allergies || p.emergency_contact_name) && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 border-t border-border/40 pt-4">
+              {(p.blood_group || p.rh_factor) && (
+                <div className="rounded-lg bg-rose-500/5 border border-rose-500/20 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Qon guruhi</p>
+                  <p className="text-lg font-bold">{p.blood_group || "?"} {p.rh_factor || ""}</p>
+                </div>
+              )}
+              {p.allergies && (
+                <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3 sm:col-span-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Allergiya</p>
+                  <p className="text-sm">{p.allergies}</p>
+                </div>
+              )}
+              {p.emergency_contact_name && (
+                <div className="rounded-lg bg-muted/50 p-3 sm:col-span-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Yaqin qarindosh</p>
+                  <p className="text-sm">
+                    {p.emergency_contact_name}
+                    {p.emergency_contact_relation && <span className="text-muted-foreground"> ({p.emergency_contact_relation})</span>}
+                    {p.emergency_contact_phone && <span className="ml-2 font-mono">{p.emergency_contact_phone}</span>}
+                  </p>
+                </div>
+              )}
+              {(p.occupation || p.workplace) && (
+                <div className="rounded-lg bg-muted/50 p-3 sm:col-span-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Ish joyi</p>
+                  <p className="text-sm">
+                    {p.occupation}{p.occupation && p.workplace ? " · " : ""}{p.workplace}
+                    {p.disability_group && <span className="ml-2 text-muted-foreground">Nogironlik: {p.disability_group} guruh</span>}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -11,7 +11,9 @@ import { normalizePhone, generateMrn } from '../services/patient-store.js';
 
 const PATIENT_COLUMNS =
   'id, first_name, last_name, middle_name, phone, birth_date, region, district, address, ' +
-  'passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at';
+  'passport_number, gender, benefit_category, department, order_number, medical_record_number, notes, created_at, ' +
+  'blood_group, rh_factor, allergies, occupation, workplace, disability_group, ' +
+  'emergency_contact_name, emergency_contact_phone, emergency_contact_relation';
 
 export default function patientsRoutes(pool, authMiddleware) {
   const router = Router();
@@ -34,6 +36,16 @@ export default function patientsRoutes(pool, authMiddleware) {
     order_number: z.string().max(50).optional(),
     medical_record_number: z.string().max(50).optional(),
     notes: z.string().max(1000).optional(),
+    // Bosqich A — 003-forma qo'shimcha maydonlari
+    blood_group: z.string().max(5).optional(),
+    rh_factor: z.string().max(5).optional(),
+    allergies: z.string().max(1000).optional(),
+    occupation: z.string().max(200).optional(),
+    workplace: z.string().max(200).optional(),
+    disability_group: z.string().max(20).optional(),
+    emergency_contact_name: z.string().max(200).optional(),
+    emergency_contact_phone: z.string().max(20).optional(),
+    emergency_contact_relation: z.string().max(50).optional(),
   });
 
   const validate = (schema) => (req, res, next) => {
@@ -60,12 +72,19 @@ export default function patientsRoutes(pool, authMiddleware) {
         mrn = await nextMrn(tenantId);
         await q(
           `INSERT INTO patients (id, tenant_id, first_name, last_name, middle_name, phone, birth_date, region, district,
-           address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+           address, passport_number, gender, benefit_category, department, order_number, medical_record_number, notes,
+           blood_group, rh_factor, allergies, occupation, workplace, disability_group,
+           emergency_contact_name, emergency_contact_phone, emergency_contact_relation)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
           [id, tenantId, b.first_name, b.last_name || '', b.middle_name || '',
            normPhone(b.phone), b.birth_date || null, b.region || '', b.district || '',
            b.address || '', b.passport_number || '', b.gender || '', b.benefit_category || '',
-           b.department || '', b.order_number || '', mrn, b.notes || '']
+           b.department || '', b.order_number || '', mrn, b.notes || '',
+           b.blood_group || null, b.rh_factor || null, b.allergies || null,
+           b.occupation || null, b.workplace || null, b.disability_group || null,
+           b.emergency_contact_name || null,
+           b.emergency_contact_phone ? normPhone(b.emergency_contact_phone) : null,
+           b.emergency_contact_relation || null]
         );
         break;
       } catch (e) {
@@ -257,10 +276,18 @@ export default function patientsRoutes(pool, authMiddleware) {
       await q(
         `UPDATE patients SET first_name=$1, last_name=$2, middle_name=$3, phone=$4, birth_date=$5, region=$6,
          district=$7, address=$8, passport_number=$9, gender=$10, benefit_category=$11, department=$12,
-         order_number=$13, medical_record_number=$14, notes=$15 WHERE id=$16 AND tenant_id=$17`,
-        [b.first_name, b.last_name || '', b.middle_name || '', b.phone || '', b.birth_date || null, b.region || '',
+         order_number=$13, medical_record_number=$14, notes=$15,
+         blood_group=$16, rh_factor=$17, allergies=$18, occupation=$19, workplace=$20, disability_group=$21,
+         emergency_contact_name=$22, emergency_contact_phone=$23, emergency_contact_relation=$24
+         WHERE id=$25 AND tenant_id=$26`,
+        [b.first_name, b.last_name || '', b.middle_name || '', normPhone(b.phone), b.birth_date || null, b.region || '',
          b.district || '', b.address || '', b.passport_number || '', b.gender || '', b.benefit_category || '',
-         b.department || '', b.order_number || '', b.medical_record_number || '', b.notes || '', id, tenantId]
+         b.department || '', b.order_number || '', b.medical_record_number || '', b.notes || '',
+         b.blood_group || null, b.rh_factor || null, b.allergies || null,
+         b.occupation || null, b.workplace || null, b.disability_group || null,
+         b.emergency_contact_name || null, b.emergency_contact_phone ? normPhone(b.emergency_contact_phone) : null,
+         b.emergency_contact_relation || null,
+         id, tenantId]
       );
       const patient = await qGet(`SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1`, [id]);
       res.json({ success: true, patient });
