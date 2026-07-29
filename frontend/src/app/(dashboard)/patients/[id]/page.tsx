@@ -19,6 +19,8 @@ import {
   Activity,
   FlaskConical,
   Plus,
+  FileSignature,
+  Receipt,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, Legend,
@@ -191,6 +193,8 @@ export default function PatientHistoryPage() {
   const [epiOpen, setEpiOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [labResultFor, setLabResultFor] = useState<LabRow | null>(null);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [contractOpen, setContractOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["patient-history", id],
@@ -239,6 +243,12 @@ export default function PatientHistoryPage() {
           <Button size="sm" variant="outline" onClick={() => setLabOpen(true)}>
             <FlaskConical className="size-4" /> Tekshiruv buyurish
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setConsentOpen(true)}>
+            <FileSignature className="size-4" /> Rozilik
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setContractOpen(true)}>
+            <Receipt className="size-4" /> Shartnoma
+          </Button>
         </div>
       </div>
 
@@ -246,6 +256,8 @@ export default function PatientHistoryPage() {
       <EpiDialog open={epiOpen} patientId={id} onClose={() => setEpiOpen(false)} />
       <LabOrderDialog open={labOpen} patientId={id} onClose={() => setLabOpen(false)} />
       <LabResultDialog order={labResultFor} onClose={() => setLabResultFor(null)} />
+      <ConsentDialog open={consentOpen} patientId={id} onClose={() => setConsentOpen(false)} />
+      <ContractDialog open={contractOpen} patientId={id} onClose={() => setContractOpen(false)} />
 
       {/* Karta boshi — asosiy identifikatsiya */}
       <Card>
@@ -789,6 +801,190 @@ function IntakeDialog({ open, patientId, onClose }: { open: boolean; patientId?:
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Bekor</Button>
           <Button onClick={() => save.mutate()} disabled={save.isPending}>Saqlash</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Rozilik yig'ish (bemor imzosi) ──
+const CONSENT_KINDS = [
+  { v: "surgery_general", l: "Operatsiyaga rozilik (umumiy)" },
+  { v: "surgery_gyn", l: "Ginekologiya operatsiyasi" },
+  { v: "anesthesia", l: "Anesteziya (og'riqsizlantirish)" },
+  { v: "blood_transfusion", l: "Qon quyish (gemotransfuziya)" },
+  { v: "custom", l: "Boshqa" },
+];
+const CONSENT_STANDARD_OPTIONS = [
+  "Operatsiya davomida kutilmagan holatlar bo'lishi mumkinligini tushunaman",
+  "Qon yo'qotish, infeksiya va boshqa a'zolar faoliyati buzilishi xavfini tushunaman",
+  "Operatsiya natijalariga kafolat berilmasligini tushunaman",
+  "Zarur bo'lsa qayta operatsiyaga roziman",
+  "Allergiya, spirtli ichimliklar va giyohvand moddalar haqida ma'lumot beraman",
+  "Xususiy dorixonadan dori olishga roziman",
+  "Zarur bo'lsa qon quyilishiga roziman",
+];
+
+function ConsentDialog({ open, patientId, onClose }: { open: boolean; patientId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [kind, setKind] = useState("surgery_general");
+  const [title, setTitle] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [notes, setNotes] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Bemor ID");
+      const res = await api.post("/api/legal/consents", {
+        patient_id: patientId, kind,
+        title: title || CONSENT_KINDS.find((k) => k.v === kind)?.l,
+        selected_options: selected,
+        notes: notes || undefined,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Rozilik saqlandi");
+      qc.invalidateQueries();
+      setSelected([]); setNotes(""); setTitle("");
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggle = (o: string) => setSelected((cur) => cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Bemor roziligi</DialogTitle>
+          <DialogDescription>003-forma bayonnoma — bemor imzosi</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Rozilik turi</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CONSENT_KINDS.map((k) => (
+                <button key={k.v} type="button" onClick={() => setKind(k.v)}
+                  className={`rounded-md border px-3 py-2 text-xs font-medium text-left ${kind === k.v ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}>
+                  {k.l}
+                </button>
+              ))}
+            </div>
+          </div>
+          {kind === "custom" && (
+            <div className="space-y-1.5">
+              <Label>Rozilik nomi *</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Masalan: Endoskopiya" />
+            </div>
+          )}
+          <div className="space-y-2 rounded-lg border border-border/50 p-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rozilik bandlari</p>
+            {CONSENT_STANDARD_OPTIONS.map((o, i) => (
+              <label key={i} className="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={selected.includes(o)} onChange={() => toggle(o)} className="mt-0.5" />
+                <span>{o}</span>
+              </label>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Izoh / qo&apos;shimcha shart</Label>
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            <FileSignature className="size-4" /> Imzo va saqlash
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Pullik xizmat shartnomasi ──
+interface ContractItem { name: string; qty: number; price: number }
+
+function ContractDialog({ open, patientId, onClose }: { open: boolean; patientId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [items, setItems] = useState<ContractItem[]>([{ name: "", qty: 1, price: 0 }]);
+  const [passport, setPassport] = useState("");
+  const [address, setAddress] = useState("");
+
+  const total = items.reduce((s, it) => s + it.qty * it.price, 0);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Bemor ID");
+      const valid = items.filter((it) => it.name.trim() && it.price > 0);
+      if (valid.length === 0) throw new Error("Kamida bitta xizmat kiriting");
+      const res = await api.post<{ contract_number: string }>("/api/legal/contracts", {
+        patient_id: patientId,
+        patient_passport: passport || undefined,
+        patient_address: address || undefined,
+        items: valid.map((it) => ({ ...it, sum: it.qty * it.price })),
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: (r) => {
+      toast.success(`Shartnoma № ${r.contract_number}`);
+      qc.invalidateQueries();
+      setItems([{ name: "", qty: 1, price: 0 }]);
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const upd = (i: number, patch: Partial<ContractItem>) =>
+    setItems((cur) => cur.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Pullik xizmat shartnomasi</DialogTitle>
+          <DialogDescription>003-forma shartnoma — xizmatlar ro&apos;yxati va narxi</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Passport (AB1234567)</Label>
+              <Input value={passport} onChange={(e) => setPassport(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Manzil</Label>
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Xizmatlar</Label>
+            <div className="space-y-2">
+              {items.map((it, i) => (
+                <div key={i} className="grid grid-cols-[1fr_70px_100px_28px] gap-2">
+                  <Input placeholder="Xizmat nomi" value={it.name} onChange={(e) => upd(i, { name: e.target.value })} />
+                  <Input type="number" min={1} value={it.qty} onChange={(e) => upd(i, { qty: Number(e.target.value) || 1 })} />
+                  <Input type="number" min={0} placeholder="narx" value={it.price} onChange={(e) => upd(i, { price: Number(e.target.value) || 0 })} />
+                  <button type="button" onClick={() => setItems((c) => c.filter((_, idx) => idx !== i))}
+                    className="text-destructive hover:bg-destructive/10 rounded-md text-lg">×</button>
+                </div>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setItems((c) => [...c, { name: "", qty: 1, price: 0 }])}>
+              <Plus className="size-4" /> Yana xizmat
+            </Button>
+          </div>
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-right">
+            <span className="text-sm text-muted-foreground">Jami: </span>
+            <span className="text-lg font-bold">{total.toLocaleString("uz-UZ")} so&apos;m</span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>Shartnoma tuzish</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
