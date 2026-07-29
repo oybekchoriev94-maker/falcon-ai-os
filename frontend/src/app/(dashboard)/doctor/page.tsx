@@ -1,310 +1,659 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import { useAuth } from "@/lib/auth-store";
-import { useRouter } from "next/navigation";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "framer-motion";
+import { useAuth, type User } from "@/lib/auth-store";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
-  HeartPulse,
+  Stethoscope,
+  CalendarDays,
+  Clock,
+  Phone,
   Users,
   DollarSign,
   Wallet,
   Mic,
-  Camera,
-  CalendarDays,
-  Clock,
-  Phone,
-  FileText,
-  Activity,
-  TrendingUp,
-  Stethoscope,
+  FolderOpen,
+  MapPin,
+  CheckCircle2,
+  Share2,
+  Loader2,
+  Inbox,
   ArrowRight,
 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
+import { motion } from "framer-motion";
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0 },
-};
-
-const SPECIALIZATION_LABELS: Record<string, string> = {
-  terapevt: "Terapevt",
-  kardiolog: "Kardiolog",
-  nevrolog: "Nevrolog",
-  pediatr: "Pediatr",
-  ginekolog: "Ginekolog",
-  uzi: "UZI",
-  laborant: "Laborant",
-  stomatolog: "Stomatolog",
-  oftalmolog: "Oftalmolog",
-  endokrinolog: "Endokrinolog",
-};
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("uz-UZ", {
-      day: "numeric", month: "short", year: "numeric",
-    });
-  } catch { return iso; }
+interface QueueItem {
+  id: number;
+  appointment_id: string;
+  patient_id: string | null;
+  patient_name: string;
+  phone: string | null;
+  scheduled_at: string;
+  status: string;
+  payment_status: string;
+  amount: number;
+  service_name: string | null;
+  notes: string | null;
+  medical_record_number: string | null;
+  district: string | null;
+  address: string | null;
+  has_consultation: boolean;
 }
 
-function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString("uz-UZ", {
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch { return iso; }
+interface IncomingReferral {
+  id: string;
+  referral_id: string;
+  patient_id: string | null;
+  patient_name: string;
+  service_required: string;
+  status: string;
+  referring_doctor: string | null;
+  notes: string | null;
+  to_department: string | null;
+  medical_record_number: string | null;
+  phone: string | null;
+  created_at: string;
 }
+
+interface DoctorLite {
+  id: string;
+  first_name: string;
+  last_name?: string;
+  specialty?: string;
+}
+
+const DEPARTMENTS = ["Fizioterapiya", "Ginekologiya", "Roddom", "Xirurgiya", "Terapiya", "Laboratoriya", "UZI"];
+
+function fmtTime(iso: string) {
+  try { return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return iso; }
+}
+function fmtSum(n: number) { return new Intl.NumberFormat("uz-UZ").format(n) + " so'm"; }
 
 export default function DoctorPage() {
   const { user } = useAuth();
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [visitOf, setVisitOf] = useState<QueueItem | null>(null);
+  const [referralOf, setReferralOf] = useState<QueueItem | null>(null);
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  // ── Bugungi navbat (asosiy panel) ──
+  const { data: queueData, isLoading: queueLoading } = useQuery({
+    queryKey: ["doctor-queue"],
+    queryFn: async () => {
+      const res = await api.get<{ queue: QueueItem[]; date: string }>("/api/doctor/queue");
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+    refetchInterval: 20_000,
+  });
+  const queue = queueData?.queue ?? [];
+
+  const waiting = queue.filter((q) => q.status !== "completed" && !q.has_consultation);
+  const done = queue.filter((q) => q.status === "completed" || q.has_consultation);
+
+  // ── Statistika ──
+  const { data: stats } = useQuery({
     queryKey: ["doctor-stats"],
     queryFn: async () => {
       const res = await api.get<{
         stats: { patients_count: number; total_revenue: number };
         today_patients: number;
       }>("/api/doctor/my-stats");
-      if (res.success) return res;
-      return { stats: { patients_count: 0, total_revenue: 0 }, today_patients: 0 };
+      return res.success ? res : { stats: { patients_count: 0, total_revenue: 0 }, today_patients: 0 };
     },
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
-
   const { data: balance } = useQuery({
     queryKey: ["doctor-balance"],
     queryFn: async () => {
       const res = await api.get<{ balance: number }>("/api/doctors/balance");
-      return res.success ? (res as { balance: number }) : { balance: 0 };
+      return res.success ? res : { balance: 0 };
     },
   });
 
-  const { data: patientsData, isLoading: patientsLoading } = useQuery({
-    queryKey: ["doctor-patients"],
+  // ── Kelgan yo'llanmalar ──
+  const { data: incData } = useQuery({
+    queryKey: ["doctor-referrals-in"],
     queryFn: async () => {
-      const res = await api.get<{
-        consultations: Array<{
-          id: number; patient_name: string; diagnosis: string; created_at: string;
-          data_json?: Record<string, unknown>;
-        }>;
-        appointments: Array<{
-          appointment_id: string; patient_name: string; phone: string; doctor_name: string;
-          appointment_time: string; notes?: string; status: string;
-        }>;
-      }>("/api/doctor/my-patients");
-      if (res.success) return res;
-      return { consultations: [], appointments: [] };
+      const res = await api.get<{ referrals: IncomingReferral[] }>("/api/doctor/referrals/incoming?status=pending");
+      return res.success ? res : { referrals: [] };
     },
     refetchInterval: 30_000,
   });
-
-  const specLabel = SPECIALIZATION_LABELS[user?.specialization || ""] || "Shifokor";
-  const statValue = stats || { stats: { patients_count: 0, total_revenue: 0 }, today_patients: 0 };
-  const bal = balance?.balance ?? 0;
+  const incoming = incData?.referrals ?? [];
 
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
-            <Stethoscope className="size-5 text-primary-foreground" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">
-                {user?.full_name || user?.username || "Shifokor"}
-              </h1>
-              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">
-                {specLabel}
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">Shifokor paneli</p>
-          </div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+      <Header user={user} />
+
+      <StatsRow
+        today={stats?.today_patients ?? 0}
+        total={stats?.stats?.patients_count ?? 0}
+        revenue={stats?.stats?.total_revenue ?? 0}
+        balance={balance?.balance ?? 0}
+      />
+
+      {/* Ikki ustun: navbat (asosiy) + yon panel (kelgan yo'llanmalar) */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-4">
+          <QueueSection
+            title="Kutayotgan navbat"
+            items={waiting}
+            loading={queueLoading}
+            empty="Kutayotgan bemor yo'q — tinchgina qahva iching ☕"
+            onOpen={setVisitOf}
+            highlight
+          />
+          {done.length > 0 && (
+            <QueueSection
+              title="Bugun yakunlangan"
+              items={done}
+              loading={false}
+              empty=""
+              onOpen={setVisitOf}
+            />
+          )}
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-1.5 w-fit">
-          <CalendarDays className="size-4" />
-          {new Date().toLocaleDateString("uz-UZ", { weekday: "long", day: "numeric", month: "long" })}
+
+        <div className="space-y-4">
+          <IncomingReferrals items={incoming} />
+          <QuickActions specialization={user?.specialization} />
         </div>
       </div>
 
-      <motion.div variants={item} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Bugungi bemorlar", value: statValue.today_patients, icon: Users, color: "text-violet-500", bg: "bg-violet-500/10" },
-          { label: "Jami bemorlar", value: statValue.stats.patients_count, icon: Activity, color: "text-blue-500", bg: "bg-blue-500/10" },
-          { label: "Jami daromad", value: `${(statValue.stats.total_revenue || 0).toLocaleString()} so'm`, icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-          { label: "Balans", value: `${bal.toLocaleString()} so'm`, icon: Wallet, color: "text-amber-500", bg: "bg-amber-500/10" },
-        ].map((s) => (
-          <Card key={s.label} className="border-border/50 relative overflow-hidden group hover:border-border transition-all">
-            <CardContent className="p-4 md:p-5">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</span>
-                <div className={cn("size-8 rounded-lg flex items-center justify-center", s.bg)}>
-                  <s.icon className={cn("size-4", s.color)} />
-                </div>
-              </div>
-              {statsLoading ? (
-                <Skeleton className="h-8 w-24" />
-              ) : (
-                <div className="text-xl font-bold tracking-tight">{s.value}</div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </motion.div>
+      <VisitDialog
+        item={visitOf}
+        onClose={() => setVisitOf(null)}
+        onCompleted={() => {
+          queryClient.invalidateQueries({ queryKey: ["doctor-queue"] });
+          queryClient.invalidateQueries({ queryKey: ["doctor-stats"] });
+        }}
+        onReferral={(it) => { setReferralOf(it); setVisitOf(null); }}
+      />
 
-      <motion.div variants={item} className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <HeartPulse className="size-4 text-primary" />
-              Tezkor amallar
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3">
-              <Link href={`/scribe?specialization=${user?.specialization || ""}`}>
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-card/50 p-4 text-center hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer">
-                  <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Mic className="size-5 text-primary" />
-                  </div>
-                  <span className="text-sm font-medium">AI Scribe</span>
-                  <span className="text-xs text-muted-foreground">{specLabel} shabloni</span>
-                </div>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="size-4 text-emerald-500" />
-                Bugungi qabullar
-              </CardTitle>
-              <Badge variant="outline" className="text-xs">
-                {(patientsData?.appointments || []).length} ta
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {patientsLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : !patientsData?.appointments?.length ? (
-              <div className="flex flex-col items-center justify-center py-6 text-center">
-                <CalendarDays className="size-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Bugun qabullar yo'q</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {patientsData.appointments.map((apt) => (
-                  <div key={apt.appointment_id} className="flex items-center gap-3 rounded-lg border border-border/40 bg-card/50 px-3 py-2">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                      <Users className="size-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{apt.patient_name}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
-                        {apt.phone && (
-                          <span className="flex items-center gap-1">
-                            <Phone className="size-3" />
-                            {apt.phone}
-                          </span>
-                        )}
-                        {apt.appointment_time && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="size-3" />
-                            {formatTime(apt.appointment_time)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge variant={apt.status === "completed" ? "secondary" : "outline"} className="shrink-0 text-xs">
-                      {apt.status === "completed" ? "Yakunlangan" : "Kutilmoqda"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={item}>
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <FileText className="size-4 text-primary" />
-                Oxirgi bemorlar
-              </CardTitle>
-              <Link href="/patients" className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "")}>
-                Barchasi <ArrowRight className="size-3 ml-1" />
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {patientsLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : !patientsData?.consultations?.length ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Users className="size-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Hozircha bemorlar yo'q</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  AI Scribe orqali birinchi bemorni qabul qiling
-                </p>
-                <Link href={`/scribe?specialization=${user?.specialization || ""}`} className={cn(buttonVariants({ size: "sm" }), "mt-4")}>
-                  <Mic className="size-4 mr-1" />
-                  AI Scribe ochish
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {patientsData.consultations.slice(0, 10).map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border/40 bg-card/50 px-3 py-2.5 hover:border-border/80 transition-colors">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                      {c.patient_name?.charAt(0) || "?"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{c.patient_name || "Noma'lum"}</p>
-                      {c.diagnosis && (
-                        <p className="text-xs text-muted-foreground/70 truncate">{c.diagnosis}</p>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground/50 shrink-0">
-                      {formatDate(c.created_at)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+      <ReferralDialog
+        item={referralOf}
+        onClose={() => setReferralOf(null)}
+        onSent={() => queryClient.invalidateQueries({ queryKey: ["doctor-referrals-in"] })}
+      />
     </motion.div>
   );
 }
+
+function Header({ user }: { user: User | null }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div className="size-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
+          <Stethoscope className="size-5 text-primary-foreground" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {user?.full_name || user?.username || "Shifokor"}
+          </h1>
+          <p className="text-sm text-muted-foreground">Shifokor paneli</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-1.5 w-fit">
+        <CalendarDays className="size-4" />
+        {new Date().toLocaleDateString("uz-UZ", { weekday: "long", day: "numeric", month: "long" })}
+      </div>
+    </div>
+  );
+}
+
+function StatsRow({ today, total, revenue, balance }: { today: number; total: number; revenue: number; balance: number }) {
+  const cards = [
+    { label: "Bugungi bemorlar", value: today, icon: Users, color: "text-violet-500", bg: "bg-violet-500/10" },
+    { label: "Jami bemorlar", value: total, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "Jami daromad", value: fmtSum(revenue), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: "Balans", value: fmtSum(balance), icon: Wallet, color: "text-amber-500", bg: "bg-amber-500/10" },
+  ];
+  return (
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      {cards.map((s) => (
+        <Card key={s.label} className="border-border/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</span>
+              <div className={cn("size-8 rounded-lg flex items-center justify-center", s.bg)}>
+                <s.icon className={cn("size-4", s.color)} />
+              </div>
+            </div>
+            <div className="text-lg font-bold tracking-tight">{s.value}</div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function QueueSection({
+  title, items, loading, empty, onOpen, highlight,
+}: {
+  title: string;
+  items: QueueItem[];
+  loading: boolean;
+  empty: string;
+  onOpen: (q: QueueItem) => void;
+  highlight?: boolean;
+}) {
+  return (
+    <Card className={cn("border-border/50", highlight && "border-primary/30")}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Clock className={cn("size-4", highlight ? "text-primary" : "text-muted-foreground")} />
+            {title}
+          </CardTitle>
+          <Badge variant={highlight ? "default" : "secondary"} className="text-xs">{items.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {loading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}</div>
+        ) : items.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">{empty}</div>
+        ) : (
+          <div className="space-y-2">
+            {items.map((q) => (
+              <QueueRow key={q.id} item={q} onOpen={() => onOpen(q)} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function QueueRow({ item, onOpen }: { item: QueueItem; onOpen: () => void }) {
+  const done = item.status === "completed" || item.has_consultation;
+  return (
+    <button
+      onClick={onOpen}
+      className={cn(
+        "w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+        done ? "border-border/40 bg-muted/30" : "border-border/60 hover:border-primary/50 bg-card"
+      )}
+    >
+      <div className={cn(
+        "flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+        done ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+      )}>
+        {fmtTime(item.scheduled_at)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className={cn("text-sm font-medium truncate", done && "text-muted-foreground")}>
+            {item.patient_name}
+          </p>
+          {item.medical_record_number && (
+            <span className="text-[10px] font-mono text-muted-foreground shrink-0">{item.medical_record_number}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+          {item.service_name && <span className="truncate">{item.service_name}</span>}
+          {item.phone && <span className="shrink-0">· {item.phone}</span>}
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        <Badge variant={item.payment_status === "paid" ? "default" : "outline"} className="text-[10px]">
+          {item.payment_status === "paid" ? "to'landi" : "kutilmoqda"}
+        </Badge>
+        {done ? (
+          <span className="text-[10px] text-emerald-600 flex items-center gap-1">
+            <CheckCircle2 className="size-3" /> yakunlangan
+          </span>
+        ) : (
+          <span className="text-[10px] text-primary">ochish →</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function IncomingReferrals({ items }: { items: IncomingReferral[] }) {
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Inbox className="size-4 text-amber-500" />
+            Kelgan yo&apos;llanmalar
+          </CardTitle>
+          <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {items.length === 0 ? (
+          <p className="py-4 text-center text-xs text-muted-foreground">Kelgan yo&apos;llanma yo&apos;q</p>
+        ) : (
+          <div className="space-y-2">
+            {items.map((r) => (
+              <div key={r.id} className="rounded-lg border border-border/40 p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{r.patient_name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{r.service_required}</p>
+                  </div>
+                  {r.patient_id && (
+                    <Link href={`/patients/${r.patient_id}`} className="text-[10px] text-primary hover:underline shrink-0">
+                      karta →
+                    </Link>
+                  )}
+                </div>
+                {r.referring_doctor && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-1">← {r.referring_doctor}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuickActions({ specialization }: { specialization?: string }) {
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium">Tezkor amallar</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-2">
+        <Link href={`/scribe?specialization=${specialization || ""}`}
+              className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-2 text-sm hover:border-primary/40 hover:bg-primary/5">
+          <Mic className="size-4 text-primary" />
+          <span>AI Scribe</span>
+          <ArrowRight className="size-3 ml-auto text-muted-foreground" />
+        </Link>
+        <Link href="/patients"
+              className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-2 text-sm hover:border-primary/40 hover:bg-primary/5">
+          <FolderOpen className="size-4 text-primary" />
+          <span>Bemorlar</span>
+          <ArrowRight className="size-3 ml-auto text-muted-foreground" />
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Ko'rik dialogi: bemor kartochkasi + xulosa maydonlari + yakunlash/yo'llanma ──
+function VisitDialog({
+  item, onClose, onCompleted, onReferral,
+}: {
+  item: QueueItem | null;
+  onClose: () => void;
+  onCompleted: () => void;
+  onReferral: (it: QueueItem) => void;
+}) {
+  const [diagnosis, setDiagnosis] = useState("");
+  const [procedure, setProcedure] = useState("");
+  const [medicines, setMedicines] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const complete = useMutation({
+    mutationFn: async () => {
+      if (!item) throw new Error("Bron topilmadi");
+      const res = await api.post<{ consultation_id: string }>(
+        `/api/doctor/visit/${item.id}/complete`,
+        { diagnosis, procedure, medicines, notes }
+      );
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Ko'rik yakunlandi — kartaga yozildi");
+      setDiagnosis(""); setProcedure(""); setMedicines(""); setNotes("");
+      onCompleted();
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message || "Xatolik"),
+  });
+
+  const open = !!item;
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Ko&apos;rikni yakunlash</DialogTitle>
+          <DialogDescription>
+            Yozuv bemor kartasiga tushadi va bron yakunlangan deb belgilanadi.
+          </DialogDescription>
+        </DialogHeader>
+
+        {item && (
+          <div className="space-y-4">
+            {/* Bemor kartochkasi */}
+            <div className="rounded-lg border border-border/60 p-3 bg-muted/30">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{item.patient_name}</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-1">
+                    {item.medical_record_number && <span className="font-mono">{item.medical_record_number}</span>}
+                    {item.phone && <span className="flex items-center gap-1"><Phone className="size-3" />{item.phone}</span>}
+                    {(item.district || item.address) && (
+                      <span className="flex items-center gap-1"><MapPin className="size-3" />{[item.district, item.address].filter(Boolean).join(", ")}</span>
+                    )}
+                  </div>
+                  {item.service_name && (
+                    <p className="text-xs text-muted-foreground mt-1">Xizmat: <span className="text-foreground">{item.service_name}</span></p>
+                  )}
+                  {item.notes && (
+                    <p className="text-xs text-muted-foreground mt-1">Izoh: {item.notes}</p>
+                  )}
+                </div>
+                {item.patient_id && (
+                  <Link href={`/patients/${item.patient_id}`} target="_blank"
+                        className="text-xs text-primary hover:underline shrink-0">
+                    Istoriya →
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {/* Xulosa maydonlari */}
+            <div className="grid gap-3">
+              <div className="space-y-1.5">
+                <Label>Tashxis</Label>
+                <Textarea value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} rows={2} placeholder="Klinik tashxis" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Muolaja / protsedura</Label>
+                <Input value={procedure} onChange={(e) => setProcedure(e.target.value)} placeholder="Bajarilgan muolaja" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Buyurilgan dorilar</Label>
+                <Textarea value={medicines} onChange={(e) => setMedicines(e.target.value)} rows={2} placeholder="Dori, doza, davomiylik" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Qo&apos;shimcha izoh</Label>
+                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Rejim, kuzatuv, keyingi tashrif" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="border-t border-border/50 pt-4 gap-2 sm:justify-between">
+          <Button variant="outline" onClick={() => item && onReferral(item)} disabled={!item}>
+            <Share2 className="size-4" /> Yo&apos;llanma yuborish
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Bekor qilish</Button>
+            <Button onClick={() => complete.mutate()} disabled={complete.isPending}>
+              {complete.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              Yakunlash
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Yo'llanma dialogi: bo'lim yoki shifokor tanlash ──
+function ReferralDialog({
+  item, onClose, onSent,
+}: {
+  item: QueueItem | null;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [toKind, setToKind] = useState<"department" | "doctor">("department");
+  const [department, setDepartment] = useState<string>("");
+  const [toDoctorId, setToDoctorId] = useState<string>("");
+  const [serviceRequired, setServiceRequired] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const { data: docData } = useQuery({
+    queryKey: ["doctors-list-for-referral"],
+    enabled: !!item,
+    queryFn: async () => {
+      const res = await api.get<{ doctors: DoctorLite[] }>("/api/doctors");
+      return res.success ? res : { doctors: [] };
+    },
+  });
+  const doctors = useMemo(() => docData?.doctors ?? [], [docData]);
+
+  const send = useMutation({
+    mutationFn: async () => {
+      if (!item) throw new Error("Bemor tanlanmagan");
+      if (!serviceRequired.trim()) throw new Error("Nima uchun yo'llanayotganini yozing");
+      const body: Record<string, unknown> = {
+        service_required: serviceRequired.trim(),
+        notes: notes.trim() || undefined,
+      };
+      if (item.patient_id) body.patient_id = item.patient_id;
+      else body.patient_name = item.patient_name;
+
+      if (toKind === "department") {
+        if (!department) throw new Error("Bo'limni tanlang");
+        body.to_department = department;
+      } else {
+        if (!toDoctorId) throw new Error("Shifokorni tanlang");
+        body.to_doctor_id = toDoctorId;
+      }
+      const res = await api.post("/api/doctor/referral", body);
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Yo'llanma yuborildi");
+      setDepartment(""); setToDoctorId(""); setServiceRequired(""); setNotes("");
+      onSent();
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message || "Xatolik"),
+  });
+
+  const open = !!item;
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Ichki yo&apos;llanma</DialogTitle>
+          <DialogDescription>
+            {item?.patient_name} — boshqa bo&apos;lim yoki shifokorga jo&apos;natish
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setToKind("department")}
+              className={cn(
+                "flex-1 rounded-lg border px-3 py-2 text-sm font-medium",
+                toKind === "department" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              )}
+            >
+              Bo&apos;limga
+            </button>
+            <button
+              type="button"
+              onClick={() => setToKind("doctor")}
+              className={cn(
+                "flex-1 rounded-lg border px-3 py-2 text-sm font-medium",
+                toKind === "doctor" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              )}
+            >
+              Shifokorga
+            </button>
+          </div>
+
+          {toKind === "department" ? (
+            <div className="space-y-1.5">
+              <Label>Bo&apos;lim *</Label>
+              <Select value={department || undefined} onValueChange={(v) => v && setDepartment(v)}>
+                <SelectTrigger><SelectValue placeholder="Bo'limni tanlang" /></SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Shifokor *</Label>
+              <Select value={toDoctorId || undefined} onValueChange={(v) => v && setToDoctorId(v)}>
+                <SelectTrigger><SelectValue placeholder="Shifokorni tanlang" /></SelectTrigger>
+                <SelectContent>
+                  {doctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.first_name} {d.last_name || ""} {d.specialty ? `· ${d.specialty}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label>Nima uchun *</Label>
+            <Input value={serviceRequired} onChange={(e) => setServiceRequired(e.target.value)}
+                   placeholder="Masalan: UZI, konsultatsiya, tug'ruq qabuli" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Izoh</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                      placeholder="Zarur ma'lumot yoki tashxis konteksti" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor qilish</Button>
+          <Button onClick={() => send.mutate()} disabled={send.isPending}>
+            {send.isPending ? <Loader2 className="size-4 animate-spin" /> : <Share2 className="size-4" />}
+            Yuborish
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// buttonVariants — hozircha ishlatilmayapti, lekin keyinchalik ba'zi link'lar
+// buttonstyled bo'lsa qo'shib qo'yishga qulay. Lint agar shikoyat qilsa olib tashlanadi.
+void buttonVariants;
