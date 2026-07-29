@@ -14,12 +14,23 @@ import {
   Mic,
   FileText,
   BedDouble,
+  ClipboardCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface Patient {
   id: string;
@@ -86,6 +97,27 @@ interface AdmissionRow {
   status: string;
 }
 
+interface IntakeRow {
+  id: string;
+  admission_id?: string | null;
+  examined_at: string;
+  doctor_name?: string | null;
+  brought_by?: string | null;
+  complaint_pain?: string | null;
+  preliminary_diagnosis?: string | null;
+}
+interface EpiRow {
+  id: string;
+  admission_id?: string | null;
+  collected_at: string;
+  doctor_name?: string | null;
+  infection_contact?: boolean;
+  travel_last_month?: boolean;
+  had_transfusion?: boolean;
+  had_surgery_6mo?: boolean;
+  epi_diagnosis?: string | null;
+}
+
 interface HistoryPayload {
   success: boolean;
   patient: Patient;
@@ -93,6 +125,8 @@ interface HistoryPayload {
   consultations: ConsultationRow[];
   reports: ReportRow[];
   admissions: AdmissionRow[];
+  intakes?: IntakeRow[];
+  epis?: EpiRow[];
 }
 
 function fmtDate(s?: string) {
@@ -117,6 +151,8 @@ export default function PatientHistoryPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const id = params?.id;
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [epiOpen, setEpiOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["patient-history", id],
@@ -155,7 +191,18 @@ export default function PatientHistoryPage() {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">Bemor kartasi</h1>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setIntakeOpen(true)}>
+            <ClipboardCheck className="size-4" /> Birlamchi ko&apos;rik
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setEpiOpen(true)}>
+            <ShieldAlert className="size-4" /> Epi-anamnez
+          </Button>
+        </div>
       </div>
+
+      <IntakeDialog open={intakeOpen} patientId={id} onClose={() => setIntakeOpen(false)} />
+      <EpiDialog open={epiOpen} patientId={id} onClose={() => setEpiOpen(false)} />
 
       {/* Karta boshi — asosiy identifikatsiya */}
       <Card>
@@ -289,6 +336,68 @@ export default function PatientHistoryPage() {
         ))}
       </Section>
 
+      {/* Birlamchi qabul ko'riklari (Bosqich B) */}
+      <Section
+        icon={<ClipboardCheck className="size-4" />}
+        title="Birlamchi qabul ko'riklari"
+        count={data.intakes?.length || 0}
+        emptyText="Hali birlamchi ko'rik yo'q"
+      >
+        {(data.intakes || []).map((it) => (
+          <div key={it.id} className="py-2 border-b border-border/40 last:border-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                {it.preliminary_diagnosis && (
+                  <p className="text-sm font-medium">{it.preliminary_diagnosis}</p>
+                )}
+                {it.complaint_pain && (
+                  <p className="text-xs text-muted-foreground line-clamp-2">Shikoyat: {it.complaint_pain}</p>
+                )}
+                <p className="text-xs text-muted-foreground/70 mt-0.5">
+                  {it.doctor_name || "—"}
+                  {it.brought_by && ` · keltirilishi: ${it.brought_by}`}
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground shrink-0">{fmtDateTime(it.examined_at)}</span>
+            </div>
+          </div>
+        ))}
+      </Section>
+
+      {/* Epi-anamnez (SanPIN) */}
+      <Section
+        icon={<ShieldAlert className="size-4" />}
+        title="Epi-anamnez (SanPIN)"
+        count={data.epis?.length || 0}
+        emptyText="Epi-anamnez yig'ilmagan"
+      >
+        {(data.epis || []).map((ep) => {
+          const risks: string[] = [];
+          if (ep.infection_contact) risks.push("kontakt");
+          if (ep.travel_last_month) risks.push("sayohat");
+          if (ep.had_transfusion) risks.push("gemotransfuziya");
+          if (ep.had_surgery_6mo) risks.push("6oy jarrohlik");
+          return (
+            <div key={ep.id} className="py-2 border-b border-border/40 last:border-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {ep.epi_diagnosis && <p className="text-sm font-medium">{ep.epi_diagnosis}</p>}
+                  {risks.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {risks.map((r) => (
+                        <Badge key={r} variant="destructive" className="text-[10px]">{r}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">{ep.doctor_name || "—"}</p>
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{fmtDateTime(ep.collected_at)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </Section>
+
       {/* AI Scribe konsultatsiyalari */}
       <Section
         icon={<Mic className="size-4" />}
@@ -381,4 +490,228 @@ function LoadingSkeleton() {
 
 function safeParse(s: string): Record<string, unknown> | null {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+// ── Birlamchi qabul ko'rigi dialogi ──
+function IntakeDialog({ open, patientId, onClose }: { open: boolean; patientId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [broughtBy, setBroughtBy] = useState<"ozi_kelgan" | "ttyo" | "boshqa_dpm">("ozi_kelgan");
+  const [complaintPain, setComplaintPain] = useState("");
+  const [complaintPainLoc, setComplaintPainLoc] = useState("");
+  const [complaintPainChar, setComplaintPainChar] = useState("");
+  const [complaintOther, setComplaintOther] = useState("");
+  const [anamnesisMorbi, setAnamnesisMorbi] = useState("");
+  const [anamnesisVitae, setAnamnesisVitae] = useState("");
+  const [statusPraesens, setStatusPraesens] = useState("");
+  const [statusLocalis, setStatusLocalis] = useState("");
+  const [prelimDx, setPrelimDx] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Bemor ID topilmadi");
+      const res = await api.post(`/api/patients/${patientId}/intake`, {
+        brought_by: broughtBy,
+        complaint_pain: complaintPain || undefined,
+        complaint_pain_location: complaintPainLoc || undefined,
+        complaint_pain_character: complaintPainChar || undefined,
+        complaint_other: complaintOther || undefined,
+        anamnesis_morbi: anamnesisMorbi || undefined,
+        anamnesis_vitae: anamnesisVitae || undefined,
+        status_praesens: statusPraesens || undefined,
+        status_localis: statusLocalis || undefined,
+        preliminary_diagnosis: prelimDx || undefined,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Birlamchi ko'rik saqlandi");
+      qc.invalidateQueries({ queryKey: ["patient-history", patientId] });
+      setComplaintPain(""); setComplaintPainLoc(""); setComplaintPainChar(""); setComplaintOther("");
+      setAnamnesisMorbi(""); setAnamnesisVitae(""); setStatusPraesens(""); setStatusLocalis(""); setPrelimDx("");
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Birlamchi qabul ko&apos;rigi</DialogTitle>
+          <DialogDescription>003-forma 3-bet — qabul bo&apos;limi shifokorining ko&apos;rigi</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Keltirilish usuli</Label>
+            <div className="flex gap-2">
+              {[
+                { v: "ozi_kelgan", l: "O'zi kelgan" },
+                { v: "ttyo", l: "TTYO orqali" },
+                { v: "boshqa_dpm", l: "Boshqa DPMdan" },
+              ].map((o) => (
+                <button key={o.v} type="button"
+                  onClick={() => setBroughtBy(o.v as typeof broughtBy)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${broughtBy === o.v ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}>
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Og&apos;riq joylashuvi</Label>
+              <Input value={complaintPainLoc} onChange={(e) => setComplaintPainLoc(e.target.value)} placeholder="qorin, bel, ko'krak..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Xususiyati</Label>
+              <Input value={complaintPainChar} onChange={(e) => setComplaintPainChar(e.target.value)} placeholder="sanchuvchi, achishuvchi..." />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Og&apos;riq shikoyati (matn)</Label>
+            <Textarea rows={2} value={complaintPain} onChange={(e) => setComplaintPain(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Boshqa shikoyatlar</Label>
+            <Textarea rows={2} value={complaintOther} onChange={(e) => setComplaintOther(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Anamnez morbi (kasallik tarixi)</Label>
+              <Textarea rows={3} value={anamnesisMorbi} onChange={(e) => setAnamnesisMorbi(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Anamnez vitae (hayot)</Label>
+              <Textarea rows={3} value={anamnesisVitae} onChange={(e) => setAnamnesisVitae(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status praesens (ob&apos;ektiv holat)</Label>
+            <Textarea rows={3} value={statusPraesens} onChange={(e) => setStatusPraesens(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status localis (mahalliy)</Label>
+            <Textarea rows={2} value={statusLocalis} onChange={(e) => setStatusLocalis(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Taxminiy tashxis</Label>
+            <Input value={prelimDx} onChange={(e) => setPrelimDx(e.target.value)} placeholder="Klinik taxmin" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>Saqlash</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Epi-anamnez dialogi (SanPIN 03-42-17) ──
+function EpiDialog({ open, patientId, onClose }: { open: boolean; patientId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [infContact, setInfContact] = useState(false);
+  const [infDetails, setInfDetails] = useState("");
+  const [travel, setTravel] = useState(false);
+  const [travelDetails, setTravelDetails] = useState("");
+  const [pastInf, setPastInf] = useState("");
+  const [hadHosp, setHadHosp] = useState(false);
+  const [hadTransf, setHadTransf] = useState(false);
+  const [hadSurgery, setHadSurgery] = useState(false);
+  const [hospDetails, setHospDetails] = useState("");
+  const [parenteral, setParenteral] = useState(false);
+  const [parenteralDetails, setParenteralDetails] = useState("");
+  const [cosmetic, setCosmetic] = useState(false);
+  const [cosmeticDetails, setCosmeticDetails] = useState("");
+  const [epiDx, setEpiDx] = useState("");
+  const [plan, setPlan] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Bemor ID topilmadi");
+      const res = await api.post(`/api/patients/${patientId}/epi`, {
+        infection_contact: infContact, infection_contact_details: infDetails || undefined,
+        travel_last_month: travel, travel_details: travelDetails || undefined,
+        past_infections: pastInf || undefined,
+        had_hospitalization: hadHosp, had_transfusion: hadTransf, had_surgery_6mo: hadSurgery,
+        hospitalization_details: hospDetails || undefined,
+        parenteral_procedures: parenteral, parenteral_details: parenteralDetails || undefined,
+        cosmetic_services: cosmetic, cosmetic_details: cosmeticDetails || undefined,
+        epi_diagnosis: epiDx || undefined, management_plan: plan || undefined,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Epi-anamnez saqlandi");
+      qc.invalidateQueries({ queryKey: ["patient-history", patientId] });
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const Check = ({ v, on, l }: { v: boolean; on: (b: boolean) => void; l: string }) => (
+    <label className="flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" checked={v} onChange={(e) => on(e.target.checked)} />
+      <span>{l}</span>
+    </label>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Epi-anamnez (SanPIN 03-42-17)</DialogTitle>
+          <DialogDescription>Infekcion nazorat uchun majburiy</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <Check v={infContact} on={setInfContact} l="1) Infekcion bemorlar bilan kontaktda bo'lgan (br tif, gepatit, tuberkulyoz, kox va h.k.)" />
+            {infContact && <Textarea rows={2} value={infDetails} onChange={(e) => setInfDetails(e.target.value)} placeholder="Qaysi kasallik, qayerda, qachondan-qachongacha" />}
+          </div>
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <Check v={travel} on={setTravel} l="2) So'nggi 2 hafta / 1 oyda boshqa joyga borgan" />
+            {travel && <Textarea rows={2} value={travelDetails} onChange={(e) => setTravelDetails(e.target.value)} placeholder="Qayerga, qachon qaytgan" />}
+          </div>
+          <div className="space-y-1.5">
+            <Label>3) O&apos;tkirgan infekcion kasalliklar</Label>
+            <Textarea rows={2} value={pastInf} onChange={(e) => setPastInf(e.target.value)} placeholder="Bolalikda va so'nggi yillarda" />
+          </div>
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <p className="text-xs font-medium text-muted-foreground">4) Tibbiy tarix (6 oy)</p>
+            <Check v={hadHosp} on={setHadHosp} l="Statsionar/ambulator davolangan" />
+            <Check v={hadTransf} on={setHadTransf} l="Qon quyish (gemotransfuziya) qilingan" />
+            <Check v={hadSurgery} on={setHadSurgery} l="Jarrohlik amaliyoti bo'lgan" />
+            {(hadHosp || hadTransf || hadSurgery) && (
+              <Textarea rows={2} value={hospDetails} onChange={(e) => setHospDetails(e.target.value)} placeholder="Qayerda, qachon, nima uchun" />
+            )}
+          </div>
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <Check v={parenteral} on={setParenteral} l="5) Parenteral muolaja olgan (igna sanchilishi bilan)" />
+            {parenteral && <Textarea rows={2} value={parenteralDetails} onChange={(e) => setParenteralDetails(e.target.value)} />}
+          </div>
+          <div className="space-y-2 rounded-lg border border-border/60 p-3">
+            <Check v={cosmetic} on={setCosmetic} l="6) Maishiy xizmatdan foydalangan (manikyur, pedikyur, pirsing, tatuaj)" />
+            {cosmetic && <Textarea rows={2} value={cosmeticDetails} onChange={(e) => setCosmeticDetails(e.target.value)} placeholder="Qayerda, qachon" />}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Tashxis (epi asosda)</Label>
+              <Input value={epiDx} onChange={(e) => setEpiDx(e.target.value)} placeholder="HBV riski, ..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Olib borish tartibi</Label>
+              <Input value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="Izolyatsiya, test..." />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>Saqlash</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

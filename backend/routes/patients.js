@@ -200,7 +200,7 @@ export default function patientsRoutes(pool, authMiddleware) {
       );
       if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
 
-      const [appointments, consultations, reports, admissions] = await Promise.all([
+      const [appointments, consultations, reports, admissions, intakes, epis] = await Promise.all([
         q(
           `SELECT a.id, a.appointment_id, a.scheduled_at, a.doctor_name, a.status, a.payment_status,
                   a.amount::float8 AS amount, s.name AS service_name
@@ -233,6 +233,23 @@ export default function patientsRoutes(pool, authMiddleware) {
            ORDER BY admission_date DESC LIMIT 50`,
           [tenantId, patientId]
         ),
+        q(
+          `SELECT id, admission_id, examined_at, doctor_name, brought_by,
+                  complaint_pain, preliminary_diagnosis
+           FROM patient_intake_examinations
+           WHERE tenant_id = $1 AND patient_id = $2
+           ORDER BY examined_at DESC LIMIT 50`,
+          [tenantId, patientId]
+        ),
+        q(
+          `SELECT id, admission_id, collected_at, doctor_name,
+                  infection_contact, travel_last_month, had_transfusion,
+                  had_surgery_6mo, epi_diagnosis
+           FROM patient_epi_anamnesis
+           WHERE tenant_id = $1 AND patient_id = $2
+           ORDER BY collected_at DESC LIMIT 50`,
+          [tenantId, patientId]
+        ),
       ]);
 
       res.json({
@@ -245,7 +262,7 @@ export default function patientsRoutes(pool, authMiddleware) {
           admissions: admissions.length,
           last_visit: appointments[0]?.scheduled_at || null,
         },
-        appointments, consultations, reports, admissions,
+        appointments, consultations, reports, admissions, intakes, epis,
       });
     } catch (e) { safeError(res, e); }
   });
@@ -305,6 +322,142 @@ export default function patientsRoutes(pool, authMiddleware) {
       if (!existing) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
       await q('DELETE FROM patients WHERE id = $1 AND tenant_id = $2', [req.params.id, tenantId]);
       res.json({ success: true, message: 'Bemor o\'chirildi' });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ============================================================
+  // Bosqich B: Birlamchi qabul ko'rigi
+  // ============================================================
+  const intakeSchema = z.object({
+    admission_id: z.string().uuid().optional(),
+    brought_by: z.enum(['ozi_kelgan', 'ttyo', 'boshqa_dpm']).optional(),
+    complaint_pain: z.string().max(2000).optional(),
+    complaint_pain_location: z.string().max(500).optional(),
+    complaint_pain_character: z.string().max(500).optional(),
+    complaint_pain_onset: z.string().max(500).optional(),
+    complaint_other: z.string().max(2000).optional(),
+    anamnesis_morbi: z.string().max(4000).optional(),
+    anamnesis_vitae: z.string().max(4000).optional(),
+    status_praesens: z.string().max(4000).optional(),
+    status_localis: z.string().max(4000).optional(),
+    preliminary_diagnosis: z.string().max(2000).optional(),
+    raw_text: z.string().max(10000).optional(),
+    data_json: z.any().optional(),
+  });
+
+  router.post('/:id/intake', authMiddleware, async (req, res) => {
+    const parsed = intakeSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Validatsiya xatosi', details: parsed.error.flatten().fieldErrors });
+    }
+    try {
+      const tenantId = tenantOf(req);
+      const patient = await qGet('SELECT id FROM patients WHERE id = $1 AND tenant_id = $2', [req.params.id, tenantId]);
+      if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
+
+      const b = parsed.data;
+      const id = uuidv4();
+      await q(
+        `INSERT INTO patient_intake_examinations
+           (id, tenant_id, patient_id, admission_id, doctor_id, doctor_name,
+            brought_by, complaint_pain, complaint_pain_location, complaint_pain_character,
+            complaint_pain_onset, complaint_other, anamnesis_morbi, anamnesis_vitae,
+            status_praesens, status_localis, preliminary_diagnosis, raw_text, data_json)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+        [id, tenantId, patient.id, b.admission_id || null,
+         req.user?.id || null, req.user?.name || req.user?.username || null,
+         b.brought_by || null, b.complaint_pain || null, b.complaint_pain_location || null,
+         b.complaint_pain_character || null, b.complaint_pain_onset || null, b.complaint_other || null,
+         b.anamnesis_morbi || null, b.anamnesis_vitae || null,
+         b.status_praesens || null, b.status_localis || null, b.preliminary_diagnosis || null,
+         b.raw_text || null, b.data_json ? JSON.stringify(b.data_json) : null]
+      );
+      res.status(201).json({ success: true, id });
+    } catch (e) { safeError(res, e); }
+  });
+
+  router.get('/:id/intakes', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const rows = await q(
+        `SELECT * FROM patient_intake_examinations
+         WHERE tenant_id = $1 AND patient_id = $2
+         ORDER BY examined_at DESC LIMIT 50`,
+        [tenantId, req.params.id]
+      );
+      res.json({ success: true, intakes: rows });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ============================================================
+  // Bosqich B: SanPIN epi-anamnez
+  // ============================================================
+  const epiSchema = z.object({
+    admission_id: z.string().uuid().optional(),
+    infection_contact: z.boolean().optional(),
+    infection_contact_details: z.string().max(2000).optional(),
+    travel_last_month: z.boolean().optional(),
+    travel_details: z.string().max(2000).optional(),
+    past_infections: z.string().max(2000).optional(),
+    had_hospitalization: z.boolean().optional(),
+    had_transfusion: z.boolean().optional(),
+    had_surgery_6mo: z.boolean().optional(),
+    hospitalization_details: z.string().max(2000).optional(),
+    parenteral_procedures: z.boolean().optional(),
+    parenteral_details: z.string().max(2000).optional(),
+    cosmetic_services: z.boolean().optional(),
+    cosmetic_details: z.string().max(2000).optional(),
+    epi_diagnosis: z.string().max(2000).optional(),
+    management_plan: z.string().max(2000).optional(),
+    raw_text: z.string().max(10000).optional(),
+    data_json: z.any().optional(),
+  });
+
+  router.post('/:id/epi', authMiddleware, async (req, res) => {
+    const parsed = epiSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Validatsiya xatosi', details: parsed.error.flatten().fieldErrors });
+    }
+    try {
+      const tenantId = tenantOf(req);
+      const patient = await qGet('SELECT id FROM patients WHERE id = $1 AND tenant_id = $2', [req.params.id, tenantId]);
+      if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
+
+      const b = parsed.data;
+      const id = uuidv4();
+      await q(
+        `INSERT INTO patient_epi_anamnesis
+           (id, tenant_id, patient_id, admission_id, doctor_id, doctor_name,
+            infection_contact, infection_contact_details, travel_last_month, travel_details,
+            past_infections, had_hospitalization, had_transfusion, had_surgery_6mo, hospitalization_details,
+            parenteral_procedures, parenteral_details, cosmetic_services, cosmetic_details,
+            epi_diagnosis, management_plan, raw_text, data_json)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+        [id, tenantId, patient.id, b.admission_id || null,
+         req.user?.id || null, req.user?.name || req.user?.username || null,
+         !!b.infection_contact, b.infection_contact_details || null,
+         !!b.travel_last_month, b.travel_details || null,
+         b.past_infections || null,
+         !!b.had_hospitalization, !!b.had_transfusion, !!b.had_surgery_6mo, b.hospitalization_details || null,
+         !!b.parenteral_procedures, b.parenteral_details || null,
+         !!b.cosmetic_services, b.cosmetic_details || null,
+         b.epi_diagnosis || null, b.management_plan || null,
+         b.raw_text || null, b.data_json ? JSON.stringify(b.data_json) : null]
+      );
+      res.status(201).json({ success: true, id });
+    } catch (e) { safeError(res, e); }
+  });
+
+  router.get('/:id/epi', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const rows = await q(
+        `SELECT * FROM patient_epi_anamnesis
+         WHERE tenant_id = $1 AND patient_id = $2
+         ORDER BY collected_at DESC LIMIT 50`,
+        [tenantId, req.params.id]
+      );
+      res.json({ success: true, epi: rows });
     } catch (e) { safeError(res, e); }
   });
 
