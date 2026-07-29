@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { upsertPatientByPhone } from '../services/patient-store.js';
+import { generateForm003Pdf } from '../services/form003Generator.js';
 
 export default function(pool, authMiddleware, checkRole, upload) {
   const router = Router();
@@ -669,6 +670,72 @@ export default function(pool, authMiddleware, checkRole, upload) {
       }
       res.json({ success: true, wards: [...byWard.values()] });
     } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ============================================================
+  // BOSQICH G: 003-FORMA A4 CHOP ETISH
+  // ============================================================
+  // GET /inpatient/admissions/:id/print/003 — barcha bo'limlar birlashtirilgan PDF
+  router.get('/inpatient/admissions/:id/print/003', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const admId = req.params.id;
+
+      const admission = await qGet(
+        `SELECT a.*, w.name AS ward_name, b.bed_number
+         FROM admissions a
+         LEFT JOIN wards w ON w.id = a.ward_id AND w.tenant_id = a.tenant_id
+         LEFT JOIN beds b ON b.id = a.bed_id
+         WHERE a.id = $1 AND a.tenant_id = $2`,
+        [admId, tenantId]
+      );
+      if (!admission) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+
+      const tenant = await qGet(
+        `SELECT id, name, legal_name, inn, mfo, bank_account, bank_name,
+                legal_address, director_name, director_position
+         FROM tenants WHERE id = $1`,
+        [tenantId]
+      );
+      const patient = admission.patient_id ? await qGet(
+        `SELECT * FROM patients WHERE id = $1 AND tenant_id = $2`,
+        [admission.patient_id, tenantId]
+      ) : { first_name: admission.patient_name || 'Noma\'lum', phone: admission.patient_phone };
+
+      // Barcha bog'liq ma'lumotlarni parallel yig'amiz
+      const [intakes, epis, dailyNotes, prescriptions, executions, labs, services, consents, contracts, acts, dischargeArr] =
+        await Promise.all([
+          q(`SELECT * FROM patient_intake_examinations WHERE tenant_id = $1 AND admission_id = $2 ORDER BY examined_at`, [tenantId, admId]),
+          q(`SELECT * FROM patient_epi_anamnesis WHERE tenant_id = $1 AND admission_id = $2 ORDER BY collected_at`, [tenantId, admId]),
+          q(`SELECT * FROM daily_notes WHERE tenant_id = $1 AND admission_id = $2 ORDER BY date, created_at`, [tenantId, admId]),
+          q(`SELECT * FROM prescriptions WHERE tenant_id = $1 AND admission_id = $2 ORDER BY created_at`, [tenantId, admId]),
+          q(`SELECT * FROM prescription_executions WHERE tenant_id = $1 AND admission_id = $2 ORDER BY executed_at`, [tenantId, admId]),
+          q(`SELECT lo.*, lr.conclusion AS result_conclusion, lr.values_json AS result_values
+             FROM lab_orders lo LEFT JOIN lab_results lr ON lr.lab_order_id = lo.id AND lr.tenant_id = lo.tenant_id
+             WHERE lo.tenant_id = $1 AND lo.admission_id = $2 ORDER BY lo.ordered_at`, [tenantId, admId]),
+          q(`SELECT * FROM inpatient_services WHERE tenant_id = $1 AND admission_id = $2 ORDER BY date`, [tenantId, admId]),
+          q(`SELECT * FROM patient_consents WHERE tenant_id = $1 AND admission_id = $2 ORDER BY signed_at`, [tenantId, admId]),
+          q(`SELECT * FROM service_contracts WHERE tenant_id = $1 AND admission_id = $2 ORDER BY contract_date`, [tenantId, admId]),
+          q(`SELECT * FROM service_acts WHERE tenant_id = $1 AND admission_id = $2 ORDER BY act_date`, [tenantId, admId]),
+          q(`SELECT * FROM discharges WHERE tenant_id = $1 AND admission_id = $2 LIMIT 1`, [tenantId, admId]),
+        ]);
+
+      const pdf = await generateForm003Pdf({
+        tenant, patient, admission,
+        intakes, epis, daily_notes: dailyNotes,
+        prescriptions, executions, labs, services,
+        consents, contracts, acts,
+        discharge: dischargeArr[0] || null,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition',
+        `inline; filename="003-forma-${patient.medical_record_number || admId}.pdf"`);
+      res.send(pdf);
+    } catch (e) {
+      console.error('[FORM003]', e);
       res.status(500).json({ success: false, error: e.message });
     }
   });

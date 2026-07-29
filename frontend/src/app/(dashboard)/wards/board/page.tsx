@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import {
   Building2, BedDouble, ArrowLeft, Phone, Mic, Square, Loader2,
   FolderOpen, Stethoscope, Save, ThermometerSun, Activity, HeartPulse,
-  Pill, CheckCircle2,
+  Pill, CheckCircle2, Printer,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -209,7 +210,25 @@ function BedDialog({ bed, onClose, onObhodOpen, onMedsOpen }: {
   onObhodOpen: () => void;
   onMedsOpen: () => void;
 }) {
+  const { token } = useAuth();
   const open = !!bed && bed.status === "occupied";
+
+  async function print003() {
+    if (!bed?.admission_id) return;
+    try {
+      const res = await fetch(`/api/inpatient/admissions/${bed.admission_id}/print/003`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("PDF olishda xatolik");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank");
+      if (!w) toast.error("Popup bloklangan — ruxsat bering");
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Xatolik");
+    }
+  }
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent showCloseButton>
@@ -244,8 +263,9 @@ function BedDialog({ bed, onClose, onObhodOpen, onMedsOpen }: {
               <FolderOpen className="size-4" /> Karta
             </Link>
           )}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={onClose}>Yopish</Button>
+            <Button variant="outline" onClick={print003}><Printer className="size-4" /> 003-forma</Button>
             <Button variant="outline" onClick={onMedsOpen}><Pill className="size-4" /> Dorilar</Button>
             <Button onClick={onObhodOpen}><Mic className="size-4" /> Ovozli obhod</Button>
           </div>
