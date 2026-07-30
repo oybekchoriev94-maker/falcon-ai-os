@@ -126,7 +126,28 @@ export async function generateForm003Pdf(payload) {
       y = label(doc, y, 'Yotqizish turi', admission.admission_type);
       y = label(doc, y, 'Boshlang\'ich tashxis', admission.diagnosis_initial);
       y = label(doc, y, 'Davolovchi shifokor', admission.attending_doctor_name);
-      y = label(doc, y, 'Parhez stoli', admission.diet_number != null ? `№ ${admission.diet_number}` : null);
+      y = label(doc, y, 'Parhez stoli', admission.diet_number ? `№ ${admission.diet_number}` : null);
+
+      // ── ANTROPOMETRIYA VA KIRISH HOLATI (rasm sahifa 1 muqovadan) ──
+      const anthro = [];
+      if (admission.height_cm != null) anthro.push(`Bo'yi: ${admission.height_cm} sm`);
+      if (admission.weight_kg != null) anthro.push(`Vazni: ${admission.weight_kg} kg`);
+      if (admission.temperature_on_admission != null) anthro.push(`Kirish paytida t°: ${admission.temperature_on_admission}`);
+      if (anthro.length > 0) y = para(doc, y, anthro.join('  ·  '));
+
+      const transportMap = { own: "O'zi yura oladi", wheelchair: 'Aravachada', stretcher: 'Zambilda' };
+      if (admission.transport_type) {
+        y = label(doc, y, 'Olib yurish', transportMap[admission.transport_type] || admission.transport_type);
+      }
+      if (admission.transport_details) y = label(doc, y, 'Transport', admission.transport_details);
+      if (admission.urgent_admission) y = label(doc, y, 'Shoshilinch', 'HA');
+      if (admission.referring_clinic) y = label(doc, y, 'Yo\'llagan klinika', admission.referring_clinic);
+      if (admission.referral_diagnosis) y = label(doc, y, 'Yo\'llanma tashxisi', admission.referral_diagnosis);
+      if (admission.time_since_onset) y = label(doc, y, 'Kasallik boshlanganidan', admission.time_since_onset);
+      if (admission.treatment_plan) y = para(doc, y, `Davolash rejasi: ${admission.treatment_plan}`);
+      if (admission.head_reviewed_at) {
+        y = label(doc, y, 'Bo\'lim mudiri tasdiqlagan', fmtDateTime(admission.head_reviewed_at));
+      }
 
       // ── BIRLAMCHI KO'RIK ──
       if (intakes.length > 0) {
@@ -247,8 +268,30 @@ export async function generateForm003Pdf(payload) {
         y = label(doc, y, 'Chiqarilgan', fmtDateTime(discharge.discharge_date));
         y = label(doc, y, 'Turi', discharge.discharge_type);
         if (discharge.diagnosis_final) y = para(doc, y, `Yakuniy tashxis: ${discharge.diagnosis_final}`);
+        if (discharge.icd10_code) y = label(doc, y, 'MKB-10', discharge.icd10_code);
         if (discharge.recommendations) y = para(doc, y, `Tavsiyalar: ${discharge.recommendations}`);
+        if (discharge.follow_up_date) y = label(doc, y, 'Qayta ko\'rik', fmtDate(discharge.follow_up_date));
         if (discharge.epicrisis_text) y = para(doc, y, discharge.epicrisis_text);
+        if (discharge.auto_generated) {
+          doc.font(FONT_REG).fontSize(7).fillColor('#666')
+            .text('(AI yordamida tuzilgan, shifokor tomonidan tahrir qilingan)', MARGIN, y);
+          doc.fillColor('#000');
+          y = doc.y + 2;
+        }
+        // O'limdan keyingi xulosa (agar bo'lsa)
+        if (discharge.death_summary) {
+          y = heading(doc, y, '11a. O\'limdan keyingi yakuniy xulosa');
+          y = para(doc, y, discharge.death_summary);
+          if (discharge.sent_to_polyclinic_at) {
+            y = label(doc, y, 'Poliklinikaga yuborilgan', fmtDateTime(discharge.sent_to_polyclinic_at));
+            if (discharge.polyclinic_ref) y = label(doc, y, 'Yuborish raqami', discharge.polyclinic_ref);
+          } else {
+            doc.font(FONT_REG).fontSize(8).fillColor('#c00')
+              .text('⚠ Poliklinikaga hali elektron yuborilmagan (JSHSHIR bo\'yicha yuborish shart)', MARGIN, y);
+            doc.fillColor('#000');
+            y = doc.y + 4;
+          }
+        }
       }
 
       // Imzolar

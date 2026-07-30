@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -87,6 +88,20 @@ export default function WardsPage() {
     bed: Bed;
   } | null>(null);
   const [admitOpen, setAdmitOpen] = useState(false);
+  // 003-forma to'liq muqova maydonlari (yotqizishda birdaniga to'ldiriladi)
+  const [admitForm, setAdmitForm] = useState({
+    patient_phone: '',
+    diagnosis_initial: '',
+    admission_type: 'rejali',
+    height_cm: '', weight_kg: '', temperature_on_admission: '',
+    transport_type: 'own',
+    referring_clinic: '',
+    urgent_admission: false,
+    time_since_onset: '',
+    referral_diagnosis: '',
+    diet_number: '',
+    treatment_plan: '',
+  });
   const [dischargeOpen, setDischargeOpen] = useState(false);
   const [addWardOpen, setAddWardOpen] = useState(false);
   const [patientName, setPatientName] = useState("");
@@ -129,11 +144,27 @@ export default function WardsPage() {
     mutationFn: async ({
       wardId, bedId, name,
     }: { wardId: string; bedId: number; name: string }) => {
-      const res = await api.post("/api/inpatient/admissions", {
+      const payload: Record<string, unknown> = {
         patient_name: name,
         ward_id: wardId,
         bed_id: bedId,
-      });
+        patient_phone: admitForm.patient_phone || null,
+        diagnosis_initial: admitForm.diagnosis_initial || null,
+        admission_type: admitForm.admission_type,
+        transport_type: admitForm.transport_type,
+        urgent_admission: admitForm.urgent_admission,
+        referring_clinic: admitForm.referring_clinic || null,
+        time_since_onset: admitForm.time_since_onset || null,
+        referral_diagnosis: admitForm.referral_diagnosis || null,
+        diet_number: admitForm.diet_number || null,
+        treatment_plan: admitForm.treatment_plan || null,
+      };
+      // Sonli maydonlar — bo'sh bo'lsa uzatmaymiz
+      if (admitForm.height_cm) payload.height_cm = parseFloat(admitForm.height_cm);
+      if (admitForm.weight_kg) payload.weight_kg = parseFloat(admitForm.weight_kg);
+      if (admitForm.temperature_on_admission) payload.temperature_on_admission = parseFloat(admitForm.temperature_on_admission);
+
+      const res = await api.post("/api/inpatient/admissions", payload);
       if (!res.success) throw new Error(res.error || "Xatolik yuz berdi");
       return res;
     },
@@ -142,6 +173,12 @@ export default function WardsPage() {
       toast.success("Bemor qabul qilindi");
       setAdmitOpen(false);
       setPatientName("");
+      setAdmitForm({
+        patient_phone: '', diagnosis_initial: '', admission_type: 'rejali',
+        height_cm: '', weight_kg: '', temperature_on_admission: '',
+        transport_type: 'own', referring_clinic: '', urgent_admission: false,
+        time_since_onset: '', referral_diagnosis: '', diet_number: '', treatment_plan: '',
+      });
       setSelectedBed(null);
     },
     onError: (err: Error) => toast.error(err.message),
@@ -351,29 +388,125 @@ export default function WardsPage() {
       <Dialog open={admitOpen} onOpenChange={(open) => {
         if (!open) { setAdmitOpen(false); setSelectedBed(null); setPatientName(""); }
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="size-4" />
-              Bemor qabul qilish
+              Bemorni yotqizish — 003-forma muqovasi
             </DialogTitle>
             <DialogDescription>
               {selectedBed && (
-                <>Palata: <strong>{wards.find((w) => w.id === selectedBed.wardId)?.name}</strong>, O'rin: <strong>{selectedBed.bed.bed_number}</strong></>
+                <>Palata: <strong>{wards.find((w) => w.id === selectedBed.wardId)?.name}</strong>, O&apos;rin: <strong>{selectedBed.bed.bed_number}</strong></>
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Bemor ismini kiriting..."
-                className="pl-8"
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAdmit()}
-                autoFocus
-              />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Bemor ismi *</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                  <Input placeholder="Familiya Ism Otasining ismi" className="pl-8"
+                    value={patientName} onChange={(e) => setPatientName(e.target.value)} autoFocus />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Telefon (karta bilan bog'lash)</Label>
+                <Input placeholder="+998901234567" value={admitForm.patient_phone}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, patient_phone: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 rounded-lg border p-3 bg-muted/20">
+              <div className="col-span-3 text-xs text-muted-foreground font-medium">Antropometriya (kirish paytida)</div>
+              <div className="space-y-1">
+                <Label className="text-xs">Bo&apos;yi (sm)</Label>
+                <Input inputMode="decimal" placeholder="170" value={admitForm.height_cm}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, height_cm: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Vazni (kg)</Label>
+                <Input inputMode="decimal" placeholder="65" value={admitForm.weight_kg}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, weight_kg: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kirishdagi t°</Label>
+                <Input inputMode="decimal" placeholder="36.6" value={admitForm.temperature_on_admission}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, temperature_on_admission: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Yotqizish turi</Label>
+                <select className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                  value={admitForm.admission_type}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, admission_type: e.target.value }))}>
+                  <option value="rejali">Rejali</option>
+                  <option value="shoshilinch">Shoshilinch</option>
+                  <option value="tez_yordam">Tez yordam</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Olib yurish turi</Label>
+                <select className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                  value={admitForm.transport_type}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, transport_type: e.target.value }))}>
+                  <option value="own">O&apos;zi yura oladi</option>
+                  <option value="wheelchair">Aravachada</option>
+                  <option value="stretcher">Zambilda</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="urgent" checked={admitForm.urgent_admission}
+                onChange={(e) => setAdmitForm(f => ({ ...f, urgent_admission: e.target.checked }))} />
+              <Label htmlFor="urgent" className="text-xs cursor-pointer">Shoshilinch keltirilgan</Label>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Bemor qayerdan yuborilgan (klinika)</Label>
+              <Input placeholder="Termiz shahar poliklinikasi..." value={admitForm.referring_clinic}
+                onChange={(e) => setAdmitForm(f => ({ ...f, referring_clinic: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Yo&apos;llanmadagi tashxis</Label>
+                <Input placeholder="Migren" value={admitForm.referral_diagnosis}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, referral_diagnosis: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Kasallikdan o&apos;tgan vaqt</Label>
+                <Input placeholder="3 kun" value={admitForm.time_since_onset}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, time_since_onset: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Boshlang&apos;ich tashxis (klinika)</Label>
+              <Input placeholder="Migren" value={admitForm.diagnosis_initial}
+                onChange={(e) => setAdmitForm(f => ({ ...f, diagnosis_initial: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Parhez stoli (Pevzner №)</Label>
+                <select className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                  value={admitForm.diet_number}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, diet_number: e.target.value }))}>
+                  <option value="">—</option>
+                  {['1','1a','2','3','4','5','5a','6','7','8','9','10','11','12','13','14','15','0'].map(n =>
+                    <option key={n} value={n}>№ {n}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Davolash rejasi (bo&apos;lim mudiri tasdiqlaydi)</Label>
+                <Textarea rows={2} placeholder="Antibiotik, infuzion, kuzatuv..."
+                  value={admitForm.treatment_plan}
+                  onChange={(e) => setAdmitForm(f => ({ ...f, treatment_plan: e.target.value }))} />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -382,7 +515,7 @@ export default function WardsPage() {
             </Button>
             <Button onClick={handleAdmit} disabled={!patientName.trim() || admitMutation.isPending}>
               {admitMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Qabul qilish
+              Yotqizish
             </Button>
           </DialogFooter>
         </DialogContent>
