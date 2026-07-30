@@ -60,6 +60,25 @@ interface QueueItem {
   district: string | null;
   address: string | null;
   has_consultation: boolean;
+  // Boshqa doktordan yo'naltirilgan bo'lsa — kim yubordi
+  forwarded_from_appointment_id?: number | null;
+  forwarded_from_doctor_id?: string | null;
+  forwarded_from_doctor_name?: string | null;
+  forwarded_from_doctor_spec?: string | null;
+}
+
+// Ko'rik ochilgach chiqadigan — shu bemor bo'yicha boshqa doktorlar xulosalari
+interface PriorVisit {
+  id: string;
+  created_at: string;
+  appointment_code: string | null;
+  doctor_name: string;
+  doctor_spec: string | null;
+  service_name: string | null;
+  diagnosis: string;
+  procedure: string;
+  medicines: string;
+  notes: string;
 }
 
 interface IncomingReferral {
@@ -97,6 +116,7 @@ export default function DoctorPage() {
   const queryClient = useQueryClient();
   const [visitOf, setVisitOf] = useState<QueueItem | null>(null);
   const [referralOf, setReferralOf] = useState<QueueItem | null>(null);
+  const [forwardOf, setForwardOf] = useState<QueueItem | null>(null);
 
   // ── Bugungi navbat (asosiy panel) ──
   const { data: queueData, isLoading: queueLoading } = useQuery({
@@ -191,6 +211,13 @@ export default function DoctorPage() {
           queryClient.invalidateQueries({ queryKey: ["doctor-stats"] });
         }}
         onReferral={(it) => { setReferralOf(it); setVisitOf(null); }}
+        onForward={(it) => { setForwardOf(it); setVisitOf(null); }}
+      />
+
+      <ForwardDialog
+        item={forwardOf}
+        onClose={() => setForwardOf(null)}
+        onSent={() => queryClient.invalidateQueries({ queryKey: ["doctor-queue"] })}
       />
 
       <ReferralDialog
@@ -402,17 +429,29 @@ function QuickActions({ specialization }: { specialization?: string }) {
 
 // ── Ko'rik dialogi: bemor kartochkasi + xulosa maydonlari + yakunlash/yo'llanma ──
 function VisitDialog({
-  item, onClose, onCompleted, onReferral,
+  item, onClose, onCompleted, onReferral, onForward,
 }: {
   item: QueueItem | null;
   onClose: () => void;
   onCompleted: () => void;
   onReferral: (it: QueueItem) => void;
+  onForward: (it: QueueItem) => void;
 }) {
   const [diagnosis, setDiagnosis] = useState("");
   const [procedure, setProcedure] = useState("");
   const [medicines, setMedicines] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Shu bemorning oxirgi 30 kunlik boshqa doktorlar xulosalari
+  const { data: priorData } = useQuery({
+    queryKey: ["prior-visits", item?.id],
+    enabled: !!item?.id,
+    queryFn: async () => {
+      const res = await api.get<{ prior: PriorVisit[] }>(`/api/doctor/visit/${item!.id}/prior`);
+      return res.success ? res : { prior: [] };
+    },
+  });
+  const prior = priorData?.prior ?? [];
 
   const complete = useMutation({
     mutationFn: async () => {
@@ -474,6 +513,61 @@ function VisitDialog({
               </div>
             </div>
 
+            {/* Yo'naltirilgan bo'lsa — kim yubordi + darrov ko'rinuvchi 1-doktor xulosasi */}
+            {item.forwarded_from_doctor_name && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <Share2 className="size-4 text-amber-600" />
+                  <span>
+                    <strong>{item.forwarded_from_doctor_name.trim()}</strong>
+                    {item.forwarded_from_doctor_spec && <span className="text-muted-foreground"> ({item.forwarded_from_doctor_spec})</span>}
+                    {" tomonidan yuborilgan"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Oldingi doktorlar xulosalari — 2-doktor shu tufayli 1-doktor natijasini darrov ko'radi */}
+            {prior.length > 0 && (
+              <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Stethoscope className="size-4 text-primary" />
+                  <span className="text-sm font-medium">Oldingi doktorlar xulosalari</span>
+                  <Badge variant="secondary" className="text-[10px]">{prior.length}</Badge>
+                </div>
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {prior.map((p) => (
+                    <div key={p.id} className="rounded border border-border/40 bg-background/60 p-2 text-xs">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-medium">
+                          {p.doctor_name}
+                          {p.doctor_spec && <span className="text-muted-foreground"> · {p.doctor_spec}</span>}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {new Date(p.created_at).toLocaleString("uz-UZ", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      {p.service_name && (
+                        <p className="text-muted-foreground">{p.service_name}</p>
+                      )}
+                      {p.diagnosis && (
+                        <p className="mt-1"><span className="text-muted-foreground">Tashxis: </span>{p.diagnosis}</p>
+                      )}
+                      {p.procedure && (
+                        <p><span className="text-muted-foreground">Muolaja: </span>{p.procedure}</p>
+                      )}
+                      {p.medicines && (
+                        <p><span className="text-muted-foreground">Dorilar: </span>{p.medicines}</p>
+                      )}
+                      {p.notes && (
+                        <p className="text-muted-foreground italic mt-1">{p.notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Xulosa maydonlari */}
             <div className="grid gap-3">
               <div className="space-y-1.5">
@@ -496,10 +590,15 @@ function VisitDialog({
           </div>
         )}
 
-        <DialogFooter className="border-t border-border/50 pt-4 gap-2 sm:justify-between">
-          <Button variant="outline" onClick={() => item && onReferral(item)} disabled={!item}>
-            <Share2 className="size-4" /> Yo&apos;llanma yuborish
-          </Button>
+        <DialogFooter className="border-t border-border/50 pt-4 gap-2 flex-wrap sm:justify-between">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => item && onReferral(item)} disabled={!item}>
+              <Share2 className="size-4" /> Bo&apos;limga yo&apos;llanma
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => item && onForward(item)} disabled={!item}>
+              <ArrowRight className="size-4" /> Boshqa shifokorga
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Bekor qilish</Button>
             <Button onClick={() => complete.mutate()} disabled={complete.isPending}>
@@ -657,3 +756,127 @@ function ReferralDialog({
 // buttonVariants — hozircha ishlatilmayapti, lekin keyinchalik ba'zi link'lar
 // buttonstyled bo'lsa qo'shib qo'yishga qulay. Lint agar shikoyat qilsa olib tashlanadi.
 void buttonVariants;
+
+// ── Boshqa shifokorga yo'naltirish dialogi ──
+// Doktor tanlaydi + xizmat tanlaydi → yangi appointment (pending payment) yaratiladi.
+// Bemor kassaga jo'natiladi (access_code beriladi). To'lovdan keyin 2-doktor
+// navbatida ko'rinadi va uning ko'rik dialogida 1-doktor xulosasi darrov ochiladi.
+function ForwardDialog({
+  item, onClose, onSent,
+}: {
+  item: QueueItem | null;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [toDoctorId, setToDoctorId] = useState<string>("");
+  const [serviceId, setServiceId] = useState<string>("");
+  const [notes, setNotes] = useState("");
+
+  interface ServiceLite { id: string; name: string; price: number; category?: string }
+  const { data: docData } = useQuery({
+    queryKey: ["doctors-list-for-forward"],
+    enabled: !!item,
+    queryFn: async () => {
+      const res = await api.get<{ doctors: DoctorLite[] }>("/api/doctors");
+      return res.success ? res : { doctors: [] };
+    },
+  });
+  const doctors = docData?.doctors ?? [];
+
+  const { data: svcData } = useQuery({
+    queryKey: ["services-list-for-forward"],
+    enabled: !!item,
+    queryFn: async () => {
+      const res = await api.get<{ services: ServiceLite[] }>("/api/services");
+      return res.success ? res : { services: [] };
+    },
+  });
+  const services = svcData?.services ?? [];
+
+  const forward = useMutation({
+    mutationFn: async () => {
+      if (!item) throw new Error("Bemor tanlanmagan");
+      if (!toDoctorId) throw new Error("Shifokorni tanlang");
+      if (!serviceId) throw new Error("Xizmatni tanlang");
+      const res = await api.post<{
+        appointment: { access_code: string; amount: number };
+        message: string;
+      }>(`/api/doctor/visit/${item.id}/forward`, {
+        to_doctor_id: toDoctorId,
+        service_id: serviceId,
+        notes: notes.trim() || undefined,
+        payment_method: "cashier",
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: (res) => {
+      toast.success(res.message || `Kassaga yuborildi — kod: ${res.appointment.access_code}`, {
+        description: `To'lov summasi: ${fmtSum(res.appointment.amount)}`,
+      });
+      setToDoctorId(""); setServiceId(""); setNotes("");
+      onSent();
+      onClose();
+    },
+    onError: (e: Error) => toast.error(e.message || "Xatolik"),
+  });
+
+  const open = !!item;
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Boshqa shifokorga yo&apos;naltirish</DialogTitle>
+          <DialogDescription>
+            {item?.patient_name} — bemor kassaga jo&apos;natiladi. To&apos;lovdan keyin
+            tanlangan shifokor navbatida ko&apos;rinadi va sizning xulosangiz ochiq bo&apos;ladi.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Shifokor *</Label>
+            <Select value={toDoctorId || undefined} onValueChange={(v) => v && setToDoctorId(v)}>
+              <SelectTrigger><SelectValue placeholder="Shifokorni tanlang" /></SelectTrigger>
+              <SelectContent>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.first_name} {d.last_name || ""} {d.specialty ? `· ${d.specialty}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Xizmat (kassaga hisob) *</Label>
+            <Select value={serviceId || undefined} onValueChange={(v) => v && setServiceId(v)}>
+              <SelectTrigger><SelectValue placeholder="Xizmatni tanlang" /></SelectTrigger>
+              <SelectContent>
+                {services.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} · {fmtSum(s.price)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Izoh (ixtiyoriy)</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                      placeholder="2-doktor uchun qisqa maslahat, konteks" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Bekor qilish</Button>
+          <Button onClick={() => forward.mutate()} disabled={forward.isPending}>
+            {forward.isPending ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+            Kassaga yuborish
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

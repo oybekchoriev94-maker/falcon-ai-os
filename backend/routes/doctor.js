@@ -75,11 +75,17 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
                 a.scheduled_at, a.status, a.payment_status, a.amount::float8 AS amount,
                 a.notes, s.name AS service_name,
                 p.medical_record_number, p.district, p.address,
+                a.forwarded_from_appointment_id,
+                a.forwarded_from_doctor_id,
+                fwd_doc.first_name || ' ' || COALESCE(fwd_doc.last_name, '') AS forwarded_from_doctor_name,
+                fwd_doc.specialization                AS forwarded_from_doctor_spec,
                 EXISTS(SELECT 1 FROM patient_consultations c
                        WHERE c.tenant_id = a.tenant_id AND c.appointment_id = a.id) AS has_consultation
          FROM appointments a
          LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
-         LEFT JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN patients p         ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN doctors fwd_doc    ON fwd_doc.id = a.forwarded_from_doctor_id
+                                      AND fwd_doc.tenant_id = a.tenant_id
          WHERE a.tenant_id = $1 AND a.doctor_id = $2 ${dateFilter}
            AND a.status NOT IN ('cancelled', 'no_show')
          ORDER BY a.scheduled_at ASC`,
@@ -246,6 +252,186 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
       }
       res.json({ success: true, referrals: rows });
     } catch (e) { serverError(res, e); }
+  });
+
+  // ── YANGI: BEMORNING OLDINGI DOKTOR XULOSALARI ──
+  // Ko'rik dialogi ochilganda "Bu bemor bugungi/oxirgi kunlarda kim ko'rgan?"
+  // — 2-doktor 1-doktor xulosasini shu tufayli darrov ko'radi.
+  router.get('/visit/:appointmentId/prior', authMiddleware, checkRole('doctor'), async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const appt = await qGet(
+        `SELECT patient_id FROM appointments WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, req.params.appointmentId]
+      );
+      if (!appt) return res.status(404).json({ success: false, error: 'Bron topilmadi' });
+      if (!appt.patient_id) return res.json({ success: true, prior: [] });
+
+      // Oxirgi 30 kun ichida shu bemor bo'yicha barcha yakunlangan konsultatsiyalar
+      // (o'zining bugungi bronidan tashqari). Doktor ismi bilan.
+      const rows = await q(
+        `SELECT c.id, c.created_at, c.appointment_id, c.doctor_id, c.data_json,
+                d.first_name || ' ' || COALESCE(d.last_name, '') AS doctor_name,
+                d.specialization AS doctor_spec,
+                a.appointment_id AS appt_code,
+                s.name AS service_name
+         FROM patient_consultations c
+         LEFT JOIN doctors d ON d.id = c.doctor_id AND d.tenant_id = c.tenant_id
+         LEFT JOIN appointments a ON a.id = c.appointment_id AND a.tenant_id = c.tenant_id
+         LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = c.tenant_id
+         WHERE c.tenant_id = $1 AND c.patient_id = $2
+           AND c.id NOT IN (
+             SELECT id FROM patient_consultations
+             WHERE appointment_id = $3
+           )
+           AND c.created_at > NOW() - INTERVAL '30 days'
+         ORDER BY c.created_at DESC LIMIT 20`,
+        [tenantId, appt.patient_id, req.params.appointmentId]
+      );
+
+      const prior = rows.map((r) => {
+        const dj = typeof r.data_json === 'string'
+          ? (() => { try { return JSON.parse(r.data_json); } catch { return {}; } })()
+          : (r.data_json || {});
+        return {
+          id: r.id,
+          created_at: r.created_at,
+          appointment_code: r.appt_code,
+          doctor_name: r.doctor_name?.trim() || 'Noma\'lum',
+          doctor_spec: r.doctor_spec || null,
+          service_name: r.service_name || null,
+          diagnosis: dj.diagnosis || '',
+          procedure: dj.procedure || '',
+          medicines: dj.medicines || '',
+          notes: dj.notes || '',
+        };
+      });
+      res.json({ success: true, prior });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // ── YANGI: BOSHQA SHIFOKORGA YO'NALTIRISH ──
+  // Doktor "Boshqa shifokorga yubor" bosgach:
+  //  1) Yangi appointment yaratiladi (payment_status='pending') — kassa ko'radi.
+  //  2) forwarded_from_appointment_id — hozirgi tashrifga havola.
+  //     Bemor to'lagach, 2-doktor navbatida ko'rinadi va uning ko'rik dialogida
+  //     1-doktor xulosasi darrov ochiladi.
+  //  3) Hozirgi ko'rik (agar hali yakunlanmagan bo'lsa) tegilmaydi — doktor
+  //     istasa keyin yakunlaydi.
+  const forwardSchema = z.object({
+    to_doctor_id: z.string().uuid(),
+    service_id:   z.string().uuid(),
+    scheduled_at: z.string().datetime().optional(), // bo'lmasa hozirdan +1 daqiqa
+    notes:        z.string().max(1000).optional(),
+    payment_method: z.enum(['cashier', 'online']).optional(),
+  });
+
+  const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function shortCode(len = 6) {
+    const buf = new Uint8Array(len);
+    (globalThis.crypto || require('node:crypto').webcrypto).getRandomValues(buf);
+    let s = '';
+    for (let i = 0; i < len; i++) s += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
+    return s;
+  }
+
+  router.post('/visit/:appointmentId/forward', authMiddleware, checkRole('doctor'), async (req, res) => {
+    const validated = forwardSchema.safeParse(req.body || {});
+    if (!validated.success) {
+      return res.status(400).json({ success: false, error: 'Validatsiya xatosi', details: validated.error.flatten().fieldErrors });
+    }
+    const b = validated.data;
+    const client = await pool.connect();
+    try {
+      const tenantId = tenantOf(req);
+      await client.query('BEGIN');
+
+      // Hozirgi bron shu doktornikimi
+      const src = (await client.query(
+        `SELECT id, patient_id, patient_name, phone, region, district, mahalla, doctor_id
+         FROM appointments WHERE tenant_id = $1 AND id = $2 AND doctor_id = $3`,
+        [tenantId, req.params.appointmentId, req.user.id]
+      )).rows[0];
+      if (!src) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: 'Bron topilmadi yoki sizga tegishli emas' });
+      }
+
+      // Target shifokor va xizmat mavjudmi
+      const toDoc = (await client.query(
+        `SELECT id, first_name, last_name, specialization FROM doctors
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, b.to_doctor_id]
+      )).rows[0];
+      if (!toDoc) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, error: 'Yuborilayotgan shifokor topilmadi' });
+      }
+      const svc = (await client.query(
+        `SELECT id, name, price::float8 AS price FROM services_catalog
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, b.service_id]
+      )).rows[0];
+      if (!svc) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, error: 'Xizmat topilmadi' });
+      }
+
+      const scheduledAt = b.scheduled_at || new Date(Date.now() + 60_000).toISOString();
+      const apptCode = 'A' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+      const accessCode = shortCode(6);
+
+      const newRow = (await client.query(
+        `INSERT INTO appointments
+           (tenant_id, appointment_id, patient_id, patient_name, phone,
+            doctor_id, doctor_name, service_id, scheduled_at, amount,
+            department, source, status, payment_status, payment_method,
+            access_code, notes, region, district, mahalla,
+            forwarded_from_appointment_id, forwarded_from_doctor_id, forwarded_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'doctor_forward','scheduled','pending',$12,
+                 $13,$14,$15,$16,$17,$18,$19, NOW())
+         RETURNING id, appointment_id, access_code, amount::float8 AS amount`,
+        [
+          tenantId, apptCode, src.patient_id, src.patient_name, src.phone,
+          toDoc.id, `${toDoc.first_name} ${toDoc.last_name || ''}`.trim(),
+          svc.id, scheduledAt, svc.price,
+          toDoc.specialization || 'therapy',
+          b.payment_method || 'cashier', accessCode, b.notes || null,
+          src.region || null, src.district || null, src.mahalla || null,
+          src.id, req.user.id,
+        ]
+      )).rows[0];
+
+      // Ma'lumot uchun ichki referral yozuvi ham qo'shamiz (audit)
+      try {
+        const refId = uuidv4();
+        const referralCode = 'R' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase();
+        await client.query(
+          `INSERT INTO referrals
+             (id, tenant_id, referral_id, kind, patient_id, patient_name,
+              service_required, status, qr_code_token,
+              from_doctor_id, to_doctor_id, referring_doctor, notes)
+           VALUES ($1,$2,$3,'internal',$4,$5,$6,'pending',$7,$8,$9,$10,$11)`,
+          [refId, tenantId, referralCode, src.patient_id, src.patient_name,
+           svc.name, uuidv4().replace(/-/g, ''),
+           req.user.id, toDoc.id,
+           req.user.name || req.user.username || null,
+           b.notes || null]
+        );
+      } catch (_) { /* referral yozuvi audit uchun; asosiy oqim ishlaydi */ }
+
+      await client.query('COMMIT');
+      res.status(201).json({
+        success: true,
+        appointment: newRow,
+        message: `Bemor kassaga yuborildi. Kirish kodi: ${newRow.access_code}. To'lovdan keyin ${toDoc.first_name} ${toDoc.last_name || ''} navbatiga tushadi.`,
+      });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      serverError(res, e);
+    } finally {
+      client.release();
+    }
   });
 
   return router;
