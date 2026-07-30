@@ -441,6 +441,10 @@ function VisitDialog({
   const [procedure, setProcedure] = useState("");
   const [medicines, setMedicines] = useState("");
   const [notes, setNotes] = useState("");
+  const [nextStep, setNextStep] = useState<"home" | "labs" | "admission">("home");
+  const [labTypes, setLabTypes] = useState<string[]>([]);
+  const [admissionReason, setAdmissionReason] = useState("");
+  const [admissionDepartment, setAdmissionDepartment] = useState("");
 
   // Shu bemorning oxirgi 30 kunlik boshqa doktorlar xulosalari
   const { data: priorData } = useQuery({
@@ -456,16 +460,33 @@ function VisitDialog({
   const complete = useMutation({
     mutationFn: async () => {
       if (!item) throw new Error("Bron topilmadi");
-      const res = await api.post<{ consultation_id: string }>(
-        `/api/doctor/visit/${item.id}/complete`,
-        { diagnosis, procedure, medicines, notes }
-      );
+      const body: Record<string, unknown> = {
+        diagnosis, procedure, medicines, notes,
+        next_step: nextStep,
+      };
+      if (nextStep === "labs" && labTypes.length) body.lab_types = labTypes;
+      if (nextStep === "admission") {
+        body.admission_reason = admissionReason || diagnosis;
+        body.admission_department = admissionDepartment;
+      }
+      const res = await api.post<{
+        consultation_id: string;
+        lab_orders?: { id: string; test_type: string }[];
+      }>(`/api/doctor/visit/${item.id}/complete`, body);
       if (!res.success) throw new Error(res.error);
       return res;
     },
-    onSuccess: () => {
-      toast.success("Ko'rik yakunlandi — kartaga yozildi");
+    onSuccess: (res) => {
+      let msg = "Ko'rik yakunlandi — kartaga yozildi";
+      const created = res.lab_orders?.length || 0;
+      if (nextStep === "labs" && created) {
+        msg = `Ko'rik yakunlandi + ${created} ta tekshiruv buyuruldi (bemor kassaga)`;
+      } else if (nextStep === "admission") {
+        msg = "Ko'rik yakunlandi. Bemor statsionar navbatiga qo'yildi";
+      }
+      toast.success(msg);
       setDiagnosis(""); setProcedure(""); setMedicines(""); setNotes("");
+      setNextStep("home"); setLabTypes([]); setAdmissionReason(""); setAdmissionDepartment("");
       onCompleted();
       onClose();
     },
@@ -586,6 +607,82 @@ function VisitDialog({
                 <Label>Qo&apos;shimcha izoh</Label>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Rejim, kuzatuv, keyingi tashrif" />
               </div>
+            </div>
+
+            {/* Keyingi qadam — bemor keyin qayoqqa boradi */}
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <Label className="text-sm">Keyingi qadam</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { v: "home",      label: "Uyga",           icon: "🏠" },
+                  { v: "labs",      label: "Tekshiruvlar",   icon: "🧪" },
+                  { v: "admission", label: "Yotqizish",      icon: "🛏" },
+                ].map((o) => (
+                  <button key={o.v} type="button"
+                    onClick={() => setNextStep(o.v as typeof nextStep)}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-sm font-medium",
+                      nextStep === o.v ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground",
+                    )}>
+                    <span className="mr-1">{o.icon}</span>{o.label}
+                  </button>
+                ))}
+              </div>
+
+              {nextStep === "labs" && (
+                <div className="pt-2">
+                  <Label className="text-xs text-muted-foreground">Tekshiruv turlarini tanlang — bemor kassaga boradi, so&apos;ng laborantga</Label>
+                  <div className="grid grid-cols-2 gap-1.5 mt-2">
+                    {[
+                      { v: "blood_general", label: "Umumiy qon" },
+                      { v: "urine_general", label: "Peshob tahlili" },
+                      { v: "biochemistry",  label: "Bioximik tahlil" },
+                      { v: "coagulogram",   label: "Koagulogramma" },
+                      { v: "ekg",           label: "EKG" },
+                      { v: "xray",          label: "Rentgen" },
+                      { v: "ultrasound",    label: "UZI" },
+                      { v: "egds",          label: "EFGDS" },
+                      { v: "ct_mri",        label: "MSKT/MRT" },
+                      { v: "consult",       label: "Mutaxassis" },
+                    ].map((o) => {
+                      const on = labTypes.includes(o.v);
+                      return (
+                        <button key={o.v} type="button"
+                          onClick={() => setLabTypes((cur) => on ? cur.filter((x) => x !== o.v) : [...cur, o.v])}
+                          className={cn(
+                            "rounded-md border px-2 py-1.5 text-xs text-left",
+                            on ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground",
+                          )}>
+                          {on ? "☑ " : "☐ "}{o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {nextStep === "admission" && (
+                <div className="pt-2 grid gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Yotqizish sababi</Label>
+                    <Input value={admissionReason} onChange={(e) => setAdmissionReason(e.target.value)}
+                           placeholder="Tashxis yoki holat" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Bo&apos;lim</Label>
+                    <Select value={admissionDepartment || undefined} onValueChange={(v) => v && setAdmissionDepartment(v)}>
+                      <SelectTrigger><SelectValue placeholder="Bo'lim (statsionar qabuli)" /></SelectTrigger>
+                      <SelectContent>
+                        {DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bemor <strong>statsionar tayyorlash</strong> navbatiga qo&apos;yiladi.
+                    Palata xaritasida ko&apos;rinadi.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

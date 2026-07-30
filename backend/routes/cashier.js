@@ -228,6 +228,254 @@ export default function cashierRoutes(pool, authMiddleware, checkRole, serverErr
     return res.status(500).json({ success: false, error: 'Chek raqami tayinlanmadi, qayta urinib ko\'ring' });
   });
 
+  // ============================================================
+  // YANGI: BEMOR SAVATI (Bosqich J)
+  // Bemor kirsa — kutayotgan barcha to'lovlar (appointment + lab_orders)
+  // bir joyda ko'rinadi. Kassir kod bo'yicha yoki telefon bo'yicha topadi.
+  // ============================================================
+
+  // GET /api/cashier/patient-cart?code=XY7K42  (yoki ?patient_id=UUID yoki ?phone=+998...)
+  router.get('/patient-cart', authMiddleware, checkRole(...CASHIER_ROLES), async (req, res) => {
+    try {
+      const tenantId = tid(req);
+      const code = String(req.query.code || '').trim().toUpperCase();
+      const patientIdArg = String(req.query.patient_id || '').trim();
+      const phone = String(req.query.phone || '').trim();
+
+      let patientId = patientIdArg || null;
+      if (!patientId && code) {
+        // access_code bo'yicha bir appointmentni topib, uning patient_id sini olamiz
+        const row = await qGet(
+          `SELECT patient_id FROM appointments WHERE tenant_id = $1 AND access_code = $2 AND patient_id IS NOT NULL LIMIT 1`,
+          [tenantId, code]
+        );
+        patientId = row?.patient_id || null;
+      }
+      if (!patientId && phone) {
+        const norm = (String(phone).replace(/\D/g, '').replace(/^998?/, '+998'));
+        const row = await qGet(
+          `SELECT id FROM patients WHERE tenant_id = $1 AND phone = $2 LIMIT 1`,
+          [tenantId, norm]
+        );
+        patientId = row?.id || null;
+      }
+      if (!patientId) {
+        return res.status(404).json({ success: false, error: 'Bemor topilmadi (kod, telefon yoki patient_id kerak)' });
+      }
+
+      const patient = await qGet(
+        `SELECT id, first_name, last_name, middle_name, phone, medical_record_number
+         FROM patients WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, patientId]
+      );
+
+      // Kutayotgan appointmentlar
+      const appts = (await pool.query(
+        `SELECT a.id, a.appointment_id AS code, a.access_code, a.scheduled_at, a.status,
+                a.amount::float8 AS amount, s.name AS service_name, a.doctor_name,
+                a.source, a.forwarded_from_doctor_id
+         FROM appointments a
+         LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+         WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.payment_status = 'pending'
+           AND a.status NOT IN ('cancelled', 'no_show')
+         ORDER BY a.scheduled_at ASC`,
+        [tenantId, patientId]
+      )).rows;
+
+      // Kutayotgan lab_orders (paid_at IS NULL)
+      const labs = (await pool.query(
+        `SELECT id, test_type, reason, status, price::float8 AS price, created_at
+         FROM lab_orders
+         WHERE tenant_id = $1 AND patient_id = $2
+           AND paid_at IS NULL AND status = 'ordered'
+         ORDER BY created_at ASC`,
+        [tenantId, patientId]
+      )).rows;
+
+      // Rozilik va shartnoma imzolanganmi (statsionar uchun kerak)
+      const consent = await qGet(
+        `SELECT 1 FROM patient_consents WHERE tenant_id = $1 AND patient_id = $2 LIMIT 1`,
+        [tenantId, patientId]
+      );
+      const contract = await qGet(
+        `SELECT 1 FROM service_contracts WHERE tenant_id = $1 AND patient_id = $2 LIMIT 1`,
+        [tenantId, patientId]
+      );
+
+      const items = [
+        ...appts.map((a) => ({
+          type: 'appointment', id: a.id, code: a.code, access_code: a.access_code,
+          scheduled_at: a.scheduled_at, doctor_name: a.doctor_name,
+          service_name: a.service_name || 'Ko\'rik',
+          amount: a.amount || 0,
+          forwarded: !!a.forwarded_from_doctor_id,
+          source: a.source,
+        })),
+        ...labs.map((l) => ({
+          type: 'lab', id: l.id, test_type: l.test_type,
+          service_name: labTypeLabel(l.test_type),
+          reason: l.reason, amount: l.price || 0,
+          created_at: l.created_at,
+        })),
+      ];
+      const total = items.reduce((s, it) => s + Number(it.amount || 0), 0);
+
+      res.json({
+        success: true,
+        patient,
+        items,
+        total,
+        consent_signed: !!consent,
+        contract_signed: !!contract,
+      });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // POST /api/cashier/pay-cart — bir savatdagi hamma narsani birdaniga to'lash
+  const payCartSchema = z.object({
+    patient_id: z.string().uuid(),
+    appointment_ids: z.array(z.union([z.string(), z.number()])).optional(),
+    lab_order_ids: z.array(z.string().uuid()).optional(),
+    cash_received: z.coerce.number().min(0).optional(),
+    method: z.enum(['cash', 'card', 'online']).default('cash'),
+  }).refine(
+    (d) => (d.appointment_ids && d.appointment_ids.length) || (d.lab_order_ids && d.lab_order_ids.length),
+    { message: 'Kamida 1 ta item tanlanishi kerak' }
+  );
+
+  router.post('/pay-cart', authMiddleware, checkRole(...CASHIER_ROLES), async (req, res) => {
+    const parsed = payCartSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Validatsiya xatosi', details: parsed.error.flatten().fieldErrors });
+    }
+    const b = parsed.data;
+    const client = await pool.connect();
+    try {
+      const tenantId = tid(req);
+      await client.query('BEGIN');
+
+      const patient = (await client.query(
+        `SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+        [tenantId, b.patient_id]
+      )).rows[0];
+      if (!patient) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
+      }
+
+      // Appointmentlar summasi + to'lov uchun tayyorlash
+      let total = 0;
+      const itemsAudit = [];
+      if (b.appointment_ids && b.appointment_ids.length) {
+        const r = await client.query(
+          `SELECT id, amount::float8 AS amount FROM appointments
+           WHERE tenant_id = $1 AND patient_id = $2 AND id = ANY($3::bigint[])
+             AND payment_status = 'pending'
+           FOR UPDATE`,
+          [tenantId, b.patient_id, b.appointment_ids]
+        );
+        for (const row of r.rows) {
+          total += Number(row.amount || 0);
+          itemsAudit.push({ type: 'appointment', id: row.id, amount: row.amount });
+        }
+      }
+      if (b.lab_order_ids && b.lab_order_ids.length) {
+        const r = await client.query(
+          `SELECT id, price::float8 AS price FROM lab_orders
+           WHERE tenant_id = $1 AND patient_id = $2 AND id = ANY($3::uuid[])
+             AND paid_at IS NULL
+           FOR UPDATE`,
+          [tenantId, b.patient_id, b.lab_order_ids]
+        );
+        for (const row of r.rows) {
+          total += Number(row.price || 0);
+          itemsAudit.push({ type: 'lab', id: row.id, amount: row.price });
+        }
+      }
+      if (total <= 0 || itemsAudit.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, error: 'To\'lash uchun narsa topilmadi' });
+      }
+
+      const cashReceived = Number(b.cash_received || total);
+      const change = Math.max(0, cashReceived - total);
+
+      // Savat yozuvi (audit uchun — kim, qachon, nima to'ladi)
+      const cartId = uuidv4();
+      await client.query(
+        `INSERT INTO payment_carts
+           (id, tenant_id, patient_id, created_by, status, items_json, total,
+            paid_at, cash_received, cash_change, method)
+         VALUES ($1, $2, $3, $4, 'paid', $5::jsonb, $6, NOW(), $7, $8, $9)`,
+        [cartId, tenantId, b.patient_id, req.user?.id || null,
+         JSON.stringify(itemsAudit), total,
+         cashReceived, change, b.method]
+      );
+
+      // Har appointmentga alohida payment_transactions yozib, appointments'ni paid qilamiz
+      // (mavjud /pay endpointi bilan bir xil format — chek ham xuddi shundan chiqadi).
+      const appointmentPaymentIds = [];
+      if (b.appointment_ids && b.appointment_ids.length) {
+        for (const apptId of b.appointment_ids) {
+          const paymentId = uuidv4();
+          // Chek raqami — tenant ichida ketma-ket, to'qnashuvda retry
+          let receiptNumber = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const next = (await client.query(
+                `SELECT COALESCE(MAX(receipt_number), 0) + 1 AS n FROM payment_transactions WHERE tenant_id = $1`,
+                [tenantId]
+              )).rows[0].n;
+              const amt = (await client.query(`SELECT amount FROM appointments WHERE id = $1`, [apptId])).rows[0]?.amount || 0;
+              await client.query(
+                `INSERT INTO payment_transactions
+                   (id, tenant_id, appointment_id, amount, method, status, cash_received, change_given, receipt_number, cashier_id, paid_at)
+                 VALUES ($1, $2, $3, $4, $5, 'paid', $6, $7, $8, $9, NOW())`,
+                [paymentId, tenantId, apptId, amt, b.method,
+                 cashReceived >= total ? Number(amt) : null,
+                 null, next, req.user?.id || null]
+              );
+              receiptNumber = next;
+              break;
+            } catch (e) {
+              if (e.code === '23505' && attempt < 2) continue;
+              throw e;
+            }
+          }
+          await client.query(
+            `UPDATE appointments SET payment_status = 'paid', payment_method = $1 WHERE id = $2 AND tenant_id = $3`,
+            [b.method, apptId, tenantId]
+          );
+          appointmentPaymentIds.push({ appointment_id: apptId, payment_id: paymentId, receipt_number: receiptNumber });
+        }
+      }
+
+      // lab_orders larni "to'landi" qilamiz
+      if (b.lab_order_ids && b.lab_order_ids.length) {
+        await client.query(
+          `UPDATE lab_orders SET paid_at = NOW() WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+          [tenantId, b.lab_order_ids]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({
+        success: true,
+        cart_id: cartId,
+        total,
+        cash_received: cashReceived,
+        change,
+        paid_appointments: appointmentPaymentIds,
+        paid_lab_orders: b.lab_order_ids || [],
+      });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      serverError(res, e);
+    } finally {
+      client.release();
+    }
+  });
+
   // GET /receipt/:paymentId — JSON yoki ?format=html (keyinchalik qayta chop etish uchun)
   router.get('/receipt/:paymentId', authMiddleware, checkRole(...CASHIER_ROLES), async (req, res) => {
     try {
@@ -251,6 +499,24 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 function fmtSum(n) { return (Number(n) || 0).toLocaleString('uz-UZ'); }
+
+// Lab tekshiruv nomi — labs.js dagi rejestrga mos, foydalanuvchiga tushunarli
+function labTypeLabel(t) {
+  const m = {
+    blood_general: 'Umumiy qon tahlili',
+    urine_general: 'Umumiy peshob tahlili',
+    biochemistry:  'Bioximik tahlil',
+    coagulogram:   'Koagulogramma',
+    ekg:           'EKG',
+    xray:          'Rentgen',
+    ultrasound:    'UZI',
+    egds:          'EFGDS',
+    ct_mri:        'MSKT/MRT',
+    consult:       'Mutaxasis konsultatsiyasi',
+    other:         'Boshqa tekshiruv',
+  };
+  return m[t] || t || 'Tekshiruv';
+}
 function fmtDate(d) {
   if (!d) return '';
   try { return new Date(d).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', dateStyle: 'short', timeStyle: 'short' }); }

@@ -265,6 +265,37 @@ export default function(pool, authMiddleware, checkRole, upload) {
         });
       }
 
+      // GUARD: yotqizishdan avval umumiy rozilik + shartnoma majburiy.
+      // Bu klinika xavfsizligi (huquqiy nazorat) uchun. `skip_legal_check=true`
+      // bilan chetlab o'tish mumkin — favqulodda holatlar uchun.
+      if (patientId && !req.body?.skip_legal_check) {
+        const hasConsent = await qGet(
+          `SELECT 1 FROM patient_consents
+             WHERE tenant_id = $1 AND patient_id = $2
+               AND kind IN ('general_care', 'surgery_general', 'anesthesia')
+             LIMIT 1`,
+          [tenantId, patientId]
+        );
+        const hasContract = await qGet(
+          `SELECT 1 FROM service_contracts
+             WHERE tenant_id = $1 AND patient_id = $2
+             LIMIT 1`,
+          [tenantId, patientId]
+        );
+        if (!hasConsent || !hasContract) {
+          return res.status(400).json({
+            success: false,
+            error: 'Yotqizish uchun avval rozilik va shartnoma imzolangan bo\'lishi kerak',
+            code: 'LEGAL_DOCS_MISSING',
+            details: {
+              consent_signed: !!hasConsent,
+              contract_signed: !!hasContract,
+              patient_id: patientId,
+            },
+          });
+        }
+      }
+
       // Koyka bandligini tekshirish (tenant izolyatsiya bilan)
       if (bed_id) {
         const bed = await qGet(
@@ -1164,6 +1195,41 @@ export default function(pool, authMiddleware, checkRole, upload) {
       } catch (e) { res.status(500).json({ success: false, error: e.message }); }
     }
   );
+
+  // ============================================================
+  // YANGI: STATSIONAR TAYYORLASH NAVBATI (Bosqich J)
+  // ============================================================
+  // Doktor yotqizishga tavsiya bergan bemorlar — kutayotganlar ro'yxati.
+  // /wards/board yotqizish dialogida shu ro'yxatdan bemor tanlanadi.
+  router.get('/inpatient/pending-admissions', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const rows = await q(
+        `SELECT a.id, a.appointment_id, a.patient_id, a.patient_name, a.phone,
+                a.scheduled_at, a.doctor_name, a.notes,
+                a.payment_status, a.amount::float8 AS amount,
+                p.medical_record_number, p.district, p.address,
+                p.allergies, p.blood_group,
+                c.next_step_data,
+                c.data_json AS consultation_data,
+                (SELECT 1 FROM patient_consents pc
+                   WHERE pc.tenant_id = a.tenant_id AND pc.patient_id = a.patient_id
+                   LIMIT 1) IS NOT NULL AS consent_signed,
+                (SELECT 1 FROM service_contracts sc
+                   WHERE sc.tenant_id = a.tenant_id AND sc.patient_id = a.patient_id
+                   LIMIT 1) IS NOT NULL AS contract_signed
+         FROM appointments a
+         LEFT JOIN patients p              ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN patient_consultations c ON c.appointment_id = a.id AND c.tenant_id = a.tenant_id
+         WHERE a.tenant_id = $1 AND a.status = 'pending_admission'
+         ORDER BY a.scheduled_at ASC LIMIT 100`,
+        [tenantId]
+      );
+      res.json({ success: true, patients: rows });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
 
   return router;
 }

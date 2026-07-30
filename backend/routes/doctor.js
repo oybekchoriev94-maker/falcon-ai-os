@@ -98,12 +98,23 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
   // ── YANGI: KO'RIKNI YAKUNLASH ──
   // Shifokor xulosa (diagnoz, muolaja, dori) yozadi va appointment yopiladi.
   // Xulosa patient_consultations ga tushadi (patient_id + appointment_id bilan).
+  // Doktor qaroriga qarab keyingi qadam turlari:
+  //  - 'home'      — uyga (oqim tugadi)
+  //  - 'labs'      — tekshiruvlar (lab_types massivi → lab_orders avto yaratiladi)
+  //  - 'admission' — statsionarga (appointment status='pending_admission' bo'ladi)
+  //  - 'referral'  — boshqa doktor/bo'limga (VisitDialog referral tugmasi ishlatiladi)
   const completeSchema = z.object({
     diagnosis: z.string().max(2000).optional(),
     procedure: z.string().max(1000).optional(),
     medicines: z.string().max(2000).optional(),
     notes: z.string().max(2000).optional(),
     raw_text: z.string().max(10000).optional(),
+    next_step: z.enum(['home', 'labs', 'admission', 'referral']).optional(),
+    // labs uchun: tanlangan tekshiruv turlari (lab_orders da test_type)
+    lab_types: z.array(z.string().max(50)).max(15).optional(),
+    // admission uchun: yotqizish sababi va bo'lim (ma'lumot uchun)
+    admission_reason: z.string().max(500).optional(),
+    admission_department: z.string().max(100).optional(),
   });
 
   router.post('/visit/:appointmentId/complete', authMiddleware, checkRole('doctor'), async (req, res) => {
@@ -138,20 +149,54 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
         medicines: b.medicines || '',
         notes: b.notes || '',
       };
-      await client.query(
-        `INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, appointment_id, patient_name, raw_text, data_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [consId, tenantId, req.user.id, appt.patient_id, appt.id, appt.patient_name,
-         b.raw_text || '', JSON.stringify(dataJson)]
-      );
+      const nextStep = b.next_step || 'home';
+      const nextStepData = {
+        lab_types: b.lab_types || [],
+        admission_reason: b.admission_reason || '',
+        admission_department: b.admission_department || '',
+      };
 
       await client.query(
-        `UPDATE appointments SET status = 'completed' WHERE id = $1 AND tenant_id = $2`,
-        [appt.id, tenantId]
+        `INSERT INTO patient_consultations
+           (id, tenant_id, doctor_id, patient_id, appointment_id, patient_name,
+            raw_text, data_json, next_step, next_step_data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [consId, tenantId, req.user.id, appt.patient_id, appt.id, appt.patient_name,
+         b.raw_text || '', JSON.stringify(dataJson), nextStep, JSON.stringify(nextStepData)]
       );
+
+      // Appointment holatini keyingi qadamga qarab belgilaymiz
+      const newApptStatus = nextStep === 'admission' ? 'pending_admission' : 'completed';
+      await client.query(
+        `UPDATE appointments SET status = $1 WHERE id = $2 AND tenant_id = $3`,
+        [newApptStatus, appt.id, tenantId]
+      );
+
+      // Avto lab_orders yaratamiz — bemor kassaga savat bilan boradi
+      const createdLabs = [];
+      if (nextStep === 'labs' && b.lab_types && b.lab_types.length > 0) {
+        for (const t of b.lab_types) {
+          const labId = uuidv4();
+          const row = (await client.query(
+            `INSERT INTO lab_orders
+               (id, tenant_id, patient_id, appointment_id, doctor_id, test_type, reason, status, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'ordered', NOW())
+             RETURNING id, test_type`,
+            [labId, tenantId, appt.patient_id, appt.id, req.user.id, t, b.diagnosis || null]
+          )).rows[0];
+          createdLabs.push(row);
+        }
+      }
 
       await client.query('COMMIT');
-      res.json({ success: true, consultation_id: consId, appointment_id: appt.id });
+      res.json({
+        success: true,
+        consultation_id: consId,
+        appointment_id: appt.id,
+        next_step: nextStep,
+        appointment_status: newApptStatus,
+        lab_orders: createdLabs,
+      });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
       serverError(res, e);

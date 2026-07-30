@@ -64,6 +64,33 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
     } catch (e) { serverError(res, e); }
   });
 
+  // GET /queue — laborant ish stoli uchun.
+  // paid_at IS NOT NULL (bemor to'lagan) va status='ordered' bo'lgan buyurtmalar,
+  // bemor F.I.O + MRN + telefon bilan. Bosqich J oqimida bemor kassaga to'lagach,
+  // laborant shu ro'yxatda ko'radi.
+  router.get('/queue', authMiddleware, checkRole('doctor', 'admin', 'ceo', 'receptionist'), async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const paidOnly = String(req.query.paid_only || 'true') === 'true';
+      const paidFilter = paidOnly ? 'AND lo.paid_at IS NOT NULL' : '';
+      const rows = await q(
+        `SELECT lo.id, lo.test_type, lo.reason, lo.status, lo.ordered_at, lo.paid_at,
+                lo.patient_id, lo.doctor_id,
+                p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name,
+                p.medical_record_number, p.phone,
+                p.birth_date, p.gender,
+                d.first_name || ' ' || COALESCE(d.last_name, '') AS doctor_name
+         FROM lab_orders lo
+         LEFT JOIN patients p ON p.id = lo.patient_id AND p.tenant_id = lo.tenant_id
+         LEFT JOIN doctors d  ON d.id = lo.doctor_id  AND d.tenant_id = lo.tenant_id
+         WHERE lo.tenant_id = $1 AND lo.status = 'ordered' ${paidFilter}
+         ORDER BY lo.paid_at NULLS LAST, lo.ordered_at ASC LIMIT 200`,
+        [tenantId]
+      );
+      res.json({ success: true, orders: rows });
+    } catch (e) { serverError(res, e); }
+  });
+
   // GET /orders?status=&patient_id=&admission_id=
   router.get('/orders', authMiddleware, async (req, res) => {
     try {
