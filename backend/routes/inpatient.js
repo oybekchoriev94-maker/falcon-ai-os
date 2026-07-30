@@ -1197,6 +1197,100 @@ export default function(pool, authMiddleware, checkRole, upload) {
   );
 
   // ============================================================
+  // YANGI: EPIKRIZ AVTO-GENERATSIYA (Bosqich L — AI orkestrator)
+  // ============================================================
+  // Chiqarish paytida barcha ma'lumotlarni (obhod, dori, lab) yig'ib,
+  // AI epicrisis-writer agentiga uzatamiz. Agent 200-350 so'zli epikriz
+  // loyihasini yozadi. Shifokor ko'rib chiqib tuzatadi va discharges
+  // jadvaliga saqlaydi (bu endpoint faqat matn qaytaradi, saqlamaydi).
+  router.post('/inpatient/admissions/:id/generate-epicrisis',
+    authMiddleware, checkRole('ceo', 'admin', 'doctor'),
+    async (req, res) => {
+      try {
+        const tenantId = getTenantId(req);
+        const admId = req.params.id;
+
+        const adm = await qGet(
+          `SELECT a.id, a.patient_id, a.patient_name, a.admission_date, a.discharge_date,
+                  a.diagnosis_initial, a.diagnosis_final, a.attending_doctor_name,
+                  w.name AS ward_name, w.department,
+                  p.first_name || ' ' || COALESCE(p.last_name, '') AS full_name,
+                  p.birth_date, p.gender, p.medical_record_number
+           FROM admissions a
+           LEFT JOIN wards w    ON w.id = a.ward_id AND w.tenant_id = a.tenant_id
+           LEFT JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+           WHERE a.id = $1 AND a.tenant_id = $2`,
+          [admId, tenantId]
+        );
+        if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+
+        const days = await q(
+          `SELECT date, temperature, blood_pressure, pulse, complaints, treatment_plan
+           FROM daily_notes
+           WHERE tenant_id = $1 AND admission_id = $2
+           ORDER BY date ASC, created_at ASC`,
+          [tenantId, admId]
+        );
+        const meds = await q(
+          `SELECT medicine_name, dosage, route, frequency
+           FROM prescriptions
+           WHERE tenant_id = $1 AND admission_id = $2
+           ORDER BY created_at ASC`,
+          [tenantId, admId]
+        );
+        // Labs — statsionar davri ichida buyurilganlar
+        const labs = await q(
+          `SELECT lo.test_type, lr.conclusion
+           FROM lab_orders lo
+           LEFT JOIN lab_results lr ON lr.lab_order_id = lo.id AND lr.tenant_id = lo.tenant_id
+           WHERE lo.tenant_id = $1 AND lo.patient_id = $2
+             AND lo.ordered_at BETWEEN $3 AND COALESCE($4, NOW())
+           ORDER BY lo.ordered_at ASC`,
+          [tenantId, adm.patient_id, adm.admission_date, adm.discharge_date]
+        );
+
+        const orchestrator = await import('../../ai/orchestrator.js');
+        const result = await orchestrator.executeAgent(
+          'epicrisis-writer',
+          {
+            patient: {
+              full_name: adm.full_name || adm.patient_name,
+              birth_date: adm.birth_date,
+              gender: adm.gender,
+              mrn: adm.medical_record_number,
+            },
+            admission: {
+              admission_date: adm.admission_date,
+              discharge_date: adm.discharge_date,
+              diagnosis_initial: adm.diagnosis_initial,
+              diagnosis_final: adm.diagnosis_final,
+              department: adm.department || adm.ward_name,
+              attending_doctor: adm.attending_doctor_name,
+            },
+            daily_notes: days,
+            prescriptions: meds,
+            labs: labs,
+          },
+          { tenantId, user: req.user, requestId: req.correlationId || null }
+        );
+
+        if (!result.success) {
+          return res.status(500).json({ success: false, error: result.error || 'AI xatosi', code: result.code });
+        }
+        res.json({
+          success: true,
+          epicrisis_text: result.data.epicrisis_text,
+          source_stats: result.data.source_stats,
+          note: 'Bu — AI loyihasi. Shifokor ko\'rib tuzatib imzolashi kerak.',
+        });
+      } catch (e) {
+        console.error('[EPIKRIZ]', e);
+        res.status(500).json({ success: false, error: e.message });
+      }
+    }
+  );
+
+  // ============================================================
   // YANGI: STATSIONAR TAYYORLASH NAVBATI (Bosqich J)
   // ============================================================
   // Doktor yotqizishga tavsiya bergan bemorlar — kutayotganlar ro'yxati.

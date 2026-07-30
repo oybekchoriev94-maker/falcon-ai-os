@@ -181,7 +181,19 @@ export default function WardsPage() {
       });
       setSelectedBed(null);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      // Backend GUARD: rozilik + shartnoma yo'q bo'lsa maxsus xato keladi.
+      // Foydalanuvchini bemor kartasiga yo'naltirib qo'yamiz.
+      const msg = err.message || "Xatolik";
+      if (msg.toLowerCase().includes("rozilik") || msg.toLowerCase().includes("shartnoma")) {
+        toast.error("Rozilik yoki shartnoma imzolanmagan", {
+          description: "Bemor kartasida imzolashdan so'ng qayta urinib ko'ring.",
+          duration: 8000,
+        });
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   const dischargeMutation = useMutation({

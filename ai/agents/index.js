@@ -11,6 +11,8 @@ import * as analyticsAgent from './analytics-agent.js';
 import * as medicationCoach from './medication-coach.js';
 import * as b2bReferral from './b2b-referral.js';
 import * as referralAgent from './referral-agent.js';
+// Klinika oqimi agentlari (obhod, anomaliya, epikriz, lab, tashxis) — bundle
+import { AGENTS as CLINICAL_WORKFLOW } from './clinical-workflow.js';
 
 const ALL = [
   medicalScribe,
@@ -23,5 +25,6 @@ const ALL = [
 ];
 
 for (const mod of ALL) registerAgent(mod);
+for (const mod of CLINICAL_WORKFLOW) registerAgent(mod);
 
-console.log(`[AI] ${ALL.length} ta agent ro'yxatdan o'tdi`);
+console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length} ta agent ro'yxatdan o'tdi (${CLINICAL_WORKFLOW.length} klinika oqimi)`);
