@@ -485,5 +485,95 @@ export default function patientsRoutes(pool, authMiddleware) {
     } catch (e) { safeError(res, e); }
   });
 
+  // ── AI ADMISSION-SUMMARY (Bosqich N) ──
+  // Bemor kartasi ochilganda 2-3 gapli klinik xulosa. 24 soatlik kesh.
+  router.get('/:id/ai-summary', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const pid = req.params.id;
+
+      const cached = await qGet(
+        `SELECT summary, data_json, based_on_visits, generated_at
+         FROM patient_ai_summaries
+         WHERE patient_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
+        [pid, tenantId]
+      );
+      if (cached) {
+        return res.json({ success: true, cached: true, ...cached });
+      }
+
+      const patient = await qGet(
+        `SELECT id, first_name, last_name, birth_date, gender, allergies, blood_group
+         FROM patients WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, pid]
+      );
+      if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
+
+      const age = patient.birth_date
+        ? Math.floor((Date.now() - new Date(patient.birth_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+
+      const visits = await q(
+        `SELECT c.created_at::text AS date, d.specialization AS doctor_spec,
+                c.data_json
+         FROM patient_consultations c
+         LEFT JOIN doctors d ON d.id = c.doctor_id AND d.tenant_id = c.tenant_id
+         WHERE c.tenant_id = $1 AND c.patient_id = $2
+         ORDER BY c.created_at DESC LIMIT 20`,
+        [tenantId, pid]
+      );
+      const admissions = await q(
+        `SELECT admission_date::text, diagnosis_initial, diagnosis_final
+         FROM admissions
+         WHERE tenant_id = $1 AND patient_id = $2
+         ORDER BY admission_date DESC LIMIT 10`,
+        [tenantId, pid]
+      );
+
+      const { admissionSummary } = await import('../../ai/agents/time-savers.js');
+      const result = await admissionSummary.handler({
+        patient: {
+          age,
+          gender: patient.gender,
+          allergies: patient.allergies,
+          blood_group: patient.blood_group,
+        },
+        recent_visits: visits.map((v) => {
+          const dj = typeof v.data_json === 'string'
+            ? (() => { try { return JSON.parse(v.data_json); } catch { return {}; } })()
+            : (v.data_json || {});
+          return {
+            date: v.date, doctor_spec: v.doctor_spec,
+            diagnosis: dj.diagnosis, procedure: dj.procedure,
+          };
+        }),
+        recent_admissions: admissions.map((a) => ({
+          admission_date: a.admission_date,
+          diagnosis_initial: a.diagnosis_initial,
+          diagnosis_final: a.diagnosis_final,
+        })),
+      });
+
+      // Keshga yozamiz (24h)
+      try {
+        await pool.query(
+          `INSERT INTO patient_ai_summaries (patient_id, tenant_id, summary, data_json, based_on_visits, expires_at)
+           VALUES ($1, $2, $3, $4::jsonb, $5, NOW() + INTERVAL '24 hours')
+           ON CONFLICT (patient_id) DO UPDATE SET
+             summary = EXCLUDED.summary,
+             data_json = EXCLUDED.data_json,
+             based_on_visits = EXCLUDED.based_on_visits,
+             generated_at = NOW(),
+             expires_at = NOW() + INTERVAL '24 hours'`,
+          [pid, tenantId, result.summary,
+           JSON.stringify({ key_facts: result.key_facts, last_active_diagnoses: result.last_active_diagnoses }),
+           visits.length]
+        );
+      } catch (_) { /* keshga yozib bo'lmasa mayli */ }
+
+      res.json({ success: true, cached: false, ...result });
+    } catch (e) { safeError(res, e); }
+  });
+
   return router;
 }

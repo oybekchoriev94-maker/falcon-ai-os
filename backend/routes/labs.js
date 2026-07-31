@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { labCritical } from '../../ai/agents/safety-agents.js';
+import { labInterpreter } from '../../ai/agents/time-savers.js';
 import { saveAlerts } from '../services/alerts.js';
 
 const LAB_TEST_TYPES = [
@@ -134,7 +135,7 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
     try {
       const tenantId = tenantOf(req);
       const order = await qGet(
-        'SELECT id, patient_id FROM lab_orders WHERE id = $1 AND tenant_id = $2',
+        'SELECT id, patient_id, test_type FROM lab_orders WHERE id = $1 AND tenant_id = $2',
         [req.params.id, tenantId]
       );
       if (!order) return res.status(404).json({ success: false, error: 'Buyurtma topilmadi' });
@@ -158,11 +159,11 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
       );
       await client.query('COMMIT');
 
-      // AUTO-AGENT: lab-critical — natija matnidan hayotiy chegaralarni tekshiradi
-      try {
-        // values_json.text yoki conclusion — qaysi bo'lsa shu ishlatiladi
-        const raw = (b.values_json && (b.values_json.text || JSON.stringify(b.values_json))) || b.conclusion || '';
-        if (raw && raw.length > 3) {
+      // AUTO-AGENT: lab-critical + lab-interpreter (parallel)
+      const raw = (b.values_json && (b.values_json.text || JSON.stringify(b.values_json))) || b.conclusion || '';
+      if (raw && raw.length > 3) {
+        // 1) lab-critical (deterministik, tez)
+        try {
           const lc = labCritical.handler({ raw_text: raw });
           if (lc?.alerts?.length) {
             saveAlerts(pool, {
@@ -170,9 +171,23 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
               sourceKind: 'lab_result', sourceId: resId, agentName: 'lab-critical',
             }, lc.alerts).catch(() => {});
           }
-        }
-      } catch (aiErr) {
-        console.warn('[SAFETY lab-critical]', aiErr.message);
+        } catch (e) { console.warn('[SAFETY lab-critical]', e.message); }
+
+        // 2) lab-interpreter (LLM, fire-and-forget — natija ai_interpretation ga)
+        (async () => {
+          try {
+            const li = await labInterpreter.handler({
+              raw_text: raw,
+              test_type: order.test_type || 'umumiy',
+            });
+            if (li?.interpretation) {
+              await pool.query(
+                `UPDATE lab_results SET ai_interpretation = $1, ai_data_json = $2::jsonb WHERE id = $3`,
+                [li.interpretation, JSON.stringify({ highlights: li.highlights || [] }), resId]
+              );
+            }
+          } catch (e) { console.warn('[TIME_SAVER lab-interpreter]', e.message); }
+        })();
       }
 
       res.json({ success: true, result_id: resId });

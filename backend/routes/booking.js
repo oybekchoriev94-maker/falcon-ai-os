@@ -240,6 +240,21 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
             );
           }
 
+          // AUTO-AGENT: triage — bemor shikoyat (notes) bo'lsa, urgency va ixtisos
+          // tavsiyasini yozamiz. Fire-and-forget: bron javobini kutkuzmaymiz.
+          if (d.notes && d.notes.length > 5) {
+            (async () => {
+              try {
+                const { triageAgent } = await import('../../ai/agents/time-savers.js');
+                const t = await triageAgent.handler({ complaint: d.notes });
+                await pool.query(
+                  `UPDATE appointments SET triage_severity = $1, triage_json = $2::jsonb WHERE id = $3`,
+                  [t.severity, JSON.stringify(t), appt.id]
+                );
+              } catch (e) { console.warn('[TIME_SAVER triage]', e.message); }
+            })();
+          }
+
           await client.query('COMMIT');
 
           if (d.payment_method === 'online' && paymentId) {

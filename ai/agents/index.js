@@ -15,6 +15,8 @@ import * as referralAgent from './referral-agent.js';
 import { AGENTS as CLINICAL_WORKFLOW } from './clinical-workflow.js';
 // Xavfsizlik agentlari (Bosqich M): obhod/lab/retsept yozilganda avto ishga tushadi
 import { SAFETY_AGENTS } from './safety-agents.js';
+// Vaqt tejash agentlari (Bosqich N): karta ochilishi, reception voice, lab natija
+import { TIME_SAVER_AGENTS } from './time-savers.js';
 
 const ALL = [
   medicalScribe,
@@ -29,6 +31,7 @@ const ALL = [
 for (const mod of ALL) registerAgent(mod);
 for (const mod of CLINICAL_WORKFLOW) registerAgent(mod);
 for (const mod of SAFETY_AGENTS) registerAgent(mod);
+for (const mod of TIME_SAVER_AGENTS) registerAgent(mod);
 
-console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length} ta agent ro'yxatdan o'tdi ` +
-            `(${CLINICAL_WORKFLOW.length} klinika oqimi + ${SAFETY_AGENTS.length} xavfsizlik)`);
+console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length + TIME_SAVER_AGENTS.length} ta agent ro'yxatdan o'tdi ` +
+            `(${CLINICAL_WORKFLOW.length} klinika oqimi + ${SAFETY_AGENTS.length} xavfsizlik + ${TIME_SAVER_AGENTS.length} vaqt tejash)`);
