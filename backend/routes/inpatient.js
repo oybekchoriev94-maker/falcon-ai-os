@@ -8,6 +8,8 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { upsertPatientByPhone } from '../services/patient-store.js';
 import { generateForm003Pdf } from '../services/form003Generator.js';
+import { saveAlerts, fetchActiveMeds, fetchAllergies } from '../services/alerts.js';
+import { vitalAnomaly, drugInteraction } from '../../ai/agents/safety-agents.js';
 
 export default function(pool, authMiddleware, checkRole, upload) {
   const router = Router();
@@ -457,6 +459,26 @@ export default function(pool, authMiddleware, checkRole, upload) {
          data_json ? JSON.stringify(data_json) : null]
       );
 
+      // AUTO-AGENT: vital-anomaly — kritik chegaralarni tekshirib alertga yozadi.
+      // Fire-and-forget: response'ni ushlab turmaymiz.
+      try {
+        const va = vitalAnomaly.handler({
+          temperature: temperature != null ? Number(temperature) : null,
+          blood_pressure: blood_pressure || null,
+          pulse: pulse != null ? Number(pulse) : null,
+          respiration: respiration != null ? Number(respiration) : null,
+          saturation: saturation != null ? Number(saturation) : null,
+        });
+        if (va?.alerts?.length) {
+          saveAlerts(pool, {
+            tenantId, patientId: adm.patient_id, admissionId: admission_id,
+            sourceKind: 'daily_note', sourceId: id, agentName: 'vital-anomaly',
+          }, va.alerts).catch(() => {});
+        }
+      } catch (aiErr) {
+        console.warn('[SAFETY vital-anomaly]', aiErr.message);
+      }
+
       res.json({ success: true, data: { id }, message: 'Kuzatuv qo\'shildi' });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
@@ -475,8 +497,8 @@ export default function(pool, authMiddleware, checkRole, upload) {
       if (!admission_id || !medicine_name) {
         return res.status(400).json({ success: false, error: 'Admission ID va dori nomi majburiy' });
       }
-      const admCheck = await qGet('SELECT id FROM admissions WHERE id = $1 AND tenant_id = $2', [admission_id, tenantId]);
-      if (!admCheck) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
+      const admFull = await qGet('SELECT id, patient_id FROM admissions WHERE id = $1 AND tenant_id = $2', [admission_id, tenantId]);
+      if (!admFull) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
 
       const id = uuidv4();
       await q(
@@ -487,6 +509,27 @@ export default function(pool, authMiddleware, checkRole, upload) {
          medicine_name, dosage || null, route || 'ichish', frequency || null,
          start_date || null, end_date || null]
       );
+
+      // AUTO-AGENT: drug-interaction — allergiya + faol dorilar bilan tekshiruv
+      try {
+        const [allergies, activeMeds] = await Promise.all([
+          fetchAllergies(pool, tenantId, admFull.patient_id),
+          fetchActiveMeds(pool, tenantId, admFull.patient_id),
+        ]);
+        const di = await drugInteraction.handler({
+          new_drug: `${medicine_name}${dosage ? ' ' + dosage : ''}`,
+          allergies,
+          active_meds: activeMeds.filter((m) => !m.toLowerCase().includes(String(medicine_name).toLowerCase())),
+        });
+        if (di?.alerts?.length) {
+          saveAlerts(pool, {
+            tenantId, patientId: admFull.patient_id, admissionId: admission_id,
+            sourceKind: 'prescription', sourceId: id, agentName: 'drug-interaction',
+          }, di.alerts).catch(() => {});
+        }
+      } catch (aiErr) {
+        console.warn('[SAFETY drug-interaction]', aiErr.message);
+      }
 
       res.json({ success: true, data: { id }, message: 'Dori tayinlandi' });
     } catch (e) {
@@ -1025,9 +1068,30 @@ export default function(pool, authMiddleware, checkRole, upload) {
           [tenantId]
         ).catch(() => {});
 
+        // AUTO-AGENT: vital-anomaly ovozli obhod maydonlaridan
+        let triggeredAlerts = [];
+        try {
+          const va = vitalAnomaly.handler({
+            temperature: parsed.temperature ?? null,
+            blood_pressure: parsed.blood_pressure || null,
+            pulse: parsed.pulse ?? null,
+            respiration: parsed.respiration ?? null,
+            saturation: parsed.saturation ?? null,
+          });
+          triggeredAlerts = va?.alerts || [];
+          if (triggeredAlerts.length) {
+            saveAlerts(pool, {
+              tenantId, patientId: adm.patient_id, admissionId: admission_id,
+              sourceKind: 'daily_note', sourceId: id, agentName: 'vital-anomaly',
+            }, triggeredAlerts).catch(() => {});
+          }
+        } catch (aiErr) {
+          console.warn('[SAFETY vital-anomaly voice]', aiErr.message);
+        }
+
         res.json({
           success: true,
-          data: { id, transcription: text, language: stt.language || null, extracted: parsed },
+          data: { id, transcription: text, language: stt.language || null, extracted: parsed, alerts: triggeredAlerts },
           message: 'Obhod yozib olindi',
         });
       } catch (e) {

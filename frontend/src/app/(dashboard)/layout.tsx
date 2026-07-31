@@ -25,6 +25,7 @@ import {
   Moon,
   HeartPulse,
   Sliders,
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -52,6 +53,7 @@ const navItems = [
   { href: "/reception-voice", label: "Ovozli qabul", icon: Mic, roles: ["superadmin", "ceo", "admin", "receptionist"] },
   { href: "/wards", label: "Palatalar", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/lab", label: "Laboratoriya", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
+  { href: "/alerts", label: "Xavfsizlik", icon: Bell, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/inventory", label: "Ombor", icon: Package, roles: ["superadmin", "ceo", "admin"] },
   { href: "/billing", label: "To'lovlar", icon: CreditCard, roles: ["superadmin", "ceo", "admin"] },
   { href: "/scribe", label: "AI Scribe", icon: Mic, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
@@ -211,6 +213,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Menu className="size-5" />
           </Button>
           <div className="flex-1" />
+          <AlertsBell />
           {mounted && (
             <Button
               variant="ghost"
@@ -229,5 +232,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+  );
+}
+
+// Xavfsizlik qo'ng'irog'i — yechilmagan kritik/warning alertlar sonini ko'rsatadi.
+// Har 20 sekundda yangilanadi. Bosilganda /alerts sahifasiga o'tadi.
+function AlertsBell() {
+  const { data } = useQuery({
+    queryKey: ["alerts-badge"],
+    queryFn: async () => {
+      const res = await api.get<{ counts: { critical: number; warning: number; total: number } }>("/api/alerts?status=unresolved&limit=1");
+      return res.success ? res.counts : { critical: 0, warning: 0, total: 0 };
+    },
+    refetchInterval: 20_000,
+    staleTime: 15_000,
+  });
+  const counts = data || { critical: 0, warning: 0, total: 0 };
+  const hasCritical = counts.critical > 0;
+  const total = counts.total || 0;
+  return (
+    <Link href="/alerts" className="relative inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent">
+      <Bell className="size-4" />
+      {total > 0 && (
+        <span className={cn(
+          "absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1",
+          hasCritical ? "bg-rose-500 animate-pulse" : "bg-amber-500"
+        )}>
+          {total > 99 ? "99+" : total}
+        </span>
+      )}
+    </Link>
   );
 }

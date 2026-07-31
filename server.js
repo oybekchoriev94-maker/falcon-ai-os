@@ -62,6 +62,7 @@ import b2bRoutes from './backend/routes/b2b.js';
 import servicesRoutes from './backend/routes/services.js';
 import bookingRoutes from './backend/routes/booking.js';
 import cashierRoutes from './backend/routes/cashier.js';
+import alertsRoutes from './backend/routes/alerts.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -425,6 +426,7 @@ async function main() {
       app.use(`${p}/services`, tenantRateLimit('api'), servicesRoutes(getPool(), authMiddleware, checkRole, serverError));
       app.use(`${p}/booking`, tenantRateLimit('api'), bookingRoutes(getPool(), authMiddleware, telegramOrJwtAuth, serverError));
       app.use(`${p}/cashier`, tenantRateLimit('api'), cashierRoutes(getPool(), authMiddleware, checkRole, serverError));
+      app.use(`${p}/alerts`, tenantRateLimit('api'), alertsRoutes(getPool(), authMiddleware));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);

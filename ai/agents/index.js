@@ -13,6 +13,8 @@ import * as b2bReferral from './b2b-referral.js';
 import * as referralAgent from './referral-agent.js';
 // Klinika oqimi agentlari (obhod, anomaliya, epikriz, lab, tashxis) — bundle
 import { AGENTS as CLINICAL_WORKFLOW } from './clinical-workflow.js';
+// Xavfsizlik agentlari (Bosqich M): obhod/lab/retsept yozilganda avto ishga tushadi
+import { SAFETY_AGENTS } from './safety-agents.js';
 
 const ALL = [
   medicalScribe,
@@ -26,5 +28,7 @@ const ALL = [
 
 for (const mod of ALL) registerAgent(mod);
 for (const mod of CLINICAL_WORKFLOW) registerAgent(mod);
+for (const mod of SAFETY_AGENTS) registerAgent(mod);
 
-console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length} ta agent ro'yxatdan o'tdi (${CLINICAL_WORKFLOW.length} klinika oqimi)`);
+console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length} ta agent ro'yxatdan o'tdi ` +
+            `(${CLINICAL_WORKFLOW.length} klinika oqimi + ${SAFETY_AGENTS.length} xavfsizlik)`);

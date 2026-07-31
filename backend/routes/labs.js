@@ -5,6 +5,8 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
+import { labCritical } from '../../ai/agents/safety-agents.js';
+import { saveAlerts } from '../services/alerts.js';
 
 const LAB_TEST_TYPES = [
   'blood_general', 'urine_general', 'biochem', 'coagulo', 'ekg',
@@ -155,6 +157,24 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
         [req.user?.id || null, req.user?.name || req.user?.username || null, order.id, tenantId]
       );
       await client.query('COMMIT');
+
+      // AUTO-AGENT: lab-critical — natija matnidan hayotiy chegaralarni tekshiradi
+      try {
+        // values_json.text yoki conclusion — qaysi bo'lsa shu ishlatiladi
+        const raw = (b.values_json && (b.values_json.text || JSON.stringify(b.values_json))) || b.conclusion || '';
+        if (raw && raw.length > 3) {
+          const lc = labCritical.handler({ raw_text: raw });
+          if (lc?.alerts?.length) {
+            saveAlerts(pool, {
+              tenantId, patientId: order.patient_id, admissionId: null,
+              sourceKind: 'lab_result', sourceId: resId, agentName: 'lab-critical',
+            }, lc.alerts).catch(() => {});
+          }
+        }
+      } catch (aiErr) {
+        console.warn('[SAFETY lab-critical]', aiErr.message);
+      }
+
       res.json({ success: true, result_id: resId });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
