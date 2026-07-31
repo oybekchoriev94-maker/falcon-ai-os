@@ -7,7 +7,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { labCritical } from '../../ai/agents/safety-agents.js';
 import { labInterpreter } from '../../ai/agents/time-savers.js';
+import { labResultReady } from '../../ai/agents/patient-notify.js';
 import { saveAlerts } from '../services/alerts.js';
+import { sendPatientNotification, fetchPatientContact, fetchClinicInfo } from '../services/notifications.js';
 
 const LAB_TEST_TYPES = [
   'blood_general', 'urine_general', 'biochem', 'coagulo', 'ekg',
@@ -187,6 +189,28 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
               );
             }
           } catch (e) { console.warn('[TIME_SAVER lab-interpreter]', e.message); }
+        })();
+
+        // 3) lab-result-ready — bemorga Telegram xabar (agar telegram_id bo'lsa)
+        (async () => {
+          try {
+            const [contact, clinic] = await Promise.all([
+              fetchPatientContact(pool, tenantId, order.patient_id),
+              fetchClinicInfo(pool, tenantId),
+            ]);
+            if (!contact?.telegram_id) return;
+            const patientName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'bemor';
+            const msg = labResultReady.handler({
+              clinic_name: clinic.name,
+              test_name: order.test_type || 'tekshiruv',
+              patient_name: patientName,
+            });
+            await sendPatientNotification(pool, {
+              tenantId, patientId: order.patient_id,
+              kind: 'lab_ready', message: msg.message,
+              telegramId: contact.telegram_id, labOrderId: order.id,
+            });
+          } catch (e) { console.warn('[NOTIFY lab_ready]', e.message); }
         })();
       }
 

@@ -63,6 +63,7 @@ import servicesRoutes from './backend/routes/services.js';
 import bookingRoutes from './backend/routes/booking.js';
 import cashierRoutes from './backend/routes/cashier.js';
 import alertsRoutes from './backend/routes/alerts.js';
+import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -371,6 +372,9 @@ function startServer(port) {
     console.log(`Swagger:  http://localhost:${port}/api-docs`);
     console.log(`DB:       PostgreSQL (${process.env.DATABASE_URL ? 'connected' : 'not configured'})`);
     console.log(`========================================\n`);
+    // Bemor xabarnomalari cron loop (24h reminder, 7d follow-up)
+    // Faqat TELEGRAM_TOKEN_PATIENT sozlangan bo'lsa ishga tushadi.
+    if (process.env.TELEGRAM_TOKEN_PATIENT) startPatientReminderCron();
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port >= MAX_PORT) { console.error(`Port ${PORT}-${MAX_PORT} band`); process.exit(1); }

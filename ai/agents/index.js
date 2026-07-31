@@ -17,6 +17,8 @@ import { AGENTS as CLINICAL_WORKFLOW } from './clinical-workflow.js';
 import { SAFETY_AGENTS } from './safety-agents.js';
 // Vaqt tejash agentlari (Bosqich N): karta ochilishi, reception voice, lab natija
 import { TIME_SAVER_AGENTS } from './time-savers.js';
+// Bemor bilan aloqa agentlari (Bosqich O): reminder, natija, follow-up, tayyorgarlik
+import { PATIENT_NOTIFY_AGENTS } from './patient-notify.js';
 
 const ALL = [
   medicalScribe,
@@ -32,6 +34,10 @@ for (const mod of ALL) registerAgent(mod);
 for (const mod of CLINICAL_WORKFLOW) registerAgent(mod);
 for (const mod of SAFETY_AGENTS) registerAgent(mod);
 for (const mod of TIME_SAVER_AGENTS) registerAgent(mod);
+for (const mod of PATIENT_NOTIFY_AGENTS) registerAgent(mod);
 
-console.log(`[AI] ${ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length + TIME_SAVER_AGENTS.length} ta agent ro'yxatdan o'tdi ` +
-            `(${CLINICAL_WORKFLOW.length} klinika oqimi + ${SAFETY_AGENTS.length} xavfsizlik + ${TIME_SAVER_AGENTS.length} vaqt tejash)`);
+const totalCount = ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length +
+                   TIME_SAVER_AGENTS.length + PATIENT_NOTIFY_AGENTS.length;
+console.log(`[AI] ${totalCount} ta agent ro'yxatdan o'tdi ` +
+            `(${CLINICAL_WORKFLOW.length} klinika + ${SAFETY_AGENTS.length} xavfsizlik + ` +
+            `${TIME_SAVER_AGENTS.length} vaqt tejash + ${PATIENT_NOTIFY_AGENTS.length} bemor aloqasi)`);
