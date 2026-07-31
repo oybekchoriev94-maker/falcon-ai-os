@@ -63,6 +63,7 @@ import servicesRoutes from './backend/routes/services.js';
 import bookingRoutes from './backend/routes/booking.js';
 import cashierRoutes from './backend/routes/cashier.js';
 import alertsRoutes from './backend/routes/alerts.js';
+import insightsRoutes from './backend/routes/insights.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
@@ -431,6 +432,7 @@ async function main() {
       app.use(`${p}/booking`, tenantRateLimit('api'), bookingRoutes(getPool(), authMiddleware, telegramOrJwtAuth, serverError));
       app.use(`${p}/cashier`, tenantRateLimit('api'), cashierRoutes(getPool(), authMiddleware, checkRole, serverError));
       app.use(`${p}/alerts`, tenantRateLimit('api'), alertsRoutes(getPool(), authMiddleware));
+      app.use(`${p}/insights`, tenantRateLimit('api'), insightsRoutes(getPool(), authMiddleware, checkRole));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);
