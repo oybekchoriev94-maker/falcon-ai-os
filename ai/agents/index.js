@@ -23,6 +23,8 @@ import { PATIENT_NOTIFY_AGENTS } from './patient-notify.js';
 import { BUSINESS_AGENTS } from './business-intel.js';
 // Shifokor copilot agentlari (Bosqich Q): voice command, chat, smart autofill (propose-only)
 import { COPILOT_AGENTS } from './doctor-copilot.js';
+// Bemor Telegram chatbot (Bosqich R): chatbot, symptom-checker, photo-triage
+import { CHATBOT_AGENTS } from './patient-chatbot.js';
 
 const ALL = [
   medicalScribe,
@@ -41,11 +43,13 @@ for (const mod of TIME_SAVER_AGENTS) registerAgent(mod);
 for (const mod of PATIENT_NOTIFY_AGENTS) registerAgent(mod);
 for (const mod of BUSINESS_AGENTS) registerAgent(mod);
 for (const mod of COPILOT_AGENTS) registerAgent(mod);
+for (const mod of CHATBOT_AGENTS) registerAgent(mod);
 
 const totalCount = ALL.length + CLINICAL_WORKFLOW.length + SAFETY_AGENTS.length +
                    TIME_SAVER_AGENTS.length + PATIENT_NOTIFY_AGENTS.length +
-                   BUSINESS_AGENTS.length + COPILOT_AGENTS.length;
+                   BUSINESS_AGENTS.length + COPILOT_AGENTS.length + CHATBOT_AGENTS.length;
 console.log(`[AI] ${totalCount} ta agent ro'yxatdan o'tdi ` +
             `(${CLINICAL_WORKFLOW.length} klinika + ${SAFETY_AGENTS.length} xavfsizlik + ` +
             `${TIME_SAVER_AGENTS.length} vaqt tejash + ${PATIENT_NOTIFY_AGENTS.length} bemor aloqasi + ` +
-            `${BUSINESS_AGENTS.length} biznes + ${COPILOT_AGENTS.length} copilot)`);
+            `${BUSINESS_AGENTS.length} biznes + ${COPILOT_AGENTS.length} copilot + ` +
+            `${CHATBOT_AGENTS.length} chatbot)`);

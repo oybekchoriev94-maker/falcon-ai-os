@@ -65,6 +65,7 @@ import cashierRoutes from './backend/routes/cashier.js';
 import alertsRoutes from './backend/routes/alerts.js';
 import insightsRoutes from './backend/routes/insights.js';
 import copilotRoutes from './backend/routes/copilot.js';
+import patientBotRoutes from './backend/routes/patient-bot.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
@@ -435,6 +436,8 @@ async function main() {
       app.use(`${p}/alerts`, tenantRateLimit('api'), alertsRoutes(getPool(), authMiddleware));
       app.use(`${p}/insights`, tenantRateLimit('api'), insightsRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}/copilot`, tenantRateLimit('ai'), copilotRoutes(getPool(), authMiddleware, checkRole, upload));
+      // Bemor Telegram bot webhook — auth yo'q (Telegram Server -> Falcon), secret bilan himoyalangan
+      app.use(`${p}/patient-bot`, patientBotRoutes(getPool()));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);
