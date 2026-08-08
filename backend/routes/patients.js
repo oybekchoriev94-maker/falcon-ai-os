@@ -264,6 +264,43 @@ export default function patientsRoutes(pool, authMiddleware) {
         ),
       ]);
 
+      // Bosqich S: oxirgi obhod ko'rsatkichlari + 7 kunlik trend (UI karta uchun).
+      // Xato bo'lsa null qaytadi — asosiy istoriya oqimi buzilmaydi.
+      let latestVitals = null;
+      let vitalsTrend = { pulse: [], temperature: [], saturation: [] };
+      try {
+        const vitalRows = await q(
+          `SELECT created_at, date, temperature, blood_pressure, pulse, respiration, saturation
+             FROM daily_notes
+            WHERE tenant_id = $1 AND patient_id = $2
+              AND (temperature IS NOT NULL OR pulse IS NOT NULL
+                   OR blood_pressure IS NOT NULL OR saturation IS NOT NULL)
+            ORDER BY created_at DESC
+            LIMIT 14`,
+          [tenantId, patientId]
+        );
+        if (vitalRows.length) {
+          const v = vitalRows[0];
+          latestVitals = {
+            recorded_at: v.created_at,
+            temperature: v.temperature,
+            blood_pressure: v.blood_pressure,
+            pulse: v.pulse,
+            respiration: v.respiration,
+            saturation: v.saturation,
+          };
+          // Trend eskidan yangiga (sparkline chapdan o'ngga o'sadi)
+          const chrono = [...vitalRows].reverse();
+          vitalsTrend = {
+            pulse: chrono.map((r) => r.pulse).filter((n) => n != null),
+            temperature: chrono.map((r) => r.temperature).filter((n) => n != null),
+            saturation: chrono.map((r) => r.saturation).filter((n) => n != null),
+          };
+        }
+      } catch (vErr) {
+        console.warn('[PATIENTS latest_vitals]', vErr.message);
+      }
+
       res.json({
         success: true,
         patient,
@@ -275,6 +312,8 @@ export default function patientsRoutes(pool, authMiddleware) {
           last_visit: appointments[0]?.scheduled_at || null,
         },
         appointments, consultations, reports, admissions, intakes, epis, labs,
+        latest_vitals: latestVitals,
+        vitals_trend: vitalsTrend,
       });
     } catch (e) { safeError(res, e); }
   });
