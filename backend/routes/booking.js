@@ -484,7 +484,11 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
   // source majburan 'telegram' — reception bilan bir xil jadval, shuning uchun
   // to'qnashuv oldini olish avtomatik ishlaydi.
   router.post('/public/create', async (req, res) => {
-    const parsed = createSchema.omit({ source: true }).safeParse(req.body || {});
+    // Eslatma: .omit() zod v4'da refine'li schemada crash beradi (EAI —
+    // "/public/create" 500 bilan yiqilib, req.app restart bo'lardi). source
+    // requestdan qat'i nazar quyida keyingi satrda majburan o'zgartiriladi,
+    // shuning uchun omit shart emas.
+    const parsed = createSchema.safeParse(req.body || {});
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: 'Noto\'g\'ri ma\'lumot', details: parsed.error.flatten() });
     }
