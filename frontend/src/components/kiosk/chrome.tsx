@@ -181,7 +181,7 @@ export function KioskFooter({
             }}
           >
             <span>{nextLabel}</span>
-            <ArrowRight size={22} strokeWidth={2} />
+            <ArrowRight className={nextEnabled ? "k-nudge" : undefined} size={22} strokeWidth={2} />
           </button>
         )}
       </div>

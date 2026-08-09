@@ -28,7 +28,9 @@ export interface KioskT {
 
   fName: string; fNamePh: string; fPhone: string; fPhonePh: string;
   required: string; payment: string;
-  payCash: string; payCard: string; payOnline: string;
+  payCash: string; payCashHint: string;
+  payQr: string; payQrHint: string;
+  qrScan: string; qrFallback: string;
   space: string; clear: string; kbHint: string;
 
   cardFound: string; isThisYou: string; yesItsMe: string; no: string;
@@ -99,9 +101,12 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     fPhonePh: "90 123 45 67",
     required: "majburiy",
     payment: "To'lov turi",
-    payCash: "Naqd",
-    payCard: "Karta",
-    payOnline: "Online",
+    payCash: "Naqd (kassada)",
+    payCashHint: "Kassaga kod bilan boring",
+    payQr: "QR orqali",
+    payQrHint: "Telefondan skanerlab to'lang",
+    qrScan: "Telefon kamerasi bilan skanerlang",
+    qrFallback: "QR tayyorlanmadi — kassada to'lashingiz mumkin",
     space: "Bo'sh joy",
     clear: "Tozalash",
     kbHint: "Maydonni tanlang",
@@ -194,9 +199,12 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     fPhonePh: "90 123 45 67",
     required: "обязательно",
     payment: "Способ оплаты",
-    payCash: "Наличные",
-    payCard: "Карта",
-    payOnline: "Онлайн",
+    payCash: "Наличные (касса)",
+    payCashHint: "Подойдите в кассу с кодом",
+    payQr: "По QR-коду",
+    payQrHint: "Отсканируйте телефоном",
+    qrScan: "Отсканируйте камерой телефона",
+    qrFallback: "QR не создан — можно оплатить в кассе",
     space: "Пробел",
     clear: "Очистить",
     kbHint: "Выберите поле",

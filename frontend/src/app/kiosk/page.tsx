@@ -22,6 +22,7 @@ import {
   type LookupResult,
   type BookResult,
   type QueueItem,
+  type KioskPayMethod,
 } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { KIOSK_TEXT, type KioskLang } from "@/lib/kiosk-i18n";
@@ -127,6 +128,7 @@ function Kiosk({
   const [name, setName] = useState("");
   const [phoneDigits, setPhoneDigits] = useState("");
   const [focus, setFocus] = useState<"name" | "phone" | null>("phone");
+  const [pay, setPay] = useState<KioskPayMethod>("cash");
 
   // Bemor kartasi
   const [known, setKnown] = useState<LookupResult | null>(null);
@@ -147,7 +149,7 @@ function Kiosk({
     setScreen("idle");
     setStep(1);
     setService(null); setDoctor(null); setSlot(null); setSlots([]);
-    setName(""); setPhoneDigits(""); setFocus("phone");
+    setName(""); setPhoneDigits(""); setFocus("phone"); setPay("cash");
     setKnown(null); setIdentity("unknown");
     setTicket(null); setError(""); setCat(null);
     setDay(new Date().toLocaleDateString("en-CA"));
@@ -292,6 +294,7 @@ function Kiosk({
         doctor_id: doctor.id,
         service_id: service.id,
         scheduled_at: slot,
+        payment_method: pay,
       });
       setTicket(r);
       setScreen("ticket");
@@ -377,6 +380,7 @@ function Kiosk({
     { k: t.stTime, v: dayLabel ? `${dayLabel.num} ${dayLabel.mon}, ${slotTime}` : slotTime },
     { k: t.fName, v: name || "—" },
     { k: t.fPhone, v: prettyPhone },
+    { k: t.payment, v: pay === "qr" ? t.payQr : t.payCash },
   ];
 
   const ticketRows = ticket
@@ -463,6 +467,8 @@ function Kiosk({
                 confirming={confirming}
                 onConfirmIdentity={confirmIdentity}
                 onDeclineIdentity={declineIdentity}
+                pay={pay}
+                onPay={setPay}
               />
             )}
             {step === 5 && <StepConfirm t={t} rows={summaryRows} total={service?.price || 0} />}
@@ -493,7 +499,9 @@ function Kiosk({
               t={t}
               rows={ticketRows}
               code={ticket.access_code}
-              qrUrl={qrUrl}
+              payMethod={ticket.payment_method}
+              paymentQr={ticket.payment_qr}
+              clinicQr={qrUrl}
               onNew={resetAll}
             />
           </div>

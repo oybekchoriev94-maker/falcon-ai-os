@@ -109,7 +109,8 @@ export function HomeScreen({
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
           <span style={{ ...HEAD, fontSize: 16, letterSpacing: "0.16em" }}>01</span>
-          <ArrowRight size={40} strokeWidth={1.6} />
+          {/* Asosiy harakat — strelka o'ngga imo qiladi */}
+          <ArrowRight className="k-nudge" size={40} strokeWidth={1.6} />
         </div>
         <div>
           <CalendarPlus size={56} strokeWidth={1.5} style={{ marginBottom: 16 }} />

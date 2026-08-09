@@ -275,15 +275,24 @@ export function TicketScreen({
   t,
   rows,
   code,
-  qrUrl,
+  payMethod,
+  paymentQr,
+  clinicQr,
   onNew,
 }: {
   t: KioskT;
   rows: { k: string; v: string }[];
   code: string;
-  qrUrl?: string | null;
+  payMethod: "cash" | "qr";
+  /** Backend yaratgan to'lov havolasining QR rasmi (dinamik) */
+  paymentQr?: string | null;
+  /** Klinikaning doimiy to'lov QR rasmi (sozlamalardan) */
+  clinicQr?: string | null;
   onNew: () => void;
 }) {
+  // QR tanlangan bo'lsa: avval dinamik (summa allaqachon ichida), bo'lmasa
+  // klinikaning doimiy QR'i. Ikkalasi ham yo'q bo'lsa — kassada to'laydi.
+  const showQr = payMethod === "qr" ? paymentQr || clinicQr : null;
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 420px", gap: 2, background: "var(--k-divider)" }}>
       <div style={{ background: "var(--k-bg)", padding: "28px 32px", overflowY: "auto" }}>
@@ -297,7 +306,23 @@ export function TicketScreen({
             <SummaryRow key={r.k} k={r.k} v={r.v} />
           ))}
         </SummaryList>
-        <div style={{ marginTop: 18, fontSize: 17, color: "var(--k-n-700)", textWrap: "pretty" }}>{t.ticketNote}</div>
+        <div style={{ marginTop: 18, fontSize: 17, color: "var(--k-n-700)", textWrap: "pretty" }}>
+          {payMethod === "qr" && showQr ? t.qrScan : t.ticketNote}
+        </div>
+        {payMethod === "qr" && !showQr && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: "12px 16px",
+              background: "var(--k-accent-100)",
+              borderLeft: "6px solid var(--k-accent)",
+              fontSize: 16,
+              color: "var(--k-accent-900)",
+            }}
+          >
+            {t.qrFallback}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
           <button
@@ -352,26 +377,36 @@ export function TicketScreen({
         <div style={{ width: "100%", textAlign: "center" }}>
           <div style={{ fontSize: 14, letterSpacing: "0.2em", textTransform: "uppercase", opacity: 0.7 }}>{t.ticketNo}</div>
           <div
-            className="k-pop"
-            style={{ ...HEAD, fontSize: 76, lineHeight: 1, letterSpacing: "0.02em", color: "var(--k-green-400)", marginTop: 8 }}
+            className="k-pop k-ring"
+            style={{
+              ...HEAD,
+              fontSize: 76,
+              lineHeight: 1,
+              letterSpacing: "0.02em",
+              color: "var(--k-green-400)",
+              marginTop: 8,
+              display: "inline-block",
+              padding: "4px 14px",
+            }}
           >
             {code}
           </div>
         </div>
 
-        {/* To'lov QR — klinika sozlamalarida rasm yuklansa shu yerda chiqadi.
-            Yuklanmagan bo'lsa joyni band qilmaymiz. */}
-        {qrUrl ? (
-          <div style={{ textAlign: "center" }}>
+        {/* QR to'lov tanlangan bo'lsa — skanerlash uchun kod */}
+        {showQr ? (
+          <div className="k-pop" style={{ textAlign: "center" }}>
             <div style={{ width: 210, height: 210, background: "#fff", padding: 12 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              <img src={showQr} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
             <div style={{ ...KICKER, fontSize: 12, marginTop: 10, opacity: 0.7 }}>{t.qrPay}</div>
           </div>
         ) : null}
 
-        <div style={{ textAlign: "center", fontSize: 16, opacity: 0.75, textWrap: "pretty" }}>{t.qrNote}</div>
+        <div style={{ textAlign: "center", fontSize: 16, opacity: 0.75, textWrap: "pretty" }}>
+          {payMethod === "qr" && showQr ? t.payQrHint : t.qrNote}
+        </div>
       </div>
     </div>
   );

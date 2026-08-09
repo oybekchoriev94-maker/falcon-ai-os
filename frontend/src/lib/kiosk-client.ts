@@ -133,6 +133,8 @@ export interface SlotsResult {
   slots: KioskSlot[];
 }
 
+export type KioskPayMethod = "cash" | "qr";
+
 export interface BookResult {
   success: true;
   access_code: string;
@@ -140,6 +142,10 @@ export interface BookResult {
   doctor_name: string;
   service_name: string;
   scheduled_at: string;
+  payment_method: KioskPayMethod;
+  /** QR to'lov tanlanganda — to'lov havolasining QR rasmi (data URL) */
+  payment_qr: string | null;
+  payment_url: string | null;
   message: string;
 }
 

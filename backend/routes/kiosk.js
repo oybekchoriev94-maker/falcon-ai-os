@@ -20,9 +20,11 @@
 // ============================================================
 import { Router } from 'express';
 import crypto from 'node:crypto';
+import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { normalizePhone } from '../services/patient-store.js';
+import { createPayment } from '../services/payment-gateway.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -337,6 +339,10 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
     service_id: z.string().uuid(),
     scheduled_at: z.string(),
     complaint: z.string().max(1000).optional(),
+    // Kioskda bemor ikkitadan birini tanlaydi. Bazadagi qiymatlar
+    // booking.js bilan bir xil: 'cashier' (kassada naqd/karta) yoki
+    // 'online' (QR orqali telefondan to'lash).
+    payment_method: z.enum(['cash', 'qr']).default('cash'),
   });
 
   router.post('/book', deviceAuth, async (req, res) => {
@@ -410,20 +416,35 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       for (let i = 0; i < 6; i++) accessCode += CODE[buf[i] % CODE.length];
       const apptCode = 'K' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString('hex').toUpperCase();
 
+      // 'qr' -> onlayn to'lov havolasi, 'cash' -> kassada
+      const payMethod = b.payment_method === 'qr' ? 'online' : 'cashier';
+
       const appt = (await client.query(
         `INSERT INTO appointments
            (tenant_id, appointment_id, patient_id, patient_name, phone,
             doctor_id, doctor_name, service_id, scheduled_at, amount,
             department, source, status, payment_status, payment_method,
             access_code, notes, kiosk_device_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'kiosk','scheduled','pending','cashier',$12,$13,$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'kiosk','scheduled','pending',$12,$13,$14,$15)
          RETURNING id, appointment_id, access_code, amount::float8 AS amount`,
         [tenantId, apptCode, patientId, b.patient_name, phone,
          doc.id, `${doc.first_name} ${doc.last_name || ''}`.trim(),
          svc.id, b.scheduled_at, svc.price,
          doc.specialization || 'therapy',
-         accessCode, b.complaint || null, req.kioskDevice.id]
+         payMethod, accessCode, b.complaint || null, req.kioskDevice.id]
       )).rows[0];
+
+      // QR to'lov tanlansa — kutilayotgan tranzaksiya yozuvi
+      let paymentId = null;
+      if (payMethod === 'online') {
+        paymentId = uuidv4();
+        await client.query(
+          `INSERT INTO payment_transactions
+             (id, tenant_id, appointment_id, amount, description, provider, status, created_at)
+           VALUES ($1,$2,$3,$4,$5,'auto','pending',NOW())`,
+          [paymentId, tenantId, appt.id, svc.price, `${svc.name} — ${b.patient_name}`]
+        );
+      }
 
       // Xizmat snapshot
       await client.query(
@@ -456,6 +477,34 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         })();
       }
 
+      // QR to'lov: provayder havolasini olamiz va uni QR rasmga aylantiramiz.
+      // Bemor telefonida skanerlaydi. Havola olinmasa (provayder sozlanmagan
+      // yoki javob bermadi) — bron baribir qoladi, bemor kassada to'laydi.
+      let paymentQr = null;
+      let paymentUrl = null;
+      if (payMethod === 'online' && paymentId) {
+        try {
+          const baseUrl = process.env.PUBLIC_URL || 'https://falconmedai.uz';
+          const payment = await createPayment({
+            amount: svc.price,
+            description: `${svc.name} — ${b.patient_name}`,
+            orderId: paymentId,
+            returnUrl: `${baseUrl}/qr-pay.html?order=${paymentId}`,
+            provider: 'auto',
+          });
+          if (payment?.success && payment?.paymentUrl) {
+            paymentUrl = payment.paymentUrl;
+            await pool.query(
+              'UPDATE payment_transactions SET payment_url = $1, provider = $2 WHERE id = $3',
+              [paymentUrl, payment.provider || 'auto', paymentId]
+            );
+            paymentQr = await QRCode.toDataURL(paymentUrl, { width: 420, margin: 1 });
+          }
+        } catch (e) {
+          console.warn('[KIOSK payment]', e.message);
+        }
+      }
+
       res.status(201).json({
         success: true,
         access_code: appt.access_code,
@@ -463,7 +512,12 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         doctor_name: `${doc.first_name} ${doc.last_name || ''}`.trim(),
         service_name: svc.name,
         scheduled_at: b.scheduled_at,
-        message: 'Bron qilindi. Kassaga o\'ting.',
+        payment_method: b.payment_method,
+        payment_qr: paymentQr,
+        payment_url: paymentUrl,
+        message: payMethod === 'online' && paymentQr
+          ? 'Bron qilindi. QR kodni skanerlab to\'lang.'
+          : 'Bron qilindi. Kassaga o\'ting.',
       });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});

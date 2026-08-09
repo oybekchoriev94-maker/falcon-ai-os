@@ -110,7 +110,13 @@
   background: color-mix(in srgb, #16303c 28%, transparent);
 }
 
-/* ── Kirish animatsiyalari (bir martalik) ── */
+/* ── Animatsiyalar ──────────────────────────────────────────
+   Ikki guruh:
+   1) Kirish (bir martalik) — ekran/ro'yxat paydo bo'lganda.
+   2) Diqqat (takrorlanuvchi) — FAQAT bemorni keyingi qadamga
+      chaqiradigan joyda: ekran-saverdagi "teging" va asosiy
+      tugmadagi strelka. Bezak uchun harakat qo'yilmaydi.
+   ──────────────────────────────────────────────────────────── */
 @keyframes kFade {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
@@ -134,11 +140,50 @@
 .k-side { animation: kSide .34s ease both; }
 .k-pop  { animation: kPop .5s cubic-bezier(.2,.8,.2,1) both; }
 
-/* Harakatni kamaytirish so'ralgan bo'lsa — hurmat qilamiz */
+/* ── Diqqat animatsiyalari ── */
+
+/* Ekran-saverdagi "EKRANGA TEGING" — sekin nafas olish */
+@keyframes kGlow {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
+}
+.k-glow { animation: kGlow 2.6s ease-in-out infinite; }
+
+/* Asosiy tugmadagi strelka — o'ngga imo qiladi */
+@keyframes kNudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(8px); }
+}
+.k-nudge { animation: kNudge 2.4s ease-in-out infinite; }
+
+/* Navbat kodi — bir marta e'tibor tortadi, keyin tinchiydi */
+@keyframes kRing {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-green-500) 60%, transparent); }
+  100% { box-shadow: 0 0 0 26px transparent; }
+}
+.k-ring { animation: kRing 1.4s ease-out 3; }
+
+/* Yuklanayotgan skelet */
+@keyframes kShimmer {
+  0%   { opacity: .45; }
+  50%  { opacity: .9; }
+  100% { opacity: .45; }
+}
+.k-shimmer { animation: kShimmer 1.3s ease-in-out infinite; }
+
+/* Harakatni kamaytirish so'ralgan bo'lsa — hammasini o'chiramiz */
 @media (prefers-reduced-motion: reduce) {
-  .k-fade, .k-up, .k-side, .k-pop { animation: none; }
+  .k-fade, .k-up, .k-side, .k-pop,
+  .k-glow, .k-nudge, .k-ring, .k-shimmer { animation: none; }
 }
 
 /* Bosilganda bosilgandek his qilinsin (teginish qurilmasida muhim) */
-.k-press { transition: background .16s ease, color .16s ease, border-color .16s ease; }
+.k-press {
+  transition: background .16s ease, color .16s ease,
+              border-color .16s ease, transform .09s ease;
+}
 .k-press:active { transform: scale(.985); }
+
+/* Ro'yxat/plitka ustiga kelganda strelka siljisin */
+.k-arrow { transition: transform .18s ease; }
+.k-hover:hover .k-arrow { transform: translateX(6px); }

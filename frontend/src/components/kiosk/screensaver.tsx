@@ -2,9 +2,9 @@
 
 // Ekran-saver — kiosk bo'sh turganda. Bosilsa bosh sahifaga o'tadi.
 //
-// Diqqatni tortish uchun ANIMATSIYA ISHLATILMAYDI: katta tipografika
-// va aksent rang o'zi yetarli. Cheksiz suzuvchi/pulsatsiyalanuvchi
-// effektlar klinika zalida bezovta qiladi.
+// Bitta takrorlanuvchi animatsiya bor: "EKRANGA TEGING" sekin
+// yonib-o'chadi. Bu bezak emas — uzoqdan turgan odamga ekran tirik
+// ekanini bildiradi. Boshqa hech narsa harakatlanmaydi.
 
 import Image from "next/image";
 import { ArrowRight } from "lucide-react";
@@ -99,7 +99,7 @@ export function Screensaver({
           <div style={{ ...KICKER, fontSize: 14, letterSpacing: "0.2em", color: "var(--k-n-700)", marginBottom: 10 }}>
             {t.idleStart}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 20, color: "var(--k-accent)" }}>
+          <div className="k-glow" style={{ display: "flex", alignItems: "center", gap: 20, color: "var(--k-accent)" }}>
             <span style={{ ...HEAD, fontSize: 44, lineHeight: 1 }}>{t.touch}</span>
             <ArrowRight size={44} strokeWidth={1.8} />
           </div>

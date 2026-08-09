@@ -5,6 +5,8 @@
 import {
   Activity,
   Baby,
+  Banknote,
+  Check,
   ChevronRight,
   Clock,
   FlaskConical,
@@ -12,6 +14,7 @@ import {
   IdCard,
   Layers,
   Loader2,
+  QrCode,
   Scan,
   Stethoscope,
   UserCheck,
@@ -22,7 +25,14 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { HEAD, KICKER, ContextLabel, ScreenTitle, SummaryList, SummaryRow, Spinner, EmptyState } from "./ui";
 import { OnScreenKeyboard } from "./keyboard";
-import { fmtSum, type KioskService, type KioskDepartment, type KioskSlot, type LookupResult } from "@/lib/kiosk-client";
+import {
+  fmtSum,
+  type KioskService,
+  type KioskDepartment,
+  type KioskSlot,
+  type LookupResult,
+  type KioskPayMethod,
+} from "@/lib/kiosk-client";
 import type { KioskT } from "@/lib/kiosk-i18n";
 
 export interface PickedDoctor {
@@ -242,7 +252,7 @@ export function StepService({
             <button
               key={s.id}
               onClick={() => onPick(s)}
-              className="k-up k-press"
+              className="k-up k-press k-hover"
               style={{
                 animationDelay: `${Math.min(i, 10) * 0.025}s`,
                 background: "var(--k-bg)",
@@ -263,7 +273,7 @@ export function StepService({
                 ) : null}
               </div>
               <div style={{ ...HEAD, fontSize: 22, textAlign: "right", whiteSpace: "nowrap" }}>{fmtSum(s.price)}</div>
-              <ChevronRight size={26} strokeWidth={2} color="var(--k-accent)" />
+              <ChevronRight className="k-arrow" size={26} strokeWidth={2} color="var(--k-accent)" />
             </button>
           ))}
         </div>
@@ -310,7 +320,7 @@ export function StepDoctor({
             <button
               key={d.id + d.department}
               onClick={() => onPick(d)}
-              className="k-up k-press"
+              className="k-up k-press k-hover"
               style={{
                 animationDelay: `${i * 0.04}s`,
                 background: "var(--k-bg)",
@@ -346,7 +356,7 @@ export function StepDoctor({
                 <div style={{ ...HEAD, fontSize: 21, lineHeight: 1.15 }}>{d.name}</div>
                 <div style={{ fontSize: 17, color: "var(--k-n-700)", marginTop: 3 }}>{deptLabel(d.department)}</div>
               </div>
-              <ChevronRight size={24} strokeWidth={2} color="var(--k-accent)" />
+              <ChevronRight className="k-arrow" size={24} strokeWidth={2} color="var(--k-accent)" />
             </button>
           ))}
         </div>
@@ -471,6 +481,8 @@ export function StepData({
   confirming,
   onConfirmIdentity,
   onDeclineIdentity,
+  pay,
+  onPay,
 }: {
   t: KioskT;
   lang: "uz" | "ru";
@@ -487,6 +499,8 @@ export function StepData({
   confirming: boolean;
   onConfirmIdentity: () => void;
   onDeclineIdentity: () => void;
+  pay: KioskPayMethod;
+  onPay: (p: KioskPayMethod) => void;
 }) {
   const fmtPhone = (d: string) => {
     const p = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean);
@@ -626,6 +640,51 @@ export function StepData({
             </button>
           </div>
         )}
+      </div>
+
+      {/* To'lov turi — kassada naqd yoki telefondan QR orqali */}
+      <div style={{ flex: "none", padding: "6px 32px 16px" }}>
+        <div
+          style={{
+            fontSize: 14,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "var(--k-n-700)",
+            marginBottom: 8,
+          }}
+        >
+          {t.payment}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, background: "var(--k-divider)", border: "2px solid var(--k-divider)" }}>
+          {([
+            { id: "cash" as const, Icon: Banknote, label: t.payCash, hint: t.payCashHint },
+            { id: "qr" as const, Icon: QrCode, label: t.payQr, hint: t.payQrHint },
+          ]).map((o) => {
+            const on = pay === o.id;
+            return (
+              <button
+                key={o.id}
+                onClick={() => onPay(o.id)}
+                className="k-press"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "14px 20px",
+                  background: on ? "var(--k-accent)" : "var(--k-bg)",
+                  color: on ? "var(--k-bg)" : "var(--k-text)",
+                }}
+              >
+                <o.Icon size={26} strokeWidth={1.7} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...HEAD, fontSize: 19 }}>{o.label}</div>
+                  <div style={{ fontSize: 14, opacity: on ? 0.85 : 0.6, marginTop: 1 }}>{o.hint}</div>
+                </div>
+                {on && <Check size={22} strokeWidth={3} />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0 }} />
