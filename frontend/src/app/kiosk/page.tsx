@@ -39,10 +39,10 @@ import {
   StepData,
   StepConfirm,
   doctorsForService,
-  deptLabel,
   type PickedDoctor,
 } from "@/components/kiosk/booking-flow";
 import { PricesScreen, DoctorsScreen, QueueScreen, TicketScreen } from "@/components/kiosk/info-screens";
+import { CartScreen, type CartVisit } from "@/components/kiosk/cart-screen";
 import { ErrorBanner, Spinner } from "@/components/kiosk/ui";
 
 type Screen = "idle" | "home" | "book" | "prices" | "doctors" | "queue" | "ticket";
@@ -123,7 +123,9 @@ function Kiosk({
   const days = useMemo(() => nextDays(7), []);
   const [day, setDay] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [slots, setSlots] = useState<KioskSlot[]>([]);
-  const [slot, setSlot] = useState<string | null>(null);
+
+  // Savat — bir kelishda bir nechta shifokorga yozilish
+  const [cart, setCart] = useState<CartVisit[]>([]);
 
   // Forma
   const [name, setName] = useState("");
@@ -149,7 +151,7 @@ function Kiosk({
   const resetAll = useCallback(() => {
     setScreen("idle");
     setStep(1);
-    setService(null); setDoctor(null); setSlot(null); setSlots([]);
+    setService(null); setDoctor(null); setSlots([]); setCart([]);
     setName(""); setPhoneDigits(""); setFocus("phone"); setPay("cash");
     setKnown(null); setIdentity("unknown");
     setTicket(null); setError(""); setCat(null);
@@ -202,7 +204,7 @@ function Kiosk({
   }, [departments.length, t]);
 
   const loadSlots = useCallback(async (doctorId: string, date: string) => {
-    setLoading(true); setError(""); setSlots([]); setSlot(null);
+    setLoading(true); setError(""); setSlots([]);
     try {
       const r = await kioskApi.get<{ slots: KioskSlot[] }>(`/api/kiosk/slots?doctor_id=${doctorId}&date=${date}`);
       setSlots(r.slots || []);
@@ -280,7 +282,7 @@ function Kiosk({
 
   /* ── Bron yaratish ── */
   async function book() {
-    if (!service || !doctor || !slot) return;
+    if (!cart.length) return;
     setLoading(true); setError("");
     try {
       let sessionId = known?.session_id;
@@ -292,10 +294,14 @@ function Kiosk({
         session_id: sessionId,
         patient_name: name.trim(),
         phone: `+998${phoneDigits}`,
-        doctor_id: doctor.id,
-        service_id: service.id,
-        scheduled_at: slot,
         payment_method: pay,
+        // Barcha tashriflar bitta tranzaksiyada — bittasi band bo'lsa
+        // hech biri yozilmaydi.
+        visits: cart.map((v) => ({
+          doctor_id: v.doctor_id,
+          service_id: v.service_id,
+          scheduled_at: v.scheduled_at,
+        })),
       });
       setTicket(r);
       setScreen("ticket");
@@ -303,11 +309,12 @@ function Kiosk({
       const msg = e instanceof Error ? e.message : t.errGeneric;
       setError(msg);
       // Vaqt boshqa kanaldan (Telegram/qabulxona) band qilingan bo'lsa —
-      // bemorni vaqt tanlash qadamiga qaytarib, ro'yxatni yangilaymiz.
-      if (e instanceof KioskApiError && e.code === "SLOT_TAKEN" && doctor) {
-        setSlot(null);
-        setStep(3);
-        await loadSlots(doctor.id, day);
+      // savatni tozalab, boshidan tanlashga qaytaramiz. Qaysi tashrif
+      // to'qnashganini bilmaymiz, shuning uchun butun savat qayta ko'riladi.
+      if (e instanceof KioskApiError && e.code === "SLOT_TAKEN") {
+        setCart([]);
+        setService(null); setDoctor(null); setCat(null);
+        setStep(1);
       }
     } finally {
       setLoading(false);
@@ -322,12 +329,12 @@ function Kiosk({
   const goHome = () => { setScreen("home"); setStep(1); setError(""); };
 
   const pickService = async (s: KioskService) => {
-    setService(s); setDoctor(null); setSlot(null);
+    setService(s); setDoctor(null);
     await loadDepartments();
     setStep(2);
   };
   const pickDoctor = async (d: PickedDoctor) => {
-    setDoctor(d); setSlot(null);
+    setDoctor(d);
     setStep(3);
     await loadSlots(d.id, day);
   };
@@ -335,11 +342,56 @@ function Kiosk({
     setDay(k);
     if (doctor) await loadSlots(doctor.id, k);
   };
-  const pickSlot = (iso: string) => { setSlot(iso); setStep(4); };
+
+  /* ── Vaqt tanlandi -> savatga qo'shamiz ── */
+  function pickSlot(iso: string) {
+    if (!service || !doctor) return;
+    setCart((prev) => [
+      ...prev,
+      {
+        doctor_id: doctor.id,
+        doctor_name: doctor.name,
+        department: doctor.department,
+        service_id: service.id,
+        service_name: service.name,
+        price: service.price,
+        scheduled_at: iso,
+      },
+    ]);
+    setStep(4); // savat
+  }
+
+  /** Savatdan "yana shifokor" — tanlovni tozalab 1-qadamga qaytamiz */
+  function addAnother() {
+    setService(null); setDoctor(null); setSlots([]);
+    setCat(null);
+    setStep(1);
+  }
+
+  function removeFromCart(i: number) {
+    setCart((prev) => {
+      const next = prev.filter((_, x) => x !== i);
+      // Oxirgisi ham o'chirilsa — boshidan boshlaymiz
+      if (next.length === 0) {
+        setService(null); setDoctor(null); setCat(null);
+        setStep(1);
+      }
+      return next;
+    });
+  }
 
   function back() {
     setError("");
-    if (screen === "book" && step > 1) { setStep(step - 1); return; }
+    if (screen === "book" && step > 1) {
+      // Savatdan orqaga — oxirgi tashrifni ham olib tashlaymiz, aks holda
+      // bemor vaqtni qayta tanlab, ikkita bir xil yozuv hosil qiladi.
+      if (step === 4) {
+        setCart((prev) => prev.slice(0, -1));
+       
+      }
+      setStep(step - 1);
+      return;
+    }
     goHome();
   }
 
@@ -354,11 +406,16 @@ function Kiosk({
 
   if (screen === "book") {
     if (step === 4) {
+      // Savat — davom etish
+      nextLabel = t.finish;
+      nextEnabled = cart.length > 0;
+      nextAction = () => setStep(5);
+    } else if (step === 5) {
       nextLabel = t.next;
       nextEnabled = nameOk && phoneOk;
-      nextAction = () => setStep(5);
+      nextAction = () => setStep(6);
       if (!nextEnabled) hint = t.fillFields;
-    } else if (step === 5) {
+    } else if (step === 6) {
       nextLabel = t.confirmBtn;
       nextEnabled = !loading;
       nextAction = book;
@@ -370,23 +427,21 @@ function Kiosk({
     [departments, service, services]
   );
 
-  const slotTime = slot
-    ? new Date(slot).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })
-    : "";
-  const dayLabel = days.find((d) => d.key === day);
-
   const prettyPhone = phoneDigits
     ? `+998 ${[phoneDigits.slice(0, 2), phoneDigits.slice(2, 5), phoneDigits.slice(5, 7), phoneDigits.slice(7, 9)]
         .filter(Boolean)
         .join(" ")}`
     : "—";
 
+  const cartTotal = cart.reduce((s, v) => s + (v.price || 0), 0);
+
   // Summa bu ro'yxatda YO'Q — u o'ng tomondagi ko'k panelda katta
   // qilib ko'rsatiladi, ikki marta takrorlash shart emas.
   const summaryRows = [
-    { k: t.service, v: service?.name || "—" },
-    { k: t.doctor, v: doctor ? `${doctor.name} — ${deptLabel(doctor.department)}` : "—" },
-    { k: t.stTime, v: dayLabel ? `${dayLabel.num} ${dayLabel.mon}, ${slotTime}` : slotTime },
+    ...cart.map((v, i) => ({
+      k: cart.length > 1 ? t.visitN(i + 1) : t.service,
+      v: `${v.service_name} · ${v.doctor_name} · ${fmtDateTime(v.scheduled_at)}`,
+    })),
     { k: t.fName, v: name || "—" },
     { k: t.fPhone, v: prettyPhone },
     { k: t.payment, v: pay === "qr" ? t.payQr : t.payCash },
@@ -394,9 +449,10 @@ function Kiosk({
 
   const ticketRows = ticket
     ? [
-        { k: t.service, v: ticket.service_name },
-        { k: t.doctor, v: ticket.doctor_name },
-        { k: t.stTime, v: fmtDateTime(ticket.scheduled_at) },
+        ...ticket.visits.map((v, i) => ({
+          k: ticket.visits.length > 1 ? `${t.visitN(i + 1)} · ${v.access_code}` : t.service,
+          v: `${v.service_name} · ${v.doctor_name} · ${fmtDateTime(v.scheduled_at)}`,
+        })),
         { k: t.total, v: fmtSum(ticket.amount) },
       ]
     : [];
@@ -438,7 +494,7 @@ function Kiosk({
 
         {screen === "book" && (
           <div className="k-fade" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <StepBar step={step} labels={[t.stService, t.stDoctor, t.stTime, t.stData, t.stConfirm]} />
+            <StepBar step={step} labels={[t.stService, t.stDoctor, t.stTime, t.cart, t.stData, t.stConfirm]} />
             {error && <ErrorBanner msg={error} />}
 
             {step === 1 && (
@@ -460,6 +516,9 @@ function Kiosk({
               />
             )}
             {step === 4 && (
+              <CartScreen t={t} visits={cart} onAdd={addAnother} onRemove={removeFromCart} />
+            )}
+            {step === 5 && (
               <StepData
                 t={t}
                 lang={lang}
@@ -480,7 +539,7 @@ function Kiosk({
                 onPay={setPay}
               />
             )}
-            {step === 5 && <StepConfirm t={t} rows={summaryRows} total={service?.price || 0} pay={pay} />}
+            {step === 6 && <StepConfirm t={t} rows={summaryRows} total={cartTotal} pay={pay} />}
           </div>
         )}
 

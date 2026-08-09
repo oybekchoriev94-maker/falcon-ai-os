@@ -331,19 +331,37 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   });
 
   // POST /api/kiosk/book — bron yaratish (kassa to'lovi kutiladi)
+  //
+  // Bitta tashrifda bir nechta shifokorga yozilish mumkin: `visits`
+  // massivi. Hammasi BITTA tranzaksiyada yaratiladi — bittasi
+  // muvaffaqiyatsiz bo'lsa (masalan vaqt band bo'lib qolsa) hech biri
+  // yozilmaydi. Bemor yarim bron bilan qolib ketmaydi.
+  const visitSchema = z.object({
+    doctor_id: z.string().uuid(),
+    service_id: z.string().uuid(),
+    scheduled_at: z.string(),
+  });
+
   const bookSchema = z.object({
     session_id: z.string().uuid(),
     patient_name: z.string().min(2).max(200),
     phone: z.string().min(9).max(20),
-    doctor_id: z.string().uuid(),
-    service_id: z.string().uuid(),
-    scheduled_at: z.string(),
     complaint: z.string().max(1000).optional(),
     // Kioskda bemor ikkitadan birini tanlaydi. Bazadagi qiymatlar
     // booking.js bilan bir xil: 'cashier' (kassada naqd/karta) yoki
     // 'online' (QR orqali telefondan to'lash).
     payment_method: z.enum(['cash', 'qr']).default('cash'),
-  });
+
+    // Yangi shakl
+    visits: z.array(visitSchema).min(1).max(6).optional(),
+    // Eski shakl (bitta tashrif) — moslik uchun saqlanadi
+    doctor_id: z.string().uuid().optional(),
+    service_id: z.string().uuid().optional(),
+    scheduled_at: z.string().optional(),
+  }).refine(
+    (d) => (d.visits?.length ?? 0) > 0 || (d.doctor_id && d.service_id && d.scheduled_at),
+    { message: 'visits yoki doctor_id+service_id+scheduled_at kerak' }
+  );
 
   router.post('/book', deviceAuth, async (req, res) => {
     // Rate limit: daqiqada 5 bron (bir qurilmadan)
@@ -360,24 +378,48 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       const tenantId = req.kioskTenantId;
       await client.query('BEGIN');
 
-      // Shifokor + xizmat tekshirish (tenant ichida)
-      const doc = (await client.query(
-        `SELECT id, first_name, last_name, specialization FROM doctors
-          WHERE tenant_id = $1 AND id = $2 AND (status IS NULL OR status = 'Faol')`,
-        [tenantId, b.doctor_id]
-      )).rows[0];
-      if (!doc) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, error: 'Shifokor topilmadi' });
+      // Tashriflar ro'yxati (eski bitta-tashrif shakli ham qo'llab-quvvatlanadi)
+      const visits = b.visits?.length
+        ? b.visits
+        : [{ doctor_id: b.doctor_id, service_id: b.service_id, scheduled_at: b.scheduled_at }];
+
+      // Har bir tashrif uchun shifokor va xizmatni tenant ichida tekshiramiz
+      const resolved = [];
+      for (const v of visits) {
+        const doc = (await client.query(
+          `SELECT id, first_name, last_name, specialization FROM doctors
+            WHERE tenant_id = $1 AND id = $2 AND (status IS NULL OR status = 'Faol')`,
+          [tenantId, v.doctor_id]
+        )).rows[0];
+        if (!doc) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, error: 'Shifokor topilmadi' });
+        }
+        const svc = (await client.query(
+          `SELECT id, name, price::float8 AS price FROM services_catalog
+            WHERE tenant_id = $1 AND id = $2 AND active = TRUE`,
+          [tenantId, v.service_id]
+        )).rows[0];
+        if (!svc) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ success: false, error: 'Xizmat topilmadi' });
+        }
+        resolved.push({ doc, svc, scheduled_at: v.scheduled_at });
       }
-      const svc = (await client.query(
-        `SELECT id, name, price::float8 AS price FROM services_catalog
-          WHERE tenant_id = $1 AND id = $2 AND active = TRUE`,
-        [tenantId, b.service_id]
-      )).rows[0];
-      if (!svc) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, error: 'Xizmat topilmadi' });
+
+      // Bir xil shifokor + bir xil vaqt ikki marta tanlanganini oldindan
+      // ushlaymiz — DB indeksigacha bormasdan aniq xabar beramiz.
+      const seen = new Set();
+      for (const r of resolved) {
+        const key = `${r.doc.id}@${r.scheduled_at}`;
+        if (seen.has(key)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            success: false,
+            error: 'Bir shifokorga bir vaqtning o\'zida ikki marta yozilib bo\'lmaydi',
+          });
+        }
+        seen.add(key);
       }
 
       // Bemor kartasi — telefon bo'yicha upsert (booking.js bilan bir xil mantiq)
@@ -409,32 +451,62 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         patientId = newId;
       }
 
-      // Bron
+      // Kod generatori — chalkashadigan belgilar (0/O, 1/I) yo'q
       const CODE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      const buf = crypto.randomBytes(6);
-      let accessCode = '';
-      for (let i = 0; i < 6; i++) accessCode += CODE[buf[i] % CODE.length];
-      const apptCode = 'K' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString('hex').toUpperCase();
+      const newAccessCode = () => {
+        const buf = crypto.randomBytes(6);
+        let c = '';
+        for (let i = 0; i < 6; i++) c += CODE[buf[i] % CODE.length];
+        return c;
+      };
 
       // 'qr' -> onlayn to'lov havolasi, 'cash' -> kassada
       const payMethod = b.payment_method === 'qr' ? 'online' : 'cashier';
+      const groupId = uuidv4();
 
-      const appt = (await client.query(
-        `INSERT INTO appointments
-           (tenant_id, appointment_id, patient_id, patient_name, phone,
-            doctor_id, doctor_name, service_id, scheduled_at, amount,
-            department, source, status, payment_status, payment_method,
-            access_code, notes, kiosk_device_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'kiosk','scheduled','pending',$12,$13,$14,$15)
-         RETURNING id, appointment_id, access_code, amount::float8 AS amount`,
-        [tenantId, apptCode, patientId, b.patient_name, phone,
-         doc.id, `${doc.first_name} ${doc.last_name || ''}`.trim(),
-         svc.id, b.scheduled_at, svc.price,
-         doc.specialization || 'therapy',
-         payMethod, accessCode, b.complaint || null, req.kioskDevice.id]
-      )).rows[0];
+      const created = [];
+      let totalAmount = 0;
 
-      // QR to'lov tanlansa — kutilayotgan tranzaksiya yozuvi
+      for (const r of resolved) {
+        const apptCode = 'K' + Date.now().toString(36).toUpperCase()
+          + crypto.randomBytes(3).toString('hex').toUpperCase();
+        const accessCode = newAccessCode();
+
+        const appt = (await client.query(
+          `INSERT INTO appointments
+             (tenant_id, appointment_id, patient_id, patient_name, phone,
+              doctor_id, doctor_name, service_id, scheduled_at, amount,
+              department, source, status, payment_status, payment_method,
+              access_code, notes, kiosk_device_id, booking_group_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'kiosk','scheduled','pending',$12,$13,$14,$15,$16)
+           RETURNING id, access_code, amount::float8 AS amount`,
+          [tenantId, apptCode, patientId, b.patient_name, phone,
+           r.doc.id, `${r.doc.first_name} ${r.doc.last_name || ''}`.trim(),
+           r.svc.id, r.scheduled_at, r.svc.price,
+           r.doc.specialization || 'therapy',
+           payMethod, accessCode, b.complaint || null, req.kioskDevice.id, groupId]
+        )).rows[0];
+
+        // Xizmat snapshot — narx keyin o'zgarsa ham chekda o'sha narx qoladi
+        await client.query(
+          `INSERT INTO appointment_services (tenant_id, appointment_id, service_id, name, price)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [tenantId, appt.id, r.svc.id, r.svc.name, r.svc.price]
+        ).catch(() => {});
+
+        totalAmount += r.svc.price || 0;
+        created.push({
+          id: appt.id,
+          access_code: appt.access_code,
+          amount: appt.amount,
+          doctor_name: `${r.doc.first_name} ${r.doc.last_name || ''}`.trim(),
+          service_name: r.svc.name,
+          scheduled_at: r.scheduled_at,
+        });
+      }
+
+      // QR to'lov tanlansa — butun guruh uchun BITTA tranzaksiya
+      // (bemor bir marta to'laydi, har tashrif uchun alohida emas)
       let paymentId = null;
       if (payMethod === 'online') {
         paymentId = uuidv4();
@@ -442,23 +514,17 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
           `INSERT INTO payment_transactions
              (id, tenant_id, appointment_id, amount, description, provider, status, created_at)
            VALUES ($1,$2,$3,$4,$5,'auto','pending',NOW())`,
-          [paymentId, tenantId, appt.id, svc.price, `${svc.name} — ${b.patient_name}`]
+          [paymentId, tenantId, created[0].id, totalAmount,
+           `${created.length > 1 ? `${created.length} ta tashrif` : created[0].service_name} — ${b.patient_name}`]
         );
       }
 
-      // Xizmat snapshot
-      await client.query(
-        `INSERT INTO appointment_services (tenant_id, appointment_id, service_id, name, price)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [tenantId, appt.id, svc.id, svc.name, svc.price]
-      ).catch(() => {});
-
-      // Sessiyani yakunlash
+      // Sessiyani yakunlash — birinchi tashrifga bog'laymiz (audit uchun)
       await client.query(
         `UPDATE kiosk_sessions
             SET step_reached = 'done', appointment_id = $1, patient_id = $2, finished_at = NOW()
           WHERE id = $3 AND tenant_id = $4`,
-        [appt.id, patientId, b.session_id, tenantId]
+        [created[0].id, patientId, b.session_id, tenantId]
       ).catch(() => {});
 
       await client.query('COMMIT');
@@ -470,8 +536,9 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
             const { triageAgent } = await import('../../ai/agents/time-savers.js');
             const t = await triageAgent.handler({ complaint: b.complaint });
             await pool.query(
-              `UPDATE appointments SET triage_severity = $1, triage_json = $2::jsonb WHERE id = $3`,
-              [t.severity, JSON.stringify(t), appt.id]
+              `UPDATE appointments SET triage_severity = $1, triage_json = $2::jsonb
+                WHERE tenant_id = $3 AND booking_group_id = $4`,
+              [t.severity, JSON.stringify(t), tenantId, groupId]
             );
           } catch (e) { console.warn('[KIOSK triage]', e.message); }
         })();
@@ -486,8 +553,8 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         try {
           const baseUrl = process.env.PUBLIC_URL || 'https://falconmedai.uz';
           const payment = await createPayment({
-            amount: svc.price,
-            description: `${svc.name} — ${b.patient_name}`,
+            amount: totalAmount,
+            description: `${created.length > 1 ? `${created.length} ta tashrif` : created[0].service_name} — ${b.patient_name}`,
             orderId: paymentId,
             returnUrl: `${baseUrl}/qr-pay.html?order=${paymentId}`,
             provider: 'auto',
@@ -507,11 +574,15 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
 
       res.status(201).json({
         success: true,
-        access_code: appt.access_code,
-        amount: appt.amount,
-        doctor_name: `${doc.first_name} ${doc.last_name || ''}`.trim(),
-        service_name: svc.name,
-        scheduled_at: b.scheduled_at,
+        booking_group_id: groupId,
+        // Birinchi tashrif maydonlari — eski mijozlar uchun moslik
+        access_code: created[0].access_code,
+        amount: totalAmount,
+        doctor_name: created[0].doctor_name,
+        service_name: created[0].service_name,
+        scheduled_at: created[0].scheduled_at,
+        // To'liq ro'yxat — har tashrifning o'z kodi bor
+        visits: created.map(({ id: _id, ...v }) => v),
         payment_method: b.payment_method,
         payment_qr: paymentQr,
         payment_url: paymentUrl,

@@ -36,6 +36,10 @@ export interface KioskT {
   cardFound: string; isThisYou: string; yesItsMe: string; no: string;
   notMe: string; willAddToCard: string; searching: string;
 
+  cart: string; addMore: string; addMoreHint: string; finish: string;
+  visitN: (n: number) => string; removeVisit: string;
+  maxVisits: string;
+
   total: string; payNote: string; payNoteQr: string; confirmNote: string;
   ticketDone: string; ticketTitle: string; ticketNo: string;
   ticketNote: string; qrNote: string; qrPay: string;
@@ -121,6 +125,14 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     searching: "Karta izlanmoqda...",
 
     // Yakun
+    cart: "Tanlangan tashriflar",
+    addMore: "Yana shifokor qo'shish",
+    addMoreHint: "Bir kelishda bir nechta shifokorga yozilishingiz mumkin",
+    finish: "Yakunlash",
+    visitN: (n: number) => `${n}-tashrif`,
+    removeVisit: "O'chirish",
+    maxVisits: "Bir kelishda ko'pi bilan 6 ta tashrif",
+
     total: "Jami to'lov",
     payNote: "To'lovni kassada amalga oshirasiz.",
     payNoteQr: "Tasdiqlagach QR kod chiqadi — telefoningiz bilan skanerlang.",
@@ -217,6 +229,14 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     notMe: "Это не я",
     willAddToCard: "Визит добавится в вашу карту",
     searching: "Поиск карты...",
+
+    cart: "Выбранные визиты",
+    addMore: "Добавить ещё врача",
+    addMoreHint: "За один визит можно записаться к нескольким врачам",
+    finish: "Завершить",
+    visitN: (n: number) => `Визит ${n}`,
+    removeVisit: "Удалить",
+    maxVisits: "Не более 6 визитов за раз",
 
     total: "Итого",
     payNote: "Оплата производится в кассе.",

@@ -145,13 +145,27 @@ export interface SlotsResult {
 
 export type KioskPayMethod = "cash" | "qr";
 
-export interface BookResult {
-  success: true;
+/** Bitta tashrif — bir shifokor, bir xizmat, bir vaqt */
+export interface BookedVisit {
   access_code: string;
   amount: number;
   doctor_name: string;
   service_name: string;
   scheduled_at: string;
+}
+
+export interface BookResult {
+  success: true;
+  /** Bir tashrifda yaratilgan barcha bronlarni bog'lovchi id */
+  booking_group_id: string;
+  /** Birinchi tashrif kodi (moslik uchun) */
+  access_code: string;
+  /** Barcha tashriflar summasi */
+  amount: number;
+  doctor_name: string;
+  service_name: string;
+  scheduled_at: string;
+  visits: BookedVisit[];
   payment_method: KioskPayMethod;
   /** QR to'lov tanlanganda — to'lov havolasining QR rasmi (data URL) */
   payment_qr: string | null;
