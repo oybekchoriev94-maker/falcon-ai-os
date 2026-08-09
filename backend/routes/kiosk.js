@@ -107,14 +107,18 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   router.get('/config', deviceAuth, async (req, res) => {
     try {
       const t = await qGet(
-        `SELECT name, logo_url, address, phone FROM tenants WHERE id = $1`,
+        `SELECT name, address, phone FROM tenants WHERE id = $1`,
+        [req.kioskTenantId]
+      );
+      const logo = await qGet(
+        `SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'`,
         [req.kioskTenantId]
       );
       res.json({
         success: true,
         clinic: {
           name: t?.name || 'Klinika',
-          logo_url: t?.logo_url || null,
+          logo_url: logo?.value || null,
           address: t?.address || null,
           phone: t?.phone || null,
         },
