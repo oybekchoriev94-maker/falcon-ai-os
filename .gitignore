@@ -83,3 +83,6 @@ fix.cjs
 # Local dev scratch (token, helper scripts)
 token.txt
 get-token.mjs
+
+# Vaqtinchalik tahlil fayllari (maket ajratish)
+.tmp-kiosk/

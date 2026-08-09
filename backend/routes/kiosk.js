@@ -110,15 +110,21 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         `SELECT name, address, phone FROM tenants WHERE id = $1`,
         [req.kioskTenantId]
       );
-      const logo = await qGet(
-        `SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'`,
+      // Logo va to'lov QR — clinic_settings key-value jadvalida
+      // (tenants jadvalida bu ustunlar yo'q).
+      const settings = await q(
+        `SELECT key, value FROM clinic_settings
+          WHERE tenant_id = $1 AND key IN ('logo_url', 'payment_qr_url')`,
         [req.kioskTenantId]
       );
+      const get = (k) => settings.find((s) => s.key === k)?.value || null;
+
       res.json({
         success: true,
         clinic: {
           name: t?.name || 'Klinika',
-          logo_url: logo?.value || null,
+          logo_url: get('logo_url'),
+          payment_qr_url: get('payment_qr_url'),
           address: t?.address || null,
           phone: t?.phone || null,
         },

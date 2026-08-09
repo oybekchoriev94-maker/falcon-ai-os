@@ -1,117 +1,174 @@
 "use client";
 
-// Kutish zali TV ekrani — "queue_tv" turidagi qurilma tokeni bilan ishlaydi.
-// Backend GET /api/kiosk/queue 10s'da bir qayta so'raladi, PII ism qisqartirilgan.
+// Kutish zali TV ekrani — "queue_tv" turidagi qurilma tokeni bilan.
+// Backend GET /api/kiosk/queue 10s'da bir so'raladi, ism qisqartirilgan.
+// Uzoqdan o'qilishi kerak, shuning uchun shriftlar kioskdan kattaroq.
+
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { kioskApi, type QueueItem } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { PairingScreen } from "@/components/kiosk/pairing-screen";
-import { Clock, HeartPulse, Loader2, Stethoscope } from "lucide-react";
-
-const STATUS_LABEL: Record<string, { label: string; className: string }> = {
-  scheduled: { label: "Kutmoqda", className: "bg-amber-500/15 text-amber-300 ring-amber-400/30" },
-  in_progress: { label: "Qabulda", className: "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30" },
-};
+import { HEAD, KICKER, Spinner } from "@/components/kiosk/ui";
+import { Stethoscope } from "lucide-react";
 
 export default function KioskQueuePage() {
   const { status, config, pairing, error, pair } = useKioskPairing();
 
   if (status === "checking") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <Loader2 className="h-10 w-10 animate-spin text-emerald-400" />
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Spinner />
       </div>
     );
   }
   if (status === "unpaired") {
     return <PairingScreen onSubmit={pair} error={error} loading={pairing} />;
   }
-  return <QueueBoard clinicName={config?.clinic.name} />;
+  return <QueueBoard clinicName={config?.clinic.name || "Klinika"} />;
 }
 
-function QueueBoard({ clinicName }: { clinicName?: string }) {
+function QueueBoard({ clinicName }: { clinicName: string }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    let cancelled = false;
+    let dead = false;
     const load = () => {
       kioskApi
         .get<{ queue: QueueItem[] }>("/api/kiosk/queue")
-        .then((r) => { if (!cancelled) setQueue(r.queue || []); })
+        .then((r) => { if (!dead) setQueue(r.queue || []); })
         .catch(() => {});
     };
     load();
     const poll = setInterval(load, 10_000);
     const clock = setInterval(() => setNow(new Date()), 1000);
-    return () => { cancelled = true; clearInterval(poll); clearInterval(clock); };
+    return () => { dead = true; clearInterval(poll); clearInterval(clock); };
   }, []);
 
+  const [first, ...rest] = clinicName.toUpperCase().split(" ");
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-indigo-950/60 to-slate-950 p-8 text-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between border-b border-white/10 pb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 shadow-lg shadow-emerald-500/20">
-            <HeartPulse className="h-7 w-7 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">{clinicName || "Klinika"}</h1>
-            <p className="text-slate-400">Navbat ekrani</p>
-          </div>
+    <div style={{ minHeight: "100vh", background: "var(--k-bg)", display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          flex: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "28px 40px",
+          borderBottom: "2px solid var(--k-divider)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <span style={{ ...HEAD, fontSize: 38 }}>{first}</span>
+          {rest.length > 0 && <span style={{ ...HEAD, fontSize: 38, color: "var(--k-accent)" }}>{rest.join(" ")}</span>}
+          <span style={{ ...KICKER, color: "var(--k-n-600)", marginLeft: 16 }}>Navbat</span>
         </div>
-        <div className="text-right">
-          <div className="flex items-center justify-end gap-2 text-4xl font-black tabular-nums">
-            <Clock className="h-8 w-8 text-emerald-400" />
+        <div style={{ textAlign: "right" }}>
+          <div style={{ ...HEAD, fontSize: 46, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
             {now.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </div>
-          <p className="mt-1 text-slate-400">
+          <div style={{ ...KICKER, color: "var(--k-n-600)", marginTop: 4 }}>
             {now.toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
-          </p>
+          </div>
         </div>
       </div>
 
-      <div className="mx-auto mt-8 max-w-5xl">
-        {queue.length === 0 ? (
-          <div className="rounded-3xl bg-white/5 py-24 text-center text-2xl text-slate-500 ring-1 ring-white/10">
-            Hozircha navbatda bemor yo&apos;q
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <AnimatePresence initial={false}>
-              {queue.map((q) => {
-                const st = STATUS_LABEL[q.status] || STATUS_LABEL.scheduled;
-                return (
-                  <motion.div
-                    layout
-                    key={q.code}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -12 }}
-                    className="flex items-center gap-5 rounded-3xl bg-white/5 p-6 ring-1 ring-white/10"
+      {queue.length === 0 ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            ...HEAD,
+            fontSize: 32,
+            color: "var(--k-n-500)",
+          }}
+        >
+          Hozircha navbatda bemor yo&apos;q
+        </div>
+      ) : (
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 2,
+            background: "var(--k-divider)",
+            alignContent: "start",
+            borderTop: "2px solid var(--k-divider)",
+          }}
+        >
+          {queue.map((q, i) => {
+            const active = q.status === "in_progress";
+            return (
+              <div
+                key={q.code}
+                className="k-up"
+                style={{
+                  animationDelay: `${Math.min(i, 12) * 0.03}s`,
+                  background: active ? "var(--k-green-100)" : "var(--k-bg)",
+                  padding: "26px 32px",
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr auto",
+                  alignItems: "center",
+                  gap: 26,
+                }}
+              >
+                <div
+                  style={{
+                    height: 88,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    ...HEAD,
+                    fontSize: 40,
+                    letterSpacing: "0.06em",
+                    background: active ? "var(--k-green-600)" : "var(--k-accent)",
+                    color: "#fff",
+                  }}
+                >
+                  {q.code}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...HEAD, fontSize: 30, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {q.display_name}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      fontSize: 20,
+                      color: "var(--k-n-700)",
+                      marginTop: 6,
+                    }}
                   >
-                    <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-2xl font-black tracking-widest text-emerald-300 ring-1 ring-emerald-400/30">
-                      {q.code}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xl font-semibold">{q.display_name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
-                        <Stethoscope className="h-4 w-4" />
-                        <span className="truncate">{q.doctor || "—"}</span>
-                        <span>·</span>
-                        <span>{new Date(q.time).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                    </div>
-                    <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${st.className}`}>
-                      {st.label}
-                    </span>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
+                    <Stethoscope size={20} strokeWidth={1.8} />
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{q.doctor || "—"}</span>
+                    <span>·</span>
+                    <span>{new Date(q.time).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    ...HEAD,
+                    fontSize: 17,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    padding: "10px 18px",
+                    background: active ? "var(--k-green-600)" : "var(--k-n-200)",
+                    color: active ? "#fff" : "var(--k-n-700)",
+                  }}
+                >
+                  {active ? "Qabulda" : "Kutmoqda"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

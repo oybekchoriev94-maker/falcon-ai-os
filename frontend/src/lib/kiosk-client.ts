@@ -64,7 +64,14 @@ export const kioskApi = {
 
 export interface KioskConfig {
   success: true;
-  clinic: { name: string; logo_url: string | null; address: string | null; phone: string | null };
+  clinic: {
+    name: string;
+    logo_url: string | null;
+    /** Kassa to'lovi uchun QR rasm (clinic_settings.payment_qr_url) */
+    payment_qr_url: string | null;
+    address: string | null;
+    phone: string | null;
+  };
   device: { name: string; kind: "entry" | "queue_tv" | "result" };
 }
 
