@@ -26,6 +26,7 @@ import {
   HeartPulse,
   Sliders,
   Bell,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -54,6 +55,7 @@ const navItems = [
   { href: "/wards", label: "Palatalar", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/lab", label: "Laboratoriya", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/alerts", label: "Xavfsizlik", icon: Bell, roles: ["superadmin", "ceo", "admin", "doctor"] },
+  { href: "/kiosk-devices", label: "Kiosk qurilmalari", icon: Monitor, roles: ["superadmin", "ceo", "admin"] },
   { href: "/insights", label: "Biznes tahlili", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin"] },
   { href: "/inventory", label: "Ombor", icon: Package, roles: ["superadmin", "ceo", "admin"] },
   { href: "/billing", label: "To'lovlar", icon: CreditCard, roles: ["superadmin", "ceo", "admin"] },
@@ -72,6 +74,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Token muddati tugaganda (/auth/refresh ham muvaffaqiyatsiz) — session
+  // tugatib login'ga qaytish. api-client bu eventni dispatch qiladi.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onExpired = () => {
+      logout();
+      router.replace("/login");
+    };
+    window.addEventListener("auth:expired", onExpired);
+    return () => window.removeEventListener("auth:expired", onExpired);
+  }, [isAuthenticated, logout, router]);
 
   // Klinika nomi va logotipi — qaysi klinikada ekanini bir qarashda bilish uchun
   const { data: clinic } = useQuery({
