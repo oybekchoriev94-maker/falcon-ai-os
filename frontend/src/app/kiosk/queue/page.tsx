@@ -5,7 +5,7 @@
 // Uzoqdan o'qilishi kerak, shuning uchun shriftlar kioskdan kattaroq.
 
 import { useEffect, useState } from "react";
-import { kioskApi, type QueueItem } from "@/lib/kiosk-client";
+import { kioskApi, fmtDateFull, type QueueItem } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { PairingScreen } from "@/components/kiosk/pairing-screen";
 import { HEAD, KICKER, Spinner } from "@/components/kiosk/ui";
@@ -68,9 +68,7 @@ function QueueBoard({ clinicName }: { clinicName: string }) {
           <div style={{ ...HEAD, fontSize: 46, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
             {now.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </div>
-          <div style={{ ...KICKER, color: "var(--k-n-600)", marginTop: 4 }}>
-            {now.toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
-          </div>
+          <div style={{ ...KICKER, color: "var(--k-n-600)", marginTop: 4 }}>{fmtDateFull(now)}</div>
         </div>
       </div>
 

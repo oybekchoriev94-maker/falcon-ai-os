@@ -5,6 +5,7 @@
 
 import Image from "next/image";
 import { ArrowLeft, ArrowRight, Home, Phone } from "lucide-react";
+import { fmtDate } from "@/lib/kiosk-client";
 import { HEAD } from "./ui";
 
 export function KioskHeader({
@@ -72,7 +73,7 @@ export function KioskHeader({
             {now.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}
           </div>
           <div style={{ fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--k-n-700)" }}>
-            {now.toLocaleDateString("uz-UZ", { day: "numeric", month: "long" })}
+            {fmtDate(now)}
           </div>
         </div>
         <div style={{ display: "flex", border: "2px solid var(--k-divider)" }}>

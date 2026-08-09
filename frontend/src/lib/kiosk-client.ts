@@ -176,3 +176,35 @@ export function fmtTime(iso: string): string {
     return iso;
   }
 }
+
+// Sana nomlarini o'zimiz yozamiz: uz-UZ lokali brauzerlarda "M08 9" kabi
+// ISO-ga o'xshash chiqadi (oy nomi o'rniga raqam) — bemor uchun o'qib
+// bo'lmaydi.
+const MONTHS_UZ = [
+  "yanvar", "fevral", "mart", "aprel", "may", "iyun",
+  "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
+];
+const WEEKDAYS_UZ = [
+  "yakshanba", "dushanba", "seshanba", "chorshanba",
+  "payshanba", "juma", "shanba",
+];
+
+/** "10 avgust" */
+export function fmtDate(d: Date): string {
+  return `${d.getDate()} ${MONTHS_UZ[d.getMonth()]}`;
+}
+
+/** "10 avgust 2026, dushanba" */
+export function fmtDateFull(d: Date): string {
+  return `${fmtDate(d)} ${d.getFullYear()}, ${WEEKDAYS_UZ[d.getDay()]}`;
+}
+
+/** "10 avgust, 14:20" */
+export function fmtDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return `${fmtDate(d)}, ${d.toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}`;
+  } catch {
+    return iso;
+  }
+}

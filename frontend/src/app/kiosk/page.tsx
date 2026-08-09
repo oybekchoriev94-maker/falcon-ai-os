@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   kioskApi,
   fmtSum,
+  fmtDateTime,
   type KioskDepartment,
   type KioskService,
   type KioskSlot,
@@ -353,8 +354,8 @@ function Kiosk({
   }
 
   const { list: doctorList, exact } = useMemo(
-    () => doctorsForService(departments, service),
-    [departments, service]
+    () => doctorsForService(departments, service, services),
+    [departments, service, services]
   );
 
   const slotTime = slot
@@ -375,7 +376,7 @@ function Kiosk({
     ? [
         { k: t.service, v: ticket.service_name },
         { k: t.doctor, v: ticket.doctor_name },
-        { k: t.stTime, v: new Date(ticket.scheduled_at).toLocaleString("uz-UZ") },
+        { k: t.stTime, v: fmtDateTime(ticket.scheduled_at) },
         { k: t.total, v: fmtSum(ticket.amount) },
       ]
     : [];

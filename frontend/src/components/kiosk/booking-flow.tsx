@@ -55,19 +55,57 @@ const DOCTOR_MATCHES: Record<string, (s: KioskService) => boolean> = {
   rentgen: (s) => (s.category || "").startsWith("Rentgen"),
 };
 
-/** Xizmatni bajara oladigan shifokorlar. Bo'sh bo'lsa — barchasi. */
-export function doctorsForService(departments: KioskDepartment[], svc: KioskService | null) {
-  const all: PickedDoctor[] = departments.flatMap((d) =>
-    d.doctors.map((x) => ({ id: x.id, name: x.name, department: d.name, today_booked: x.today_booked }))
-  ) as PickedDoctor[];
-  if (!svc) return { list: all, exact: true };
+/**
+ * Bir odam bir nechta yo'nalishda ro'yxatdan o'tgan bo'lishi mumkin
+ * (masalan Jamshid Tursunpo'latov ham urolog, ham UZI mutaxassisi —
+ * bazada 2 ta alohida yozuv). Ro'yxatda ikki marta ko'rsatish bemorni
+ * chalkashtiradi, shuning uchun ism bo'yicha bittaga tushiramiz.
+ *
+ * Qaysi yozuv qoladi? Xizmatga eng aniq mos keladigani. "Aniqlik"
+ * yo'nalish filtri butun katalogdan nechta xizmatni qamrashi bilan
+ * o'lchanadi: kamroq qamrasa — torroq, demak aniqroq. UZI tekshiruvi
+ * uchun "uzi" (11 xizmat) "urolog"dan (23 xizmat) aniqroq.
+ */
+function dedupeByPerson(
+  rows: (PickedDoctor & { breadth: number })[]
+): PickedDoctor[] {
+  const best = new Map<string, PickedDoctor & { breadth: number }>();
+  for (const r of rows) {
+    const key = r.name.trim().toLowerCase();
+    const prev = best.get(key);
+    if (!prev || r.breadth < prev.breadth) best.set(key, r);
+  }
+  return [...best.values()].map(({ id, name, department }) => ({ id, name, department }));
+}
+
+/** Xizmatni bajara oladigan shifokorlar. Mos keluvchi bo'lmasa — barchasi. */
+export function doctorsForService(
+  departments: KioskDepartment[],
+  svc: KioskService | null,
+  allServices: KioskService[] = []
+) {
+  // Har bir yo'nalish katalogdan nechta xizmatni qamraydi
+  const breadthOf = (dept: string) => {
+    const f = DOCTOR_MATCHES[dept];
+    if (!f || !allServices.length) return Number.MAX_SAFE_INTEGER;
+    return allServices.filter(f).length;
+  };
+
+  const everyone = departments.flatMap((d) =>
+    d.doctors.map((x) => ({ id: x.id, name: x.name, department: d.name, breadth: breadthOf(d.name) }))
+  );
+
+  if (!svc) return { list: dedupeByPerson(everyone), exact: true };
 
   const matched = departments.flatMap((d) => {
     const f = DOCTOR_MATCHES[d.name];
     if (!f || !f(svc)) return [];
-    return d.doctors.map((x) => ({ id: x.id, name: x.name, department: d.name }));
+    return d.doctors.map((x) => ({ id: x.id, name: x.name, department: d.name, breadth: breadthOf(d.name) }));
   });
-  return matched.length ? { list: matched, exact: true } : { list: all, exact: false };
+
+  return matched.length
+    ? { list: dedupeByPerson(matched), exact: true }
+    : { list: dedupeByPerson(everyone), exact: false };
 }
 
 /* ── Kategoriya ikonkalari ── */
