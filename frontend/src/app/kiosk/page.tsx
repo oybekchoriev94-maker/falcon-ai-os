@@ -2,9 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { api } from "@/lib/api-client";
-import { formatLocalPhone, toStoredPhone } from "@/lib/regions";
-import { kioskApi, getKioskToken, type LookupResult } from "@/lib/kiosk-client";
+import { formatLocalPhone } from "@/lib/regions";
+import {
+  kioskApi,
+  fmtSum,
+  fmtTime,
+  type LookupResult,
+  type KioskDepartment,
+  type KioskService,
+  type KioskSlot,
+  type BookResult,
+} from "@/lib/kiosk-client";
+import { useKioskPairing } from "@/lib/use-kiosk-pairing";
+import { PairingScreen } from "@/components/kiosk/pairing-screen";
+import { NumPad } from "@/components/kiosk/numpad";
+import { StepIndicator } from "@/components/kiosk/step-indicator";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,37 +24,25 @@ import {
   ChevronRight,
   Clock,
   HeartPulse,
+  IdCard,
+  Loader2,
   Printer,
   ScanLine,
   Stethoscope,
+  UserCheck,
+  UserX,
   Users,
   Wallet,
 } from "lucide-react";
 
-const CLINIC_CODE = process.env.NEXT_PUBLIC_CLINIC_CODE || "talkmce-ms31nmae";
-const CLINIC_NAME = "Oqtosh Klinikasi";
-const CLINIC_TAGLINE = "Termiz · Oqrang";
+const CLINIC_NAME_FALLBACK = "Klinika";
+const CLINIC_TAGLINE_FALLBACK = "Onlayn qabulga yozilish";
 
 /* ── Types ── */
 interface Doctor {
   id: string;
-  first_name: string;
-  last_name?: string;
-  specialty?: string;
-  specialization?: string;
-}
-interface Service {
-  id: string;
   name: string;
-  price: number;
-  category?: string | null;
-  specialty?: string;
-  duration_min?: number;
-}
-interface Slot {
-  time: string;
-  scheduled_at: string;
-  available: boolean;
+  department: string;
 }
 
 const SPECIALTY_LABEL: Record<string, string> = {
@@ -51,15 +51,19 @@ const SPECIALTY_LABEL: Record<string, string> = {
   urolog: "Urolog",
   uzi: "UZI mutaxassisi",
   fizioterapevt: "Fizioterapevt",
+  therapy: "Terapevt",
+  Boshqa: "Boshqa mutaxassislar",
 };
+function deptLabel(name: string) {
+  return SPECIALTY_LABEL[name] || name;
+}
 
 // Shifokor yo'nalishiga mos xizmatlarni aniqlash.
-// doctor.specialization (ginekolog/uzi/urolog/laborant) va service.specialty
-// (ekg/laborant/rentgen/urolog/uzi/fizioterapevt) kalitlari har xil bo'lgani
-// uchun kioskda yo'nalish bo'yicha kategoriya mapping qilinadi. Bu Oqtosh
-// klinikasining real xizmatlar to'plamiga mos — yangi shifokor/xizmat
-// qo'shilsa mapping ham yangilanishi kerak.
-const DOCTOR_SERVICE_FILTERS: Record<string, (s: Service) => boolean> = {
+// doctor.department (ginekolog/uzi/urolog/laborant) va service.specialty/category
+// kalitlari har xil bo'lgani uchun yo'nalish bo'yicha mapping qilinadi. Bu Oqtosh
+// klinikasining real xizmatlar to'plamiga mos — yangi shifokor/xizmat qo'shilsa
+// mapping ham yangilanishi kerak.
+const DOCTOR_SERVICE_FILTERS: Record<string, (s: KioskService) => boolean> = {
   ginekolog: (s) =>
     s.category === "UZI" ||
     s.category === "Laboratoriya · Gormonlar" ||
@@ -78,42 +82,11 @@ const DOCTOR_SERVICE_FILTERS: Record<string, (s: Service) => boolean> = {
   rentgen: (s) => (s.category || "").startsWith("Rentgen"),
 };
 
-function serviceMatchesDoctor(doc: Doctor | null, s: Service): boolean {
+function serviceMatchesDoctor(doc: Doctor | null, s: KioskService): boolean {
   if (!doc) return true;
-  const f = DOCTOR_SERVICE_FILTERS[doc.specialization || ""];
+  const f = DOCTOR_SERVICE_FILTERS[doc.department];
   if (!f) return true;
   return f(s);
-}
-
-interface AppointmentResult {
-  appointment: {
-    id: string;
-    appointment_id: string;
-    access_code: string;
-    doctor_name?: string;
-    service_name?: string;
-    scheduled_at?: string;
-    amount?: number;
-  };
-  payment: { access_code?: string } | { payment_url?: string };
-}
-
-function firstName(d: Doctor) {
-  return `${d.first_name} ${d.last_name || ""}`.trim();
-}
-function doctorLabel(d: Doctor) {
-  const spec = SPECIALTY_LABEL[d.specialization || ""] || d.specialization || d.specialty || "";
-  return spec ? `${firstName(d)} — ${spec}` : firstName(d);
-}
-function fmtTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
-}
-function fmtSum(n: number) {
-  return (Number(n) || 0).toLocaleString("uz-UZ") + " so'm";
 }
 
 const WEEKDAYS_UZ = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Shan"];
@@ -132,39 +105,61 @@ function nextDays(count = 8) {
     days.push({
       key,
       label: WEEKDAYS_UZ[d.getDay()],
-      sub: `${d.getDate()} ${d.getMonth() < MONTHS_UZ.length ? MONTHS_UZ[d.getMonth()].slice(0, 3) : ""}`,
+      sub: `${d.getDate()} ${MONTHS_UZ[d.getMonth()]?.slice(0, 3) || ""}`,
       isToday: i === 0,
     });
   }
   return days;
 }
 
-type Screen = "home" | "doctors" | "services" | "catalog" | "date" | "slots" | "info" | "done";
+type Screen = "home" | "doctors" | "services" | "date" | "slots" | "info" | "done" | "catalog";
+type Identity = "unknown" | "confirmed" | "manual";
+
+const BOOKING_STEPS: Screen[] = ["doctors", "services", "date", "slots", "info"];
 
 export default function KioskPage() {
+  const { status, config, pairing, error: pairError, pair } = useKioskPairing();
+
+  if (status === "checking") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950">
+        <Loader2 className="h-10 w-10 animate-spin text-emerald-400" />
+      </div>
+    );
+  }
+  if (status === "unpaired") {
+    return <PairingScreen onSubmit={pair} error={pairError} loading={pairing} />;
+  }
+  return <KioskBooking clinicName={config?.clinic.name} />;
+}
+
+function KioskBooking({ clinicName }: { clinicName?: string }) {
   const [screen, setScreen] = useState<Screen>("home");
   const [lang, setLang] = useState<"uz" | "ru">("uz");
 
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
+  const [departments, setDepartments] = useState<KioskDepartment[]>([]);
+  const [services, setServices] = useState<KioskService[]>([]);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [service, setService] = useState<Service | null>(null);
+  const [service, setService] = useState<KioskService | null>(null);
   const [days] = useState(() => nextDays(8));
   const [day, setDay] = useState(() => new Date().toLocaleDateString("en-CA"));
-  const [slots, setSlots] = useState<Slot[]>([]);
+  const [slots, setSlots] = useState<KioskSlot[]>([]);
   const [slot, setSlot] = useState<string | null>(null);
-  const [amount, setAmount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fName, setFName] = useState("");
   const [fPhone, setFPhone] = useState("");
-  // Qurilma tokeni sozlangan bo'lsa — telefon bo'yicha kartani topamiz.
-  // Token yo'q bo'lsa kiosk baribir ishlaydi (bemor ismini o'zi yozadi).
+
+  // Bemor kartasi topilganda identifikatsiya oqimi:
+  // "unknown" — hali so'ralmagan, "confirmed" — "Ha, bu men" bosilgan
+  // (ism DB'dan olindi va qulflandi), "manual" — o'zi yozadi.
   const [known, setKnown] = useState<LookupResult | null>(null);
+  const [identity, setIdentity] = useState<Identity>("unknown");
   const [lookingUp, setLookingUp] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
   const [result, setResult] = useState<{
     access_code?: string;
-    appointment_id?: string;
     doctor_name?: string;
     service_name?: string;
     scheduled_at?: string;
@@ -176,8 +171,9 @@ export default function KioskPage() {
   /* ── Boshiga qaytish (avto-reset va "Boshidan" tugmasi uchun) ── */
   const resetAll = useCallback(() => {
     setScreen("home");
-    setDoctor(null); setService(null); setSlot(null); setAmount(0);
-    setFName(""); setFPhone(""); setKnown(null); setResult(null);
+    setDoctor(null); setService(null); setSlot(null);
+    setFName(""); setFPhone(""); setKnown(null); setIdentity("unknown");
+    setResult(null);
     setError(""); setLoading(false);
     setDay(new Date().toLocaleDateString("en-CA"));
   }, []);
@@ -189,7 +185,7 @@ export default function KioskPage() {
   useEffect(() => {
     const bump = () => {
       if (idleRef.current) clearTimeout(idleRef.current);
-      if (screen === "home") return;              // bosh ekranda taymer kerak emas
+      if (screen === "home") return;
       idleRef.current = setTimeout(resetAll, 90_000);
     };
     bump();
@@ -201,11 +197,10 @@ export default function KioskPage() {
     };
   }, [screen, resetAll]);
 
-  /* ── Telefon 9 raqamga to'lganda kartani izlaymiz.
-        Faqat qurilma tokeni sozlangan bo'lsa ishlaydi — token yo'q bo'lsa
-        kiosk avvalgidek ishlayveradi (bemor ismini o'zi yozadi). ── */
+  /* ── Telefon 9 raqamga to'lganda kartani izlaymiz (qurilma tokeni orqali). ── */
   useEffect(() => {
-    if (fPhone.length !== 9 || !getKioskToken()) { setKnown(null); return; }
+    setIdentity("unknown");
+    if (fPhone.length !== 9) { setKnown(null); return; }
     let cancelled = false;
     setLookingUp(true);
     kioskApi
@@ -213,122 +208,142 @@ export default function KioskPage() {
       .then((r) => {
         if (cancelled) return;
         setKnown(r);
-        // Karta topilsa va ism hali yozilmagan bo'lsa — maskalangan ismni
-        // ko'rsatamiz, lekin inputni to'ldirmaymiz (bemor o'zi tasdiqlasin).
+        if (!r.found) setIdentity("manual");
       })
-      .catch(() => { if (!cancelled) setKnown(null); })
+      .catch(() => { if (!cancelled) { setKnown(null); setIdentity("manual"); } })
       .finally(() => { if (!cancelled) setLookingUp(false); });
     return () => { cancelled = true; };
   }, [fPhone]);
 
-  async function loadDoctors() {
+  async function confirmIdentity() {
+    if (!known?.found) return;
+    setConfirming(true);
+    setError("");
+    try {
+      const res = await kioskApi.post<{ patient: { full_name: string } }>("/api/kiosk/confirm", {
+        session_id: known.session_id,
+        confirm_token: known.confirm_token,
+      });
+      setFName(res.patient.full_name);
+      setIdentity("confirmed");
+    } catch {
+      setError(T("Tasdiqlashda xatolik. Ismingizni o'zingiz yozing", "Ошибка подтверждения. Введите имя вручную"));
+      setIdentity("manual");
+    } finally {
+      setConfirming(false);
+    }
+  }
+  function declineIdentity() {
+    setIdentity("manual");
+    setFName("");
+  }
+
+  async function loadDepartments() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get<{ doctors: Doctor[] }>(
-        `/api/v1/booking/public/doctors?clinic=${encodeURIComponent(CLINIC_CODE)}`
-      );
-      if (res.success) setDoctors(res.doctors || []);
-      else setError(res.error || "Xatolik");
+      const res = await kioskApi.get<{ departments: KioskDepartment[] }>("/api/kiosk/departments");
+      setDepartments(res.departments || []);
     } catch {
-      setError("Serverga bog'lanishda xatolik");
+      setError(T("Shifokorlar ro'yxatini yuklashda xatolik", "Ошибка загрузки списка врачей"));
     } finally {
       setLoading(false);
     }
   }
   async function loadServices() {
+    if (services.length) return;
     setLoading(true);
     setError("");
     try {
-      const res = await api.get<{ services: Service[] }>(
-        `/api/v1/booking/public/services?clinic=${encodeURIComponent(CLINIC_CODE)}`
-      );
-      if (res.success) setServices(res.services || []);
-      else setError(res.error || "Xatolik");
+      const res = await kioskApi.get<{ services: KioskService[] }>("/api/kiosk/services");
+      setServices(res.services || []);
     } catch {
-      setError("Serverga bog'lanishda xatolik");
+      setError(T("Xizmatlar ro'yxatini yuklashda xatolik", "Ошибка загрузки списка услуг"));
     } finally {
       setLoading(false);
     }
   }
-
-  async function loadSlots(doctorId: string, date: string, serviceId?: string) {
+  async function loadSlots(doctorId: string, date: string) {
     setLoading(true);
     setError("");
     setSlot(null);
     setSlots([]);
     try {
-      let url = `/api/v1/booking/public/slots?clinic=${encodeURIComponent(CLINIC_CODE)}&doctor_id=${doctorId}&date=${date}`;
-      if (serviceId) url += `&service_id=${serviceId}`;
-      const res = await api.get<{ slots: Slot[]; amount?: number }>(url);
-      if (res.success) {
-        setSlots(res.slots || []);
-        setAmount(res.amount || 0);
-      } else setError(res.error || "Xatolik");
+      const res = await kioskApi.get<{ slots: KioskSlot[] }>(
+        `/api/kiosk/slots?doctor_id=${doctorId}&date=${date}`
+      );
+      setSlots(res.slots || []);
     } catch {
-      setError("Bo'sh vaqtlarni yuklashda xatolik");
+      setError(T("Bo'sh vaqtlarni yuklashda xatolik", "Ошибка загрузки времени"));
     } finally {
       setLoading(false);
     }
   }
 
   async function bookNow() {
-    if (!fName.trim() || fPhone.replace(/\D/g, "").length !== 9) {
+    const phoneDigits = fPhone.replace(/\D/g, "");
+    if (!fName.trim() || phoneDigits.length !== 9) {
       setError(T("Ism va 9 xonali telefon kiriting", "Введите имя и 9-значный телефон"));
+      return;
+    }
+    if (!doctor || !service || !slot) {
+      setError(T("Ma'lumot to'liq emas, boshidan boshlang", "Недостаточно данных, начните заново"));
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const res = await api.post<AppointmentResult>("/api/v1/booking/public/create", {
-        clinic: CLINIC_CODE,
-        patient_name: fName.trim(),
-        phone: toStoredPhone(fPhone),
-        doctor_id: doctor?.id,
-        service_id: service?.id,
-        service_ids: service ? [service.id] : undefined,
-        scheduled_at: slot,
-        payment_method: "cashier",
-        source: "walk_in",
-      });
-      if (res.success) {
-        setResult({
-          access_code: res.appointment.access_code,
-          appointment_id: res.appointment.appointment_id,
-          doctor_name: res.appointment.doctor_name,
-          service_name: res.appointment.service_name,
-          scheduled_at: res.appointment.scheduled_at,
-          amount: res.appointment.amount,
-        });
-        setScreen("done");
-        setDoctor(null);
-        setService(null);
-        setSlot(null);
-        setFName("");
-        setFPhone("");
-      } else {
-        setError(res.error || "Bron qilishda xatolik");
+      const phone = `+998${phoneDigits}`;
+      let sessionId = known?.session_id;
+      if (!sessionId) {
+        const lk = await kioskApi.post<LookupResult>("/api/kiosk/lookup", { phone });
+        sessionId = lk.session_id;
       }
-    } catch {
-      setError("Server bilan bog'lanishda xatolik");
+      const res = await kioskApi.post<BookResult>("/api/kiosk/book", {
+        session_id: sessionId,
+        patient_name: fName.trim(),
+        phone,
+        doctor_id: doctor.id,
+        service_id: service.id,
+        scheduled_at: slot,
+      });
+      setResult({
+        access_code: res.access_code,
+        doctor_name: res.doctor_name,
+        service_name: res.service_name,
+        scheduled_at: res.scheduled_at,
+        amount: res.amount,
+      });
+      setScreen("done");
+      setDoctor(null); setService(null); setSlot(null);
+      setFName(""); setFPhone(""); setKnown(null); setIdentity("unknown");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : T("Server bilan bog'lanishda xatolik", "Ошибка соединения"));
     } finally {
       setLoading(false);
     }
   }
 
   const goDoctors = async () => {
-    await loadDoctors();
+    await loadDepartments();
     setScreen("doctors");
   };
   const goCatalog = async () => {
     await loadServices();
     setScreen("catalog");
   };
+  const pickDoctor = async (d: Doctor) => {
+    setDoctor(d);
+    await loadServices();
+    setScreen("services");
+  };
   const goSlots = async (date: string) => {
     setDay(date);
-    if (doctor) await loadSlots(doctor.id, date, service?.id);
+    if (doctor) await loadSlots(doctor.id, date);
     setScreen("slots");
   };
+
+  const stepIndex = BOOKING_STEPS.indexOf(screen);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-950 via-indigo-950/60 to-slate-950 p-4 text-white">
@@ -337,7 +352,7 @@ export default function KioskPage() {
           <div className="mb-4 flex items-center justify-between">
             <button
               onClick={() => setScreen("home")}
-              className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-lg font-medium hover:bg-white/20"
+              className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-lg font-medium transition hover:bg-white/20"
             >
               <ArrowLeft className="h-5 w-5" /> {T("Bosh sahifa", "Главная")}
             </button>
@@ -346,7 +361,7 @@ export default function KioskPage() {
                 <button
                   key={l}
                   onClick={() => setLang(l)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-semibold uppercase ${
+                  className={`rounded-full px-3 py-1.5 text-sm font-semibold uppercase transition ${
                     lang === l ? "bg-white text-slate-900" : "bg-white/10 text-white/80"
                   }`}
                 >
@@ -356,6 +371,8 @@ export default function KioskPage() {
             </div>
           </div>
         )}
+
+        {stepIndex >= 0 && <StepIndicator step={stepIndex} total={BOOKING_STEPS.length} />}
 
         <AnimatePresence mode="wait">
           {screen === "home" && (
@@ -370,8 +387,8 @@ export default function KioskPage() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 shadow-lg shadow-emerald-500/20">
                   <HeartPulse className="h-9 w-9 text-white" />
                 </div>
-                <h1 className="text-5xl font-bold tracking-tight">{CLINIC_NAME}</h1>
-                <p className="mt-2 text-xl text-emerald-200/80">{CLINIC_TAGLINE}</p>
+                <h1 className="text-5xl font-bold tracking-tight">{clinicName || CLINIC_NAME_FALLBACK}</h1>
+                <p className="mt-2 text-xl text-emerald-200/80">{CLINIC_TAGLINE_FALLBACK}</p>
                 <Clock className="mx-auto mt-4 h-6 w-6 text-slate-400" />
                 <p className="mt-1 text-lg text-slate-300">
                   {new Date().toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
@@ -388,8 +405,8 @@ export default function KioskPage() {
                     <Stethoscope className="h-10 w-10 text-emerald-400" />
                   </div>
                   <div>
-                    <div className="text-2xl font-semibold">{T("Qabûlga yozilish", "Запись на приём")}</div>
-                    <div className="mt-1 text-slate-400">{T("Shbaqqa belgilangan vaqtni tanlang", "Выбор времени и врача")}</div>
+                    <div className="text-2xl font-semibold">{T("Qabulga yozilish", "Запись на приём")}</div>
+                    <div className="mt-1 text-slate-400">{T("Shifokor va vaqtni tanlang", "Выбор врача и времени")}</div>
                   </div>
                   <ChevronRight className="h-6 w-6 text-emerald-400 transition group-hover:translate-x-1" />
                 </button>
@@ -402,8 +419,8 @@ export default function KioskPage() {
                     <Wallet className="h-10 w-10 text-cyan-400" />
                   </div>
                   <div>
-                    <div className="text-2xl font-semibold">{T("Xixmatlar va narxlar", "Услуги и цены")}</div>
-                    <div className="mt-1 text-slate-400">{T("Katlogue va narxlarni ko'ring", "Каталог услуг")}</div>
+                    <div className="text-2xl font-semibold">{T("Xizmatlar va narxlar", "Услуги и цены")}</div>
+                    <div className="mt-1 text-slate-400">{T("Katalog va narxlarni ko'ring", "Каталог услуг")}</div>
                   </div>
                   <ChevronRight className="h-6 w-6 text-cyan-400 transition group-hover:translate-x-1" />
                 </button>
@@ -418,31 +435,39 @@ export default function KioskPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
             >
-              <h2 className="mb-6 text-3xl font-semibold">{T("Mutahasis tanlang", "Выберите специалиста")}</h2>
+              <h2 className="mb-6 text-3xl font-semibold">{T("Mutaxassis tanlang", "Выберите специалиста")}</h2>
               {loading ? (
                 <Loader />
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {doctors.map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={async () => {
-                        setDoctor(d);
-                        await loadServices();
-                        setScreen("services");
-                      }}
-                      className="flex flex-col gap-3 rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 transition hover:bg-emerald-500/10 hover:ring-emerald-400/40"
-                    >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/20">
-                        <Users className="h-6 w-6 text-emerald-400" />
+                <div className="max-h-[70vh] space-y-8 overflow-y-auto pr-2">
+                  {departments.map((dept) => (
+                    <div key={dept.name}>
+                      <h3 className="mb-3 text-lg font-semibold text-emerald-300">{deptLabel(dept.name)}</h3>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {dept.doctors.map((d) => (
+                          <button
+                            key={d.id}
+                            onClick={() => pickDoctor({ id: d.id, name: d.name, department: dept.name })}
+                            className="flex flex-col gap-3 rounded-2xl bg-white/5 p-6 text-left ring-1 ring-white/10 transition hover:bg-emerald-500/10 hover:ring-emerald-400/40"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/20">
+                                <Users className="h-6 w-6 text-emerald-400" />
+                              </div>
+                              {d.today_booked > 0 && (
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-300">
+                                  {T(`Bugun ${d.today_booked} bemor`, `Сегодня ${d.today_booked}`)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xl font-semibold">{d.name}</div>
+                            <ChevronRight className="mt-auto h-5 w-5 text-slate-500" />
+                          </button>
+                        ))}
                       </div>
-                      <div className="text-xl font-semibold">{firstName(d)}</div>
-                      <div className="text-emerald-300">
-                        {SPECIALTY_LABEL[d.specialization || ""] || d.specialization || d.specialty || ""}
-                      </div>
-                      <ChevronRight className="mt-auto h-5 w-5 text-slate-500" />
-                    </button>
+                    </div>
                   ))}
+                  {!departments.length && <EmptyBox msg={T("Hozircha shifokorlar mavjud emas", "Пока нет доступных врачей")} />}
                 </div>
               )}
               {error && <ErrorBox msg={error} />}
@@ -456,8 +481,12 @@ export default function KioskPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
             >
-              <h2 className="mb-2 text-3xl font-semibold">{T("Xixmat tanlang", "Выберите услугу")}</h2>
-              {doctor && <p className="mb-6 text-lg text-emerald-300">👨‍⚕️ {doctorLabel(doctor)}</p>}
+              <h2 className="mb-2 text-3xl font-semibold">{T("Xizmat tanlang", "Выберите услугу")}</h2>
+              {doctor && (
+                <p className="mb-6 text-lg text-emerald-300">
+                  👨‍⚕️ {doctor.name} — {deptLabel(doctor.department)}
+                </p>
+              )}
               {loading ? (
                 <Loader />
               ) : (
@@ -469,13 +498,13 @@ export default function KioskPage() {
                         setService(s);
                         setScreen("date");
                       }}
-                      className={`flex items-center justify-between gap-3 rounded-2xl p-5 ring-1 transition ${
+                      className={`flex items-center justify-between gap-3 rounded-2xl p-5 text-left ring-1 transition ${
                         service?.id === s.id
                           ? "bg-emerald-500/20 ring-emerald-400/50"
                           : "bg-white/5 ring-white/10 hover:bg-white/10"
                       }`}
                     >
-                      <div className="text-left">
+                      <div>
                         <div className="text-lg font-medium">{s.name}</div>
                         {s.category ? (
                           <div className="mt-0.5 text-xs text-cyan-300/70">{s.category}</div>
@@ -486,7 +515,7 @@ export default function KioskPage() {
                           </div>
                         ) : null}
                       </div>
-                      <div className="text-right font-semibold text-emerald-300">{fmtSum(s.price)}</div>
+                      <div className="shrink-0 text-right font-semibold text-emerald-300">{fmtSum(s.price)}</div>
                     </button>
                   ))}
                 </div>
@@ -504,9 +533,7 @@ export default function KioskPage() {
               <h2 className="mb-2 text-3xl font-semibold">{T("Kun tanlang", "Выберите дату")}</h2>
               <p className="mb-6 text-slate-400">
                 {doctor && service && (
-                  <>
-                    {doctorLabel(doctor)} · {service.name} — {fmtSum(service.price)}
-                  </>
+                  <>{doctor.name} · {service.name} — {fmtSum(service.price)}</>
                 )}
               </p>
               <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
@@ -536,35 +563,29 @@ export default function KioskPage() {
             >
               <h2 className="mb-2 text-3xl font-semibold">{T("Vaqt tanlang", "Выберите время")}</h2>
               <p className="mb-6 text-slate-400">
-                {day} · {doctor?.first_name} {doctor?.last_name}
-                {service ? ` · ${service.name} — ${fmtSum(amount || service.price)}` : ""}
+                {days.find((d) => d.key === day)?.label} {days.find((d) => d.key === day)?.sub} · {doctor?.name}
+                {service ? ` · ${service.name} — ${fmtSum(service.price)}` : ""}
               </p>
               {loading ? (
                 <Loader />
               ) : slots.length ? (
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                  {slots.map((s) =>
-                    s.available ? (
-                      <button
-                        key={s.scheduled_at}
-                        onClick={() => {
-                          setSlot(s.scheduled_at);
-                          setScreen("info");
-                        }}
-                        className="rounded-2xl bg-emerald-500/15 py-5 text-center text-xl font-semibold text-emerald-300 ring-1 ring-emerald-400/40 transition hover:bg-emerald-500 hover:text-white"
-                      >
-                        {s.time}
-                      </button>
-                    ) : (
-                      <div key={s.scheduled_at} className="rounded-2xl bg-white/5 py-5 text-center text-xl font-semibold text-slate-600 ring-1 ring-white/5">
-                        {s.time}
-                      </div>
-                    )
-                  )}
+                  {slots.map((s) => (
+                    <button
+                      key={s.iso}
+                      onClick={() => {
+                        setSlot(s.iso);
+                        setScreen("info");
+                      }}
+                      className="rounded-2xl bg-emerald-500/15 py-5 text-center text-xl font-semibold text-emerald-300 ring-1 ring-emerald-400/40 transition hover:bg-emerald-500 hover:text-white"
+                    >
+                      {s.time}
+                    </button>
+                  ))}
                 </div>
               ) : (
                 <div className="rounded-2xl bg-amber-500/10 p-8 text-center text-lg text-amber-200 ring-1 ring-amber-400/30">
-                  {error ? error : T("Bu kunga bo'sh vaqt yo'q", "На этот день нет свободного времени")}
+                  {error ? error : T("Bu kunga bo'sh vaqt yo'q. Boshqa kun tanlang", "На этот день нет свободного времени")}
                 </div>
               )}
             </motion.div>
@@ -578,72 +599,102 @@ export default function KioskPage() {
               exit={{ opacity: 0, y: -10 }}
             >
               <h2 className="mb-6 text-3xl font-semibold">{T("Ismingiz va telefon", "Имя и телефон")}</h2>
-              <div className="mx-auto max-w-md space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm text-slate-400">{T("Ism, familiya", "Имя, фамилия")}</label>
-                  <input
-                    value={fName}
-                    onChange={(e) => setFName(e.target.value)}
-                    placeholder="Orzubek Aliyeva"
-                    className="w-full rounded-2xl bg-white/10 px-4 py-3 text-lg text-white placeholder-slate-500 ring-1 ring-white/20 outline-none focus:ring-emerald-400"
+              <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-slate-400">Telefon</label>
+                    <input
+                      value={fPhone ? `+998 ${formatLocalPhone(fPhone)}` : ""}
+                      readOnly
+                      inputMode="none"
+                      placeholder="+998 90 123 45 67"
+                      className="w-full rounded-2xl bg-white/10 px-4 py-3 text-xl tracking-wide text-white placeholder-slate-500 ring-1 ring-white/20 outline-none focus:ring-emerald-400"
+                    />
+                  </div>
+                  <NumPad
+                    onDigit={(d) => setFPhone((p) => (p.length < 9 ? p + d : p))}
+                    onBackspace={() => setFPhone((p) => p.slice(0, -1))}
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm text-slate-400">Telefon</label>
-                  <input
-                    value={fPhone}
-                    onChange={(e) => setFPhone(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                    placeholder="90 123 45 67"
-                    inputMode="numeric"
-                    className="w-full rounded-2xl bg-white/10 px-3 py-3 text-xl text-white placeholder-slate-500 ring-1 ring-white/20 outline-none focus:ring-emerald-400"
-                  />
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-slate-400">{T("Ism, familiya", "Имя, фамилия")}</label>
+                    <input
+                      value={fName}
+                      onChange={(e) => setFName(e.target.value)}
+                      readOnly={identity === "confirmed"}
+                      placeholder="Aliyev Vali"
+                      className={`w-full rounded-2xl px-4 py-3 text-lg text-white placeholder-slate-500 ring-1 outline-none focus:ring-emerald-400 ${
+                        identity === "confirmed" ? "bg-blue-500/10 ring-blue-400/40" : "bg-white/10 ring-white/20"
+                      }`}
+                    />
+                  </div>
+
+                  {lookingUp && (
+                    <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-slate-300 ring-1 ring-white/10">
+                      {T("Karta izlanmoqda...", "Поиск карты...")}
+                    </div>
+                  )}
+
+                  {/* Karta topildi, tasdiqlash so'ralmoqda */}
+                  {known?.found && identity === "unknown" && (
+                    <div className="rounded-xl bg-blue-500/10 p-4 ring-1 ring-blue-400/30">
+                      <p className="text-sm text-blue-200">
+                        <IdCard className="mr-2 inline h-4 w-4" />
+                        {T("Kartangiz topildi", "Ваша карта найдена")}: <strong>{known.masked_name}</strong>
+                        {known.mrn_tail && <span className="ml-2 font-mono text-blue-300">…{known.mrn_tail}</span>}
+                      </p>
+                      <p className="mt-2 text-sm text-blue-300/70">{T("Bu sizmisiz?", "Это вы?")}</p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={confirmIdentity}
+                          disabled={confirming}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-2.5 font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+                        >
+                          {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+                          {T("Ha, bu men", "Да, это я")}
+                        </button>
+                        <button
+                          onClick={declineIdentity}
+                          disabled={confirming}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/20"
+                        >
+                          <UserX className="h-4 w-4" />
+                          {T("Yo'q", "Нет")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {identity === "confirmed" && (
+                    <div className="flex items-center justify-between rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200 ring-1 ring-emerald-400/30">
+                      <span><CheckCircle2 className="mr-2 inline h-4 w-4" />{T("Kartangizga qo'shiladi", "Будет добавлено в вашу карту")}</span>
+                      <button onClick={declineIdentity} className="text-xs text-emerald-300 underline">
+                        {T("Bu men emasman", "Это не я")}
+                      </button>
+                    </div>
+                  )}
+
+                  {error && <div className="rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-200 ring-1 ring-rose-400/30">{error}</div>}
+
+                  <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+                    <h3 className="mb-3 font-semibold">{T("Yozilish", "Запись")}</h3>
+                    <Row label={T("Shifokor", "Врач")} value={doctor?.name || ""} />
+                    <Row label={T("Xizmat", "Услуга")} value={service?.name || ""} />
+                    <Row label={T("Kun", "Дата")} value={days.find((d) => d.key === day)?.label || day} />
+                    <Row label={T("Soat", "Время")} value={slot ? fmtTime(slot) : ""} />
+                    <Row label={T("Summa", "Сумма")} value={fmtSum(service?.price || 0)} highlight />
+                  </div>
+
+                  <button
+                    onClick={bookNow}
+                    disabled={loading}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 py-5 text-xl font-bold shadow-lg shadow-emerald-500/25 transition hover:brightness-110 disabled:opacity-50"
+                  >
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : T("Yozilish", "Записаться")}
+                  </button>
                 </div>
-                {fPhone.length === 9 && (
-                  <div className="rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200 ring-1 ring-emerald-400/30">
-                    <CheckCircle2 className="mr-2 inline h-4 w-4" />
-                    +998{formatLocalPhone(fPhone).replace(/\D/g, "")}
-                  </div>
-                )}
-
-                {/* Karta topildi — takroriy bemor (qurilma tokeni sozlangan bo'lsa) */}
-                {lookingUp && (
-                  <div className="rounded-xl bg-white/5 px-4 py-3 text-sm text-slate-300 ring-1 ring-white/10">
-                    {T("Karta izlanmoqda...", "Поиск карты...")}
-                  </div>
-                )}
-                {known?.found && (
-                  <div className="rounded-xl bg-blue-500/10 px-4 py-3 ring-1 ring-blue-400/30">
-                    <p className="text-sm text-blue-200">
-                      <Users className="mr-2 inline h-4 w-4" />
-                      {T("Kartangiz topildi", "Ваша карта найдена")}: <strong>{known.masked_name}</strong>
-                      {known.mrn_tail && <span className="ml-2 font-mono text-blue-300">...{known.mrn_tail}</span>}
-                    </p>
-                    <p className="mt-1 text-xs text-blue-300/70">
-                      {T(
-                        "Ismingizni to'liq yozing — tarixingiz shu kartaga qo'shiladi",
-                        "Напишите имя полностью — история добавится в эту карту",
-                      )}
-                    </p>
-                  </div>
-                )}
-                {error && <div className="rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-200 ring-1 ring-rose-400/30">{error}</div>}
-
-                <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
-                  <h3 className="mb-3 font-semibold">{T("Yozilish", "Запись")}</h3>
-                  <Row label={T("Shф", "Врач")} value={doctor ? firstName(doctor) : ""} />
-                  <Row label={T("Xizmat", "Услуга")} value={service?.name || ""} />
-                  <Row label={T("Kun", "Дата")} value={days.find((d) => d.key === day)?.label || day} />
-                  <Row label={T("Soat", "Время")} value={slot ? fmtTime(slot) : ""} />
-                  <Row label={T("Sum", "Сумма")} value={fmtSum(amount || service?.price || 0)} highlight />
-                </div>
-
-                <button
-                  onClick={bookNow}
-                  disabled={loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 py-5 text-xl font-bold shadow-lg shadow-emerald-500/25 transition hover:brightness-110 disabled:opacity-50"
-                >
-                  {loading ? "..." : T("Yozilish", "Записаться")}
-                </button>
               </div>
             </motion.div>
           )}
@@ -670,17 +721,17 @@ export default function KioskPage() {
                 <div className="rounded-2xl bg-emerald-500/10 p-6 ring-1 ring-emerald-400/30">
                   <div className="text-3xl font-black tracking-[0.35em] text-emerald-300">{result.access_code}</div>
                   <div className="mt-2 flex items-center justify-center gap-1 text-sm text-emerald-200">
-                    <ScanLine className="h-4 w-4" /> {T("Kodia kasaga ayting yoki gваллёга сӱоли", "Назовите код на кассе")}
+                    <ScanLine className="h-4 w-4" /> {T("Kodni kassaga ayting", "Назовите код на кассе")}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-white/5 p-6 text-left ring-1 ring-white/10">
-                  <Row label={T("Shфок", "Врач")} value={result.doctor_name || ""} />
+                  <Row label={T("Shifokor", "Врач")} value={result.doctor_name || ""} />
                   <Row label={T("Xizmat", "Услуга")} value={result.service_name || ""} />
                   {result.scheduled_at && (
                     <Row label={T("Vaqt", "Время")} value={new Date(result.scheduled_at).toLocaleString("uz-UZ")} />
                   )}
-                  {result.amount != null && <Row label={T("Сумма", "Сумма")} value={fmtSum(result.amount)} highlight />}
+                  {result.amount != null && <Row label={T("Summa", "Сумма")} value={fmtSum(result.amount)} highlight />}
                 </div>
 
                 <div className="flex gap-3">
@@ -727,7 +778,7 @@ export default function KioskPage() {
                           <div className="mt-1 text-xs text-cyan-300/80">{s.category}</div>
                         ) : null}
                       </div>
-                      <div className="text-right font-semibold text-emerald-300">{fmtSum(s.price)}</div>
+                      <div className="shrink-0 text-right font-semibold text-emerald-300">{fmtSum(s.price)}</div>
                     </div>
                   ))}
                 </div>
@@ -762,6 +813,14 @@ function Loader() {
 function ErrorBox({ msg }: { msg: string }) {
   return (
     <div className="mt-4 rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-200 ring-1 ring-rose-400/30">
+      {msg}
+    </div>
+  );
+}
+
+function EmptyBox({ msg }: { msg: string }) {
+  return (
+    <div className="rounded-2xl bg-white/5 py-12 text-center text-slate-400 ring-1 ring-white/10">
       {msg}
     </div>
   );

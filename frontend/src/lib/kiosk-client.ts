@@ -107,6 +107,7 @@ export interface KioskService {
   id: string;
   name: string;
   category: string | null;
+  specialty: string | null;
   price: number;
   duration_min: number | null;
 }

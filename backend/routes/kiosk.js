@@ -239,7 +239,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
                 )::int AS today_booked
            FROM doctors d
            LEFT JOIN appointments a ON a.doctor_id = d.id AND a.tenant_id = d.tenant_id
-          WHERE d.tenant_id = $1 AND d.is_active IS NOT FALSE
+          WHERE d.tenant_id = $1 AND (d.status IS NULL OR d.status = 'Faol')
           GROUP BY d.id, d.first_name, d.last_name, d.specialization
           ORDER BY d.specialization NULLS LAST, d.first_name`,
         [req.kioskTenantId]
@@ -269,9 +269,9 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   router.get('/services', deviceAuth, async (req, res) => {
     try {
       const rows = await q(
-        `SELECT id, name, category, price::float8 AS price, duration_min
+        `SELECT id, name, category, specialty, price::float8 AS price, duration_min
            FROM services_catalog
-          WHERE tenant_id = $1 AND is_active IS NOT FALSE
+          WHERE tenant_id = $1 AND active = TRUE
           ORDER BY category NULLS LAST, name
           LIMIT 200`,
         [req.kioskTenantId]
@@ -347,7 +347,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       // Shifokor + xizmat tekshirish (tenant ichida)
       const doc = (await client.query(
         `SELECT id, first_name, last_name, specialization FROM doctors
-          WHERE tenant_id = $1 AND id = $2 AND is_active IS NOT FALSE`,
+          WHERE tenant_id = $1 AND id = $2 AND (status IS NULL OR status = 'Faol')`,
         [tenantId, b.doctor_id]
       )).rows[0];
       if (!doc) {
@@ -356,7 +356,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       }
       const svc = (await client.query(
         `SELECT id, name, price::float8 AS price FROM services_catalog
-          WHERE tenant_id = $1 AND id = $2`,
+          WHERE tenant_id = $1 AND id = $2 AND active = TRUE`,
         [tenantId, b.service_id]
       )).rows[0];
       if (!svc) {
