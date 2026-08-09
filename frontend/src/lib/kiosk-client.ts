@@ -29,6 +29,16 @@ export class KioskAuthError extends Error {
   }
 }
 
+/** Server qaytargan xatolik + kodi (masalan SLOT_TAKEN) */
+export class KioskApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "KioskApiError";
+    this.code = code;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getKioskToken();
   if (!token) throw new KioskAuthError("Qurilma sozlanmagan");
@@ -49,7 +59,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const data = await res.json().catch(() => ({ success: false, error: "Javob o'qib bo'lmadi" }));
   if (!res.ok || data.success === false) {
-    throw new Error(data.error || `Xatolik (${res.status})`);
+    throw new KioskApiError(data.error || `Xatolik (${res.status})`, data.code);
   }
   return data as T;
 }
@@ -155,7 +165,9 @@ export interface QueueItem {
   time: string;
   doctor: string | null;
   department: string | null;
+  /** scheduled | confirmed | in_progress */
   status: string;
+  paid: boolean;
 }
 export interface QueueResult {
   success: true;

@@ -25,6 +25,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { HEAD, KICKER, ContextLabel, ScreenTitle, SummaryList, SummaryRow, Spinner, EmptyState } from "./ui";
 import { OnScreenKeyboard } from "./keyboard";
+import { PayBrands } from "./pay-brands";
 import {
   fmtSum,
   type KioskService,
@@ -679,6 +680,11 @@ export function StepData({
                 <div style={{ flex: 1 }}>
                   <div style={{ ...HEAD, fontSize: 19 }}>{o.label}</div>
                   <div style={{ fontSize: 14, opacity: on ? 0.85 : 0.6, marginTop: 1 }}>{o.hint}</div>
+                  {o.id === "qr" && (
+                    <div style={{ marginTop: 6 }}>
+                      <PayBrands size="sm" />
+                    </div>
+                  )}
                 </div>
                 {on && <Check size={22} strokeWidth={3} />}
               </button>

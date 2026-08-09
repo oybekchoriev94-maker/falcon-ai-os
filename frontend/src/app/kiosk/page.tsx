@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   kioskApi,
+  KioskApiError,
   fmtSum,
   fmtDateTime,
   type KioskDepartment,
@@ -299,7 +300,15 @@ function Kiosk({
       setTicket(r);
       setScreen("ticket");
     } catch (e) {
-      setError(e instanceof Error ? e.message : t.errGeneric);
+      const msg = e instanceof Error ? e.message : t.errGeneric;
+      setError(msg);
+      // Vaqt boshqa kanaldan (Telegram/qabulxona) band qilingan bo'lsa —
+      // bemorni vaqt tanlash qadamiga qaytarib, ro'yxatni yangilaymiz.
+      if (e instanceof KioskApiError && e.code === "SLOT_TAKEN" && doctor) {
+        setSlot(null);
+        setStep(3);
+        await loadSlots(doctor.id, day);
+      }
     } finally {
       setLoading(false);
     }

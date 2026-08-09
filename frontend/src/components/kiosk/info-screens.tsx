@@ -5,6 +5,7 @@
 import { CheckCheck, Clock, Printer, RotateCcw, Stethoscope } from "lucide-react";
 import { HEAD, KICKER, ScreenTitle, SummaryList, SummaryRow, Spinner, EmptyState } from "./ui";
 import { deptLabel } from "./booking-flow";
+import { PayBrands } from "./pay-brands";
 import { fmtSum, type KioskService, type KioskDepartment, type QueueItem } from "@/lib/kiosk-client";
 import type { KioskT } from "@/lib/kiosk-i18n";
 
@@ -400,7 +401,8 @@ export function TicketScreen({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={showQr} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
-            <div style={{ ...KICKER, fontSize: 12, marginTop: 10, opacity: 0.7 }}>{t.qrPay}</div>
+            <div style={{ ...KICKER, fontSize: 12, margin: "10px 0 8px", opacity: 0.7 }}>{t.qrPay}</div>
+            <PayBrands size="sm" align="center" />
           </div>
         ) : null}
 

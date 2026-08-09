@@ -17,6 +17,7 @@ import {
   Sparkles,
   UserPlus,
   ImagePlus,
+  QrCode,
   Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
@@ -35,7 +36,11 @@ import {
 /* ── Types ── */
 interface Step { key: string; label: string; done: boolean; count: number }
 interface MeResponse {
-  tenant: { id: string; code: string; name: string; logo_url?: string | null };
+  tenant: {
+    id: string; code: string; name: string;
+    logo_url?: string | null;
+    payment_qr_url?: string | null;
+  };
   subscription: { plan_name: string; status: string; trial_days_left: number | null };
   onboarding: { ready: boolean; steps: Step[]; appointments: number };
 }
@@ -196,8 +201,36 @@ export default function OnboardingPage() {
     onError: (e: Error) => toast.error("Xatolik", { description: e.message }),
   });
 
+  // ── To'lov QR kodi ──
+  // Klinikaning doimiy QR'i. Kioskda bemor "QR orqali" tanlasa chiptada
+  // shu rasm chiqadi (onlayn provayder sozlanmagan bo'lsa ham ishlaydi).
+  const uploadQr = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("qr", file);
+      const res = await api.upload<{ payment_qr_url: string }>("/api/v1/tenants/payment-qr", fd);
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => { toast.success("To'lov QR saqlandi"); qc.invalidateQueries({ queryKey: ["tenant-me"] }); },
+    onError: (e: Error) => toast.error("Yuklab bo'lmadi", { description: e.message }),
+  });
+
+  const removeQr = useMutation({
+    mutationFn: async () => {
+      const res = await api.delete("/api/v1/tenants/payment-qr");
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => { toast.success("QR olib tashlandi"); qc.invalidateQueries({ queryKey: ["tenant-me"] }); },
+    onError: (e: Error) => toast.error("Xatolik", { description: e.message }),
+  });
+
   const logoUrl = me?.tenant.logo_url
     ? `${process.env.NEXT_PUBLIC_API_URL || ""}${me.tenant.logo_url}`
+    : null;
+  const qrUrl = me?.tenant.payment_qr_url
+    ? `${process.env.NEXT_PUBLIC_API_URL || ""}${me.tenant.payment_qr_url}`
     : null;
 
   const steps = me?.onboarding.steps ?? [];
@@ -293,6 +326,42 @@ export default function OnboardingPage() {
                 </label>
                 {logoUrl && (
                   <Button variant="outline" size="sm" onClick={() => removeLogo.mutate()} disabled={removeLogo.isPending}>
+                    <Trash2 className="size-4" /> Olib tashlash
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* To'lov QR kodi */}
+      <motion.div variants={itemAnim}>
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <div className="flex size-24 flex-none items-center justify-center overflow-hidden rounded-xl border bg-white">
+              {qrUrl
+                ? <img src={qrUrl} alt="To'lov QR kodi" className="size-full object-contain p-1" />
+                : <QrCode className="size-8 text-muted-foreground" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold">To&apos;lov QR kodi</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Kioskda bemor <strong>&ldquo;QR orqali&rdquo;</strong> to&apos;lovni tanlasa, chiptada shu rasm
+                chiqadi. Payme, Click yoki Paynet ilovasidan olingan QR&apos;ni yuklang.
+                PNG, JPG yoki WEBP, 2 MB gacha.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadQr.mutate(f); e.currentTarget.value = ""; }} />
+                  <span className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                    {uploadQr.isPending ? <Loader2 className="size-4 animate-spin" /> : <QrCode className="size-4" />}
+                    {qrUrl ? "Almashtirish" : "QR yuklash"}
+                  </span>
+                </label>
+                {qrUrl && (
+                  <Button variant="outline" size="sm" onClick={() => removeQr.mutate()} disabled={removeQr.isPending}>
                     <Trash2 className="size-4" /> Olib tashlash
                   </Button>
                 )}

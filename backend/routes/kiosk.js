@@ -521,6 +521,27 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
+
+      // Poyga holati: shu vaqtni Telegram yoki qabulxona bir soniya oldin
+      // band qilib ulgurgan. DB unique indeksi (appointments_doctor_slot_unique)
+      // ikkinchi yozuvni rad etadi — bu YAXSHI, ikkilanish bo'lmaydi.
+      // Bemorga tushunarli qilib aytamiz va vaqt tanlashga qaytaramiz.
+      if (e.code === '23505' && String(e.constraint || '').includes('appointments_doctor_slot_unique')) {
+        return res.status(409).json({
+          success: false,
+          error: 'Bu vaqt hozirgina band bo\'ldi. Iltimos, boshqa vaqt tanlang.',
+          code: 'SLOT_TAKEN',
+        });
+      }
+      // Access-code to'qnashuvi (juda kam) — qayta urinish yetarli
+      if (e.code === '23505' && String(e.constraint || '').includes('appointments_access_code_unique')) {
+        return res.status(409).json({
+          success: false,
+          error: 'Qayta urinib ko\'ring.',
+          code: 'CODE_CLASH',
+        });
+      }
+
       console.error('[KIOSK book]', e);
       res.status(500).json({ success: false, error: 'Bron qilishda xatolik. Registraturaga murojaat qiling.' });
     } finally {
@@ -529,19 +550,27 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   });
 
   // GET /api/kiosk/queue — kutish zali TV ekrani uchun
+  //
+  // FILTR TARIXI: avval `status IN ('scheduled','in_progress') AND
+  // payment_status='paid'` edi. Real ma'lumotda bronlar 'confirmed'+'paid'
+  // yoki 'scheduled'+'pending' bo'lgani uchun ekran DOIM bo'sh turardi.
+  // Endi bugungi faol bronlarning hammasi ko'rsatiladi; to'lov holati
+  // alohida maydonda qaytadi (TV uni ko'rsatmasa ham bo'ladi).
   router.get('/queue', deviceAuth, async (req, res) => {
     try {
       const rows = await q(
         `SELECT a.access_code, a.patient_name, a.scheduled_at, a.status,
-                a.doctor_name, d.specialization
+                a.payment_status, a.doctor_name, d.specialization
            FROM appointments a
            LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
           WHERE a.tenant_id = $1
             AND date(a.scheduled_at) = CURRENT_DATE
-            AND a.status IN ('scheduled','in_progress')
-            AND a.payment_status = 'paid'
-          ORDER BY a.scheduled_at ASC
-          LIMIT 20`,
+            AND a.status IN ('scheduled','confirmed','in_progress')
+          ORDER BY
+            -- Qabuldagilar tepada, keyin vaqt bo'yicha
+            CASE WHEN a.status = 'in_progress' THEN 0 ELSE 1 END,
+            a.scheduled_at ASC
+          LIMIT 30`,
         [req.kioskTenantId]
       );
       // PII: to'liq ism ko'rsatilmaydi — kod + familiya bosh harfi
@@ -558,6 +587,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
             doctor: r.doctor_name,
             department: r.specialization,
             status: r.status,
+            paid: r.payment_status === 'paid',
           };
         }),
       });

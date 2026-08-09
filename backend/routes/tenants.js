@@ -12,6 +12,7 @@ const TRIAL_DAYS = 14;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGO_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'logos');
+const QR_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'payment-qr');
 // Faqat rasm; svg ataylab yo'q — ichida skript bo'lishi mumkin (XSS)
 const LOGO_TYPES = {
   'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp',
@@ -102,7 +103,11 @@ export default function tenantRoutes(upload) {
       if (!t) return res.status(404).json({ success: false, error: 'Klinika topilmadi' });
 
       // Haqiqiy sozlash bosqichlari — bularsiz bron ishlamaydi
-      const logoRow = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
+      const settings = await q(
+        "SELECT key, value FROM clinic_settings WHERE tenant_id = $1 AND key IN ('logo_url','payment_qr_url')",
+        [tenantId]
+      );
+      const setting = (k) => settings.find((s) => s.key === k)?.value || null;
 
       const c = await qGet(
         `SELECT
@@ -132,7 +137,9 @@ export default function tenantRoutes(upload) {
         success: true,
         tenant: {
           id: t.id, code: t.code, name: t.name, phone: t.phone,
-          address: t.address, city: t.city, logo_url: logoRow?.value || null,
+          address: t.address, city: t.city,
+          logo_url: setting('logo_url'),
+          payment_qr_url: setting('payment_qr_url'),
         },
         subscription: {
           plan_code: t.plan_code, plan_name: t.plan_name,
@@ -200,6 +207,66 @@ export default function tenantRoutes(upload) {
         await fs.unlink(f).catch(() => {});
       }
       await q("DELETE FROM clinic_settings WHERE tenant_id = $1 AND key = 'logo_url'", [tenantId]);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ── To'lov QR kodi ────────────────────────────────────────
+  // Klinikaning doimiy to'lov QR rasmi (Payme/Click/Paynet ilovasi bilan
+  // skanerlanadi). Kioskda "QR orqali" tanlanganda chiptada chiqadi.
+  // Logo bilan bir xil naqsh: fayl diskda, yo'li clinic_settings da.
+
+  router.post('/payment-qr', authMiddleware, checkRole('ceo', 'admin', 'superadmin'),
+    upload.single('qr'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      if (!tenantId) return res.status(400).json({ success: false, error: 'Tenant aniqlanmadi' });
+      if (!req.file) return res.status(400).json({ success: false, error: 'Rasm tanlanmagan' });
+
+      const ext = LOGO_TYPES[req.file.mimetype];
+      if (!ext) {
+        return res.status(400).json({ success: false, error: 'Faqat PNG, JPG yoki WEBP rasm qabul qilinadi' });
+      }
+      if (req.file.size > LOGO_MAX) {
+        return res.status(413).json({ success: false, error: 'Rasm 2 MB dan katta bo\'lmasin' });
+      }
+
+      await fs.mkdir(QR_DIR, { recursive: true });
+      const version = Date.now().toString(36);
+      const fileName = `${tenantId}-${version}${ext}`;
+
+      // Eski QR'ni tozalaymiz — bir tenantda bittasi yetarli
+      try {
+        const old = await fs.readdir(QR_DIR);
+        await Promise.all(old.filter((f) => f.startsWith(tenantId + '-'))
+          .map((f) => fs.unlink(path.join(QR_DIR, f)).catch(() => {})));
+      } catch { /* papka endi yaratildi */ }
+
+      await fs.writeFile(path.join(QR_DIR, fileName), req.file.buffer);
+      const url = `/uploads/payment-qr/${fileName}`;
+
+      await q(
+        `INSERT INTO clinic_settings (tenant_id, key, value, updated_at)
+         VALUES ($1, 'payment_qr_url', $2, NOW())
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2, updated_at = NOW()`,
+        [tenantId, url]
+      );
+      res.json({ success: true, payment_qr_url: url });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  router.delete('/payment-qr', authMiddleware, checkRole('ceo', 'admin', 'superadmin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const row = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'payment_qr_url'", [tenantId]);
+      if (row?.value) {
+        await fs.unlink(path.join(QR_DIR, path.basename(row.value))).catch(() => {});
+      }
+      await q("DELETE FROM clinic_settings WHERE tenant_id = $1 AND key = 'payment_qr_url'", [tenantId]);
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
