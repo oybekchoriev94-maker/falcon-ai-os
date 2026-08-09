@@ -363,13 +363,20 @@ function Kiosk({
     : "";
   const dayLabel = days.find((d) => d.key === day);
 
+  const prettyPhone = phoneDigits
+    ? `+998 ${[phoneDigits.slice(0, 2), phoneDigits.slice(2, 5), phoneDigits.slice(5, 7), phoneDigits.slice(7, 9)]
+        .filter(Boolean)
+        .join(" ")}`
+    : "—";
+
+  // Summa bu ro'yxatda YO'Q — u o'ng tomondagi ko'k panelda katta
+  // qilib ko'rsatiladi, ikki marta takrorlash shart emas.
   const summaryRows = [
     { k: t.service, v: service?.name || "—" },
     { k: t.doctor, v: doctor ? `${doctor.name} — ${deptLabel(doctor.department)}` : "—" },
     { k: t.stTime, v: dayLabel ? `${dayLabel.num} ${dayLabel.mon}, ${slotTime}` : slotTime },
     { k: t.fName, v: name || "—" },
-    { k: t.fPhone, v: phoneDigits ? `+998 ${phoneDigits}` : "—" },
-    { k: t.total, v: fmtSum(service?.price || 0) },
+    { k: t.fPhone, v: prettyPhone },
   ];
 
   const ticketRows = ticket

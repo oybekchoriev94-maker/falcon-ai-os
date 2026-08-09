@@ -109,39 +109,74 @@ export function DoctorsScreen({
   if (loading) return <Spinner label={t.loading} />;
   if (!departments.length) return <EmptyState msg={t.noDoctors} />;
 
+  // Bir odam bir nechta yo'nalishda ro'yxatdan o'tgan bo'lishi mumkin
+  // (bazada alohida yozuvlar). Ro'yxatda bir marta ko'rsatamiz,
+  // yo'nalishlarni birlashtirib: "Urolog · UZI mutaxassisi".
+  const people = new Map<string, { name: string; depts: string[]; booked: number }>();
+  for (const dept of departments) {
+    for (const d of dept.doctors) {
+      const key = d.name.trim().toLowerCase();
+      const p = people.get(key) || { name: d.name, depts: [], booked: 0 };
+      if (!p.depts.includes(dept.name)) p.depts.push(dept.name);
+      p.booked += d.today_booked || 0;
+      people.set(key, p);
+    }
+  }
+  const list = [...people.values()];
+
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       <ScreenTitle kicker={t.tDoctors} title={t.tDoctorsDesc} />
-      <div style={{ display: "grid", gap: 2, background: "var(--k-divider)", borderTop: "2px solid var(--k-divider)" }}>
-        {departments.map((dept) => (
-          <div key={dept.name} style={{ background: "var(--k-bg)", padding: "20px 32px" }}>
-            <div style={{ ...KICKER, color: "var(--k-accent)", marginBottom: 14 }}>{deptLabel(dept.name)}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              {dept.doctors.map((d) => (
-                <div key={d.id} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 16, alignItems: "center" }}>
-                  <div
-                    style={{
-                      width: 64,
-                      height: 64,
-                      background: "var(--k-accent-100)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      ...HEAD,
-                      fontSize: 24,
-                      color: "var(--k-accent-700)",
-                    }}
-                  >
-                    {d.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ ...HEAD, fontSize: 21 }}>{d.name}</div>
-                    <div style={{ fontSize: 16, color: "var(--k-n-700)", marginTop: 2 }}>
-                      {d.today_booked > 0 ? t.todayBooked(d.today_booked) : deptLabel(dept.name)}
-                    </div>
-                  </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 2,
+          background: "var(--k-divider)",
+          borderTop: "2px solid var(--k-divider)",
+          alignContent: "start",
+        }}
+      >
+        {list.map((p, i) => (
+          <div
+            key={p.name}
+            className="k-up"
+            style={{
+              animationDelay: `${i * 0.04}s`,
+              background: "var(--k-bg)",
+              padding: "22px 28px",
+              display: "grid",
+              gridTemplateColumns: "72px 1fr",
+              gap: 18,
+              alignItems: "center",
+              minHeight: 116,
+            }}
+          >
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                background: "var(--k-accent-100)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                ...HEAD,
+                fontSize: 26,
+                color: "var(--k-accent-700)",
+              }}
+            >
+              {p.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
+            </div>
+            <div>
+              <div style={{ ...HEAD, fontSize: 21 }}>{p.name}</div>
+              <div style={{ fontSize: 17, color: "var(--k-accent-800)", marginTop: 3 }}>
+                {p.depts.map(deptLabel).join(" · ")}
+              </div>
+              {p.booked > 0 && (
+                <div style={{ ...KICKER, fontSize: 12, color: "var(--k-n-600)", marginTop: 6 }}>
+                  {t.todayBooked(p.booked)}
                 </div>
-              ))}
+              )}
             </div>
           </div>
         ))}
