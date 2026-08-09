@@ -24,6 +24,8 @@ import {
   type BookResult,
   type QueueItem,
   type KioskPayMethod,
+  type KioskWard,
+  type AdmissionRequestResult,
 } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { KIOSK_TEXT, type KioskLang } from "@/lib/kiosk-i18n";
@@ -43,9 +45,10 @@ import {
 } from "@/components/kiosk/booking-flow";
 import { PricesScreen, DoctorsScreen, QueueScreen, TicketScreen } from "@/components/kiosk/info-screens";
 import { CartScreen, type CartVisit } from "@/components/kiosk/cart-screen";
+import { InpatientScreen } from "@/components/kiosk/inpatient-screen";
 import { ErrorBanner, Spinner } from "@/components/kiosk/ui";
 
-type Screen = "idle" | "home" | "book" | "prices" | "doctors" | "queue" | "ticket";
+type Screen = "idle" | "home" | "book" | "prices" | "doctors" | "queue" | "ticket" | "inpatient";
 type Identity = "unknown" | "confirmed" | "manual";
 
 const IDLE_MS = 90_000;
@@ -127,6 +130,12 @@ function Kiosk({
   // Savat — bir kelishda bir nechta shifokorga yozilish
   const [cart, setCart] = useState<CartVisit[]>([]);
 
+  // Statsionar so'rovi
+  const [wards, setWards] = useState<KioskWard[]>([]);
+  const [wardId, setWardId] = useState<string | null>(null);
+  const [admSending, setAdmSending] = useState(false);
+  const [admDone, setAdmDone] = useState(false);
+
   // Forma
   const [name, setName] = useState("");
   const [phoneDigits, setPhoneDigits] = useState("");
@@ -155,6 +164,7 @@ function Kiosk({
     setName(""); setPhoneDigits(""); setFocus("phone"); setPay("cash");
     setKnown(null); setIdentity("unknown");
     setTicket(null); setError(""); setCat(null);
+    setWardId(null); setAdmDone(false); setAdmSending(false);
     setDay(new Date().toLocaleDateString("en-CA"));
   }, []);
 
@@ -326,6 +336,44 @@ function Kiosk({
   const goPrices = async () => { await loadServices(); setScreen("prices"); };
   const goDoctors = async () => { await loadDepartments(); setScreen("doctors"); };
   const goQueue = async () => { await loadQueue(); setScreen("queue"); };
+
+  const goInpatient = async () => {
+    setError(""); setAdmDone(false); setWardId(null); setFocus("phone");
+    setLoading(true);
+    try {
+      const r = await kioskApi.get<{ wards: KioskWard[] }>("/api/kiosk/wards");
+      setWards(r.wards || []);
+    } catch {
+      setError(t.errGeneric);
+    } finally {
+      setLoading(false);
+    }
+    setScreen("inpatient");
+  };
+
+  /** Yotqizish so'rovi — koyka tayinlanmaydi, xodim hal qiladi */
+  async function sendAdmissionRequest() {
+    setAdmSending(true); setError("");
+    try {
+      let sessionId = known?.session_id;
+      if (!sessionId) {
+        const lk = await kioskApi.post<LookupResult>("/api/kiosk/lookup", { phone: `+998${phoneDigits}` });
+        sessionId = lk.session_id;
+      }
+      await kioskApi.post<AdmissionRequestResult>("/api/kiosk/admission-request", {
+        session_id: sessionId,
+        patient_name: name.trim(),
+        phone: `+998${phoneDigits}`,
+        ward_id: wardId || undefined,
+      });
+      setAdmDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.errGeneric);
+    } finally {
+      setAdmSending(false);
+    }
+  }
+
   const goHome = () => { setScreen("home"); setStep(1); setError(""); };
 
   const pickService = async (s: KioskService) => {
@@ -420,6 +468,11 @@ function Kiosk({
       nextEnabled = !loading;
       nextAction = book;
     }
+  } else if (screen === "inpatient" && !admDone) {
+    nextLabel = t.inpatientSend;
+    nextEnabled = nameOk && phoneOk && !admSending;
+    nextAction = sendAdmissionRequest;
+    if (!nameOk || !phoneOk) hint = t.fillFields;
   }
 
   const { list: doctorList, exact } = useMemo(
@@ -489,7 +542,37 @@ function Kiosk({
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {screen === "home" && (
-          <HomeScreen t={t} onBook={startBooking} onPrices={goPrices} onDoctors={goDoctors} onQueue={goQueue} />
+          <HomeScreen
+            t={t}
+            onBook={startBooking}
+            onPrices={goPrices}
+            onDoctors={goDoctors}
+            onQueue={goQueue}
+            onInpatient={goInpatient}
+          />
+        )}
+
+        {screen === "inpatient" && (
+          <div className="k-fade" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            {error && <ErrorBanner msg={error} />}
+            <InpatientScreen
+              t={t}
+              lang={lang}
+              wards={wards}
+              loading={loading}
+              wardId={wardId}
+              onWard={setWardId}
+              name={name}
+              phone={phoneDigits}
+              focus={focus}
+              onFocus={setFocus}
+              onKey={onKey}
+              onBackspace={onBackspace}
+              onClear={onClear}
+              sending={admSending}
+              done={admDone}
+            />
+          </div>
         )}
 
         {screen === "book" && (

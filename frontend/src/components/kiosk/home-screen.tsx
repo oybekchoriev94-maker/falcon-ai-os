@@ -3,7 +3,7 @@
 // Bosh sahifa — 4 ta amal. Chapda katta "Qabulga yozilish" (asosiy
 // harakat), o'ngda 3 ta yordamchi plitka.
 
-import { ArrowRight, CalendarPlus, ClipboardList, Stethoscope, Users } from "lucide-react";
+import { ArrowRight, BedDouble, CalendarPlus, ClipboardList, Stethoscope, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HEAD } from "./ui";
 import type { KioskT } from "@/lib/kiosk-i18n";
@@ -77,12 +77,14 @@ export function HomeScreen({
   onPrices,
   onDoctors,
   onQueue,
+  onInpatient,
 }: {
   t: KioskT;
   onBook: () => void;
   onPrices: () => void;
   onDoctors: () => void;
   onQueue: () => void;
+  onInpatient: () => void;
 }) {
   return (
     <div
@@ -129,8 +131,9 @@ export function HomeScreen({
           <SmallTile n="02" Icon={ClipboardList} title={t.tPrices} desc={t.tPricesDesc} onClick={onPrices} delay=".06s" />
           <SmallTile n="03" Icon={Stethoscope} title={t.tDoctors} desc={t.tDoctorsDesc} onClick={onDoctors} delay=".12s" />
         </div>
-        <div style={{ display: "grid", gap: 2, background: "var(--k-divider)" }}>
-          <SmallTile n="04" Icon={Users} title={t.tQueue} desc={t.tQueueDesc} onClick={onQueue} delay=".18s" tone="green" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, background: "var(--k-divider)" }}>
+          <SmallTile n="04" Icon={BedDouble} title={t.tInpatient} desc={t.tInpatientDesc} onClick={onInpatient} delay=".18s" />
+          <SmallTile n="05" Icon={Users} title={t.tQueue} desc={t.tQueueDesc} onClick={onQueue} delay=".24s" tone="green" />
         </div>
       </div>
     </div>

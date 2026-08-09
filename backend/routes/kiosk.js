@@ -620,6 +620,140 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
     }
   });
 
+  // ============================================================
+  // STATSIONAR (yotib davolanish)
+  //
+  // MUHIM: bemor aniq koykani O'ZI TANLAMAYDI. Kimni qaysi palataga
+  // yotqizish — klinik va ma'muriy qaror (jinsi, tashxisi, infeksiya
+  // xavfi, shifokor qarori). Kiosk faqat:
+  //   1) bo'sh joy borligini ko'rsatadi (raqam, kim yotganini emas)
+  //   2) so'rov qoldiradi — xodim /wards sahifasida tasdiqlab, koyka
+  //      tayinlaydi
+  // ============================================================
+
+  // GET /api/kiosk/wards — bo'limlar bo'yicha bo'sh joy soni
+  router.get('/wards', deviceAuth, async (req, res) => {
+    try {
+      const rows = await q(
+        `SELECT w.id, w.name, w.department,
+                COUNT(b.id)::int AS total,
+                COUNT(b.id) FILTER (WHERE b.status = 'free')::int AS free
+           FROM wards w
+           LEFT JOIN beds b ON b.ward_id = w.id
+          WHERE w.tenant_id = $1
+          GROUP BY w.id, w.name, w.department
+          ORDER BY w.name`,
+        [req.kioskTenantId]
+      );
+      res.json({ success: true, wards: rows });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // POST /api/kiosk/admission-request — yotqizish so'rovi
+  const admissionSchema = z.object({
+    session_id: z.string().uuid(),
+    patient_name: z.string().min(2).max(200),
+    phone: z.string().min(9).max(20),
+    ward_id: z.string().uuid().optional(),
+    complaint: z.string().max(1000).optional(),
+  });
+
+  router.post('/admission-request', deviceAuth, async (req, res) => {
+    if (!checkRate(`adm:${req.kioskDevice.id}`, 5, 60_000)) {
+      return res.status(429).json({ success: false, error: 'Juda ko\'p so\'rov. Registraturaga murojaat qiling.' });
+    }
+    const parsed = admissionSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Ma\'lumot to\'liq emas' });
+    }
+    const a = parsed.data;
+    const client = await pool.connect();
+    try {
+      const tenantId = req.kioskTenantId;
+      await client.query('BEGIN');
+
+      // Bemor kartasi — bron bilan bir xil upsert mantiqi
+      const phone = normalizePhone(a.phone);
+      let patientId = null;
+      const existing = (await client.query(
+        `SELECT id FROM patients WHERE tenant_id = $1 AND phone = $2`,
+        [tenantId, phone]
+      )).rows[0];
+      if (existing) {
+        patientId = existing.id;
+      } else {
+        const [fn, ...rest] = a.patient_name.trim().split(/\s+/);
+        const newId = uuidv4();
+        const year = new Date().getFullYear();
+        const last = (await client.query(
+          `SELECT medical_record_number AS mrn FROM patients
+            WHERE tenant_id = $1 AND medical_record_number LIKE $2
+            ORDER BY medical_record_number DESC LIMIT 1`,
+          [tenantId, `${year}-%`]
+        )).rows[0];
+        const next = last?.mrn ? (parseInt(String(last.mrn).slice(5), 10) || 0) + 1 : 1;
+        await client.query(
+          `INSERT INTO patients (id, tenant_id, first_name, last_name, phone, medical_record_number)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [newId, tenantId, fn || 'Bemor', rest.join(' ') || '', phone,
+           `${year}-${String(next).padStart(6, '0')}`]
+        );
+        patientId = newId;
+      }
+
+      // Takroriy so'rovni oldini olamiz — bemor sabrsizlanib bir necha
+      // marta bosishi mumkin
+      const dup = (await client.query(
+        `SELECT id FROM admissions
+          WHERE tenant_id = $1 AND patient_id = $2 AND status = 'requested'
+            AND created_at > NOW() - INTERVAL '6 hours'
+          LIMIT 1`,
+        [tenantId, patientId]
+      )).rows[0];
+      if (dup) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({
+          success: true,
+          already: true,
+          message: 'So\'rovingiz allaqachon qabul qilingan. Registraturaga murojaat qiling.',
+        });
+      }
+
+      // bed_id ATAYLAB bo'sh: koykani xodim tayinlaydi
+      const admId = uuidv4();
+      await client.query(
+        `INSERT INTO admissions
+           (id, tenant_id, patient_id, patient_name, patient_phone,
+            ward_id, admission_date, admission_type, status, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,NOW(),'rejali','requested',$7)`,
+        [admId, tenantId, patientId, a.patient_name, phone,
+         a.ward_id || null,
+         a.complaint ? `Kiosk so'rovi: ${a.complaint}` : 'Kiosk orqali yotqizish so\'rovi']
+      );
+
+      await client.query(
+        `UPDATE kiosk_sessions SET step_reached = 'admission_request', patient_id = $1, finished_at = NOW()
+          WHERE id = $2 AND tenant_id = $3`,
+        [patientId, a.session_id, tenantId]
+      ).catch(() => {});
+
+      await client.query('COMMIT');
+      res.status(201).json({
+        success: true,
+        already: false,
+        message: 'So\'rovingiz qabul qilindi. Registraturaga o\'ting.',
+      });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('[KIOSK admission]', e);
+      res.status(500).json({ success: false, error: 'Xatolik. Registraturaga murojaat qiling.' });
+    } finally {
+      client.release();
+    }
+  });
+
   // GET /api/kiosk/queue — kutish zali TV ekrani uchun
   //
   // FILTR TARIXI: avval `status IN ('scheduled','in_progress') AND

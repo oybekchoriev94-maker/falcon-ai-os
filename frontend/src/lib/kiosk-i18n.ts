@@ -36,6 +36,12 @@ export interface KioskT {
   cardFound: string; isThisYou: string; yesItsMe: string; no: string;
   notMe: string; willAddToCard: string; searching: string;
 
+  tInpatient: string; tInpatientDesc: string;
+  wardFree: (n: number) => string; wardFull: string;
+  inpatientTitle: string; inpatientNote: string;
+  inpatientSend: string; inpatientDone: string; inpatientDoneNote: string;
+  inpatientNoWards: string; anyWard: string;
+
   cart: string; addMore: string; addMoreHint: string; finish: string;
   visitN: (n: number) => string; removeVisit: string;
   maxVisits: string;
@@ -125,6 +131,19 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     searching: "Karta izlanmoqda...",
 
     // Yakun
+    tInpatient: "Yotib davolanish",
+    tInpatientDesc: "Statsionarga joy so'rash",
+    wardFree: (n: number) => `${n} ta bo'sh joy`,
+    wardFull: "Bo'sh joy yo'q",
+    inpatientTitle: "Statsionarga joy so'rash",
+    inpatientNote:
+      "Qaysi palataga yotqizish shifokor qaroriga bog'liq. Siz faqat so'rov qoldirasiz — registratura siz bilan bog'lanadi.",
+    inpatientSend: "So'rov yuborish",
+    inpatientDone: "So'rovingiz qabul qilindi",
+    inpatientDoneNote: "Registraturaga o'ting — hujjatlar rasmiylashtiriladi va palata tayinlanadi.",
+    inpatientNoWards: "Hozircha statsionar ma'lumoti yo'q",
+    anyWard: "Farqi yo'q",
+
     cart: "Tanlangan tashriflar",
     addMore: "Yana shifokor qo'shish",
     addMoreHint: "Bir kelishda bir nechta shifokorga yozilishingiz mumkin",
@@ -229,6 +248,19 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     notMe: "Это не я",
     willAddToCard: "Визит добавится в вашу карту",
     searching: "Поиск карты...",
+
+    tInpatient: "Стационар",
+    tInpatientDesc: "Запросить место в стационаре",
+    wardFree: (n: number) => `${n} свободных мест`,
+    wardFull: "Свободных мест нет",
+    inpatientTitle: "Запрос места в стационаре",
+    inpatientNote:
+      "Палату определяет врач. Вы оставляете только запрос — регистратура свяжется с вами.",
+    inpatientSend: "Отправить запрос",
+    inpatientDone: "Запрос принят",
+    inpatientDoneNote: "Пройдите в регистратуру — оформят документы и назначат палату.",
+    inpatientNoWards: "Пока нет данных о стационаре",
+    anyWard: "Не важно",
 
     cart: "Выбранные визиты",
     addMore: "Добавить ещё врача",

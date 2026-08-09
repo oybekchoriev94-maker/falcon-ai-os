@@ -188,6 +188,22 @@ export interface QueueResult {
   queue: QueueItem[];
 }
 
+/** Statsionar bo'limi va undagi bo'sh joy soni */
+export interface KioskWard {
+  id: string;
+  name: string;
+  department: string | null;
+  total: number;
+  free: number;
+}
+
+export interface AdmissionRequestResult {
+  success: true;
+  /** true bo'lsa — so'rov allaqachon yuborilgan edi */
+  already: boolean;
+  message: string;
+}
+
 // ── Formatlash yordamchilari ─────────────────────────────────
 
 export function fmtSum(n: number): string {
