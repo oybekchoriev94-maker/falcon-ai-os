@@ -471,7 +471,7 @@ function Kiosk({
                 onPay={setPay}
               />
             )}
-            {step === 5 && <StepConfirm t={t} rows={summaryRows} total={service?.price || 0} />}
+            {step === 5 && <StepConfirm t={t} rows={summaryRows} total={service?.price || 0} pay={pay} />}
           </div>
         )}
 

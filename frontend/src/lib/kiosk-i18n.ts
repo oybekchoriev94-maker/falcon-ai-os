@@ -36,7 +36,7 @@ export interface KioskT {
   cardFound: string; isThisYou: string; yesItsMe: string; no: string;
   notMe: string; willAddToCard: string; searching: string;
 
-  total: string; payNote: string; confirmNote: string;
+  total: string; payNote: string; payNoteQr: string; confirmNote: string;
   ticketDone: string; ticketTitle: string; ticketNo: string;
   ticketNote: string; qrNote: string; qrPay: string;
 
@@ -123,6 +123,7 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     // Yakun
     total: "Jami to'lov",
     payNote: "To'lovni kassada amalga oshirasiz.",
+    payNoteQr: "Tasdiqlagach QR kod chiqadi — telefoningiz bilan skanerlang.",
     confirmNote: "Tasdiqlagach sizga navbat raqami beriladi.",
     ticketDone: "Qabul qilindi",
     ticketTitle: "Navbatingiz rasmiylashtirildi",
@@ -219,6 +220,7 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
 
     total: "Итого",
     payNote: "Оплата производится в кассе.",
+    payNoteQr: "После подтверждения появится QR-код — отсканируйте телефоном.",
     confirmNote: "После подтверждения вы получите номер очереди.",
     ticketDone: "Принято",
     ticketTitle: "Ваша запись оформлена",

@@ -706,10 +706,12 @@ export function StepConfirm({
   t,
   rows,
   total,
+  pay,
 }: {
   t: KioskT;
   rows: { k: string; v: string }[];
   total: number;
+  pay: KioskPayMethod;
 }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 440px", gap: 2, background: "var(--k-divider)" }}>
@@ -736,7 +738,9 @@ export function StepConfirm({
           <div style={{ fontSize: 14, letterSpacing: "0.2em", textTransform: "uppercase", opacity: 0.85 }}>{t.total}</div>
           <div style={{ ...HEAD, fontSize: 52, lineHeight: 1, letterSpacing: "-0.03em", marginTop: 10 }}>{fmtSum(total)}</div>
           <div style={{ height: 2, background: "rgba(255,255,255,.4)", margin: "22px 0" }} />
-          <div style={{ fontSize: 18, opacity: 0.9, textWrap: "pretty" }}>{t.payNote}</div>
+          <div style={{ fontSize: 18, opacity: 0.9, textWrap: "pretty" }}>
+            {pay === "qr" ? t.payNoteQr : t.payNote}
+          </div>
         </div>
         <div style={{ fontSize: 17, opacity: 0.9, textWrap: "pretty" }}>{t.confirmNote}</div>
       </div>
