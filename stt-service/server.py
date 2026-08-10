@@ -4,7 +4,9 @@ import asyncio
 import tempfile
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import hmac
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.responses import JSONResponse
 from faster_whisper import WhisperModel
 
@@ -26,6 +28,27 @@ DEFAULT_LANGUAGE = "uz"
 MAX_CONCURRENCY = int(os.getenv("STT_CONCURRENCY", "2"))
 # Audio hajmi chegarasi (OOM/DoS himoyasi)
 MAX_AUDIO_MB = int(os.getenv("MAX_AUDIO_MB", "25"))
+
+# Autentifikatsiya.
+# Docker tarmog'i ichida (VPS'dagi holat) kerak emas — xizmat tashqariga
+# chiqmaydi. LEKIN klinika kompyuteridagi STT Cloudflare Tunnel orqali
+# internetga ochilsa, himoyasiz qolsa istalgan kishi bemor audiosini
+# yuborib, klinika GPU'sidan foydalana oladi.
+# Shuning uchun: STT_AUTH_TOKEN o'rnatilgan bo'lsa — majburiy tekshiriladi.
+AUTH_TOKEN = os.getenv("STT_AUTH_TOKEN", "").strip()
+
+
+def _check_auth(authorization: str | None):
+    """Token o'rnatilmagan bo'lsa tekshirmaymiz (lokal Docker tarmog'i).
+    O'rnatilgan bo'lsa — Bearer mos kelishi shart."""
+    if not AUTH_TOKEN:
+        return
+    supplied = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        supplied = authorization[7:].strip()
+    # compare_digest — vaqt bo'yicha hujumga qarshi
+    if not hmac.compare_digest(supplied, AUTH_TOKEN):
+        raise HTTPException(401, "Ruxsat yo'q")
 
 model: WhisperModel | None = None
 _sem: asyncio.Semaphore | None = None
@@ -102,7 +125,10 @@ async def transcribe(
     language: str = Form(None),
     temperature: float = Form(0.0),
     prompt: str = Form(""),
+    authorization: str | None = Header(default=None),
 ):
+    _check_auth(authorization)
+
     if model is None:
         raise HTTPException(503, "Model hali yuklanmagan")
 

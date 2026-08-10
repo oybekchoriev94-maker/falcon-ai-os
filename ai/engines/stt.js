@@ -4,6 +4,9 @@
 // ============================================================
 
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8081';
+// Lokal Docker tarmog'ida bo'sh — xizmat tashqariga chiqmaydi.
+// Klinika kompyuteridagi STT tunnel orqali ochilsa, shu token majburiy.
+const STT_AUTH_TOKEN = process.env.STT_AUTH_TOKEN || '';
 
 function groqKey() { return (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== '***') ? process.env.GROQ_API_KEY : ''; }
 
@@ -97,7 +100,7 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
       const form = makeForm(audioBuffer, filename, opts);
       const res = await fetch(`${WHISPER_URL}/v1/audio/transcriptions`, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer not-needed' }, // whisper.cpp auth talab qilmaydi
+        headers: { 'Authorization': `Bearer ${STT_AUTH_TOKEN || 'not-needed'}` },
         body: form,
         signal: AbortSignal.timeout(60000) // 1 min (katta audio uchun)
       });

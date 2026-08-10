@@ -86,7 +86,12 @@ services:
       PUBLIC_URL_OVERRIDE: ${TUNNEL_URL:-}
       LOG_LEVEL: info
       LOCAL_ONLY: "${LOCAL_ONLY:-true}"
-      WHISPER_URL: http://stt:8081
+      # Sukut bo'yicha VPS'ning o'z konteyneri. Klinika kompyuteridagi
+      # STT'ga o'tish uchun .env da WHISPER_URL ni o'zgartirish kifoya —
+      # compose faylini tahrirlash shart emas, orqaga qaytarish oson.
+      WHISPER_URL: ${WHISPER_URL:-http://stt:8081}
+      # Tunnel orqali ochilgan STT uchun majburiy (lokal tarmoqda bo'sh)
+      STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
       - falcon-backup:/backup
       - falcon-logs:/app/logs
