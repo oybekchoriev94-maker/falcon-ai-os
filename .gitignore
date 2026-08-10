@@ -86,3 +86,8 @@ get-token.mjs
 
 # Vaqtinchalik tahlil fayllari (maket ajratish)
 .tmp-kiosk/
+
+# STT solishtiruvi — bemor audiosi va etalon matnlari GIT'GA TUSHMASIN
+scripts/stt-compare/audio*/
+scripts/stt-compare/models/
+scripts/stt-compare/natija*.md

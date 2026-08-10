@@ -1,0 +1,35 @@
+# ============================================================
+# STT xizmati — GPU varianti (klinika kompyuteri, RTX 2060 SUPER)
+#
+# Oddiy Dockerfile CPU uchun (python:3.11-slim). Bu esa CUDA bilan:
+# CTranslate2 GPU'da float16 ishlaydi — medium model ham tez bo'ladi.
+#
+# Hostda kerak:
+#   - NVIDIA drayver
+#   - nvidia-container-toolkit
+# Tekshirish: docker run --rm --gpus all nvidia/cuda:12.2.2-base-ubuntu22.04 nvidia-smi
+#
+# CTranslate2 4.x cuDNN 8 ni kutadi — shuning uchun cudnn8 tegi.
+# ============================================================
+FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip curl ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir --break-system-packages \
+      faster-whisper fastapi uvicorn python-multipart
+
+WORKDIR /app
+COPY server.py .
+
+EXPOSE 8081
+
+# GPU sukut bo'yicha. CPU'ga tushirish uchun DEVICE=cpu COMPUTE_TYPE=int8
+ENV DEVICE=cuda \
+    COMPUTE_TYPE=float16
+
+CMD ["python3", "server.py"]
