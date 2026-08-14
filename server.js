@@ -69,6 +69,7 @@ import patientBotRoutes from './backend/routes/patient-bot.js';
 import kioskRoutes from './backend/routes/kiosk.js';
 import attendanceRoutes from './backend/routes/attendance.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
+import { startQueueNotifyCron } from './backend/cron/queue-notify.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -377,9 +378,12 @@ function startServer(port) {
     console.log(`Swagger:  http://localhost:${port}/api-docs`);
     console.log(`DB:       PostgreSQL (${process.env.DATABASE_URL ? 'connected' : 'not configured'})`);
     console.log(`========================================\n`);
-    // Bemor xabarnomalari cron loop (24h reminder, 7d follow-up)
-    // Faqat TELEGRAM_TOKEN_PATIENT sozlangan bo'lsa ishga tushadi.
-    if (process.env.TELEGRAM_TOKEN_PATIENT) startPatientReminderCron();
+    // Bemor xabarnomalari cron loop (24h reminder, 7d follow-up, no-show
+    // belgilash). No-show qismi Telegram tokenidan mustaqil ishlashi kerak,
+    // shuning uchun token sozlanmagan bo'lsa ham ishga tushadi — bildirishnoma
+    // qismlari ichkarida token yo'qligini o'zi tekshiradi (jim o'tkazib yuboradi).
+    startPatientReminderCron();
+    startQueueNotifyCron();
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port >= MAX_PORT) { console.error(`Port ${PORT}-${MAX_PORT} band`); process.exit(1); }

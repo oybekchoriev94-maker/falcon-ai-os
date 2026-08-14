@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Loader2,
   UserPlus,
+  UserCheck,
   Mic,
   Square,
   Wallet,
@@ -81,6 +82,8 @@ interface Appointment {
   access_code?: string;
   source?: string;
   service_name?: string;
+  arrived_at?: string | null;
+  checked_in_source?: string | null;
 }
 
 const PAY_BADGE: Record<string, string> = {
@@ -329,6 +332,22 @@ export default function ReceptionPage() {
     onError: (err: Error) => toast.error(err.message || "Xatolik"),
   });
 
+  const checkinMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.post<{ appointment: { patient_name: string; doctor_name: string } }>(
+        "/api/booking/checkin",
+        { id }
+      );
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Bemor keldi deb belgilandi");
+      queryClient.invalidateQueries({ queryKey: ["booking-list"] });
+    },
+    onError: (err: Error) => toast.error(err.message || "Xatolik"),
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await api.post("/api/booking/cancel", { id });
@@ -494,6 +513,11 @@ export default function ReceptionPage() {
                       {PAY_LABEL[a.payment_status] || a.payment_status}
                     </Badge>
                     {a.source === "telegram" && <Badge variant="outline">Telegram</Badge>}
+                    {a.arrived_at && (
+                      <Badge variant="outline" className="gap-1 border-sky-500/20 text-sky-600 dark:text-sky-400">
+                        <UserCheck className="size-3" /> Keldi · {fmtTime(a.arrived_at)}
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {a.doctor_name} · {a.service_name || "—"} · {fmtTime(a.scheduled_at)} · <span className="font-medium text-foreground">{fmtSum(a.amount)}</span>
@@ -501,6 +525,16 @@ export default function ReceptionPage() {
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 gap-2">
+                  {!a.arrived_at && a.status !== "cancelled" && a.status !== "no_show" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => checkinMutation.mutate(a.id)}
+                      disabled={checkinMutation.isPending}
+                    >
+                      <UserCheck className="size-3.5" /> Keldi
+                    </Button>
+                  )}
                   {a.payment_status === "pending" && (
                     <Button size="sm" onClick={() => { setPayFor(a); setCashReceived(String(a.amount)); }}>
                       <Wallet className="size-3.5" /> Kassa

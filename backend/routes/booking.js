@@ -18,6 +18,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { createPayment } from '../services/payment-gateway.js';
 import { upsertPatientByPhone } from '../services/patient-store.js';
+import { checkInAppointment } from '../services/appointment-checkin.js';
+
+// Telegram "Men keldim" tugmasi — autentifikatsiyasiz, shuning uchun
+// access_code brute-force'iga qarshi oddiy IP bo'yicha limit.
+const checkinRateBuckets = new Map();
+function checkinRateOk(key, limit = 20, windowMs = 60_000) {
+  const now = Date.now();
+  const b = checkinRateBuckets.get(key) || { n: 0, reset: now + windowMs };
+  if (now > b.reset) { b.n = 0; b.reset = now + windowMs; }
+  b.n += 1;
+  checkinRateBuckets.set(key, b);
+  return b.n <= limit;
+}
 
 // I/O/1/0 chalkashmasin
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -367,6 +380,7 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
         `SELECT a.id, a.appointment_id, a.patient_name, a.phone, a.doctor_name,
                 a.scheduled_at, a.amount::float8 AS amount, a.status, a.payment_status,
                 a.payment_method, a.access_code, a.source, a.district, a.mahalla, s.name AS service_name,
+                a.arrived_at, a.checked_in_source,
                 (SELECT COUNT(*) FROM appointment_services x
                   WHERE x.tenant_id = a.tenant_id AND x.appointment_id = a.id)::int AS service_count
          FROM appointments a
@@ -378,6 +392,26 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       );
       res.json({ success: true, total: rows.length, appointments: rows });
     } catch (e) { serverError(res, e); }
+  });
+
+  // POST /checkin — qabulxona xodimi bemor kelganini bosib belgilaydi.
+  // Kiosk (/api/kiosk/checkin) va Telegram (/public/checkin) bilan BITTA
+  // xizmat funksiyasini chaqiradi — natija va xatolar bir xil.
+  const staffCheckinSchema = z.object({ id: z.union([z.string(), z.number()]) });
+  router.post('/checkin', authMiddleware, async (req, res) => {
+    const parsed = staffCheckinSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ success: false, error: 'id kerak' });
+    try {
+      const r = await checkInAppointment(pool, {
+        tenantId: tid(req),
+        appointmentId: parsed.data.id,
+        source: 'registratura',
+        actorUserId: req.user?.id || null,
+      });
+      res.json({ success: true, already: r.already, appointment: r.appointment });
+    } catch (e) {
+      res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });
+    }
   });
 
   // POST /cancel — bronni bekor qilish (slot bo'shaydi, partial index tufayli)
@@ -494,6 +528,34 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     }
     const tenantId = await resolvePublicTenant(req);
     await handleCreate(req, res, tenantId, { ...parsed.data, source: 'telegram' });
+  });
+
+  // POST /public/checkin — bemor Telegram Mini App'da "Men keldim" bosadi.
+  // Kiosk va registratura bilan BIR XIL xizmat funksiyasi chaqiriladi.
+  const publicCheckinSchema = z.object({ access_code: z.string().trim().min(4).max(12) });
+  router.post('/public/checkin', async (req, res) => {
+    const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+    if (!checkinRateOk(`pub-checkin:${ip}`)) {
+      return res.status(429).json({ success: false, error: 'Juda ko\'p urinish. Birozdan keyin qayta urinib ko\'ring.' });
+    }
+    const parsed = publicCheckinSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ success: false, error: 'Kod noto\'g\'ri' });
+    try {
+      const tenantId = await resolvePublicTenant(req);
+      const r = await checkInAppointment(pool, {
+        tenantId,
+        accessCode: parsed.data.access_code,
+        source: 'telegram',
+      });
+      res.json({
+        success: true,
+        already: r.already,
+        appointment: r.appointment,
+        message: r.already ? 'Siz allaqachon kelganingizni belgilagansiz.' : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
+      });
+    } catch (e) {
+      res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });
+    }
   });
 
   return router;

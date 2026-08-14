@@ -3,7 +3,7 @@
 // Bosh sahifa — 4 ta amal. Chapda katta "Qabulga yozilish" (asosiy
 // harakat), o'ngda 3 ta yordamchi plitka.
 
-import { ArrowRight, BedDouble, CalendarPlus, ClipboardList, Stethoscope, Users } from "lucide-react";
+import { ArrowRight, BedDouble, CalendarPlus, CircleCheckBig, ClipboardList, Stethoscope, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HEAD } from "./ui";
 import type { KioskT } from "@/lib/kiosk-i18n";
@@ -78,6 +78,7 @@ export function HomeScreen({
   onDoctors,
   onQueue,
   onInpatient,
+  onCheckin,
 }: {
   t: KioskT;
   onBook: () => void;
@@ -85,6 +86,7 @@ export function HomeScreen({
   onDoctors: () => void;
   onQueue: () => void;
   onInpatient: () => void;
+  onCheckin: () => void;
 }) {
   return (
     <div
@@ -126,14 +128,18 @@ export function HomeScreen({
         </div>
       </button>
 
-      <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", gap: 2, background: "var(--k-divider)" }}>
+      <div style={{ display: "grid", gridTemplateRows: "1fr 1fr 1fr", gap: 2, background: "var(--k-divider)" }}>
+        {/* Eng ustunda — har kuni eng ko'p ishlatiladigan amal: oldindan
+            yozilgan bemor kelganini tasdiqlaydi. Shu tasdiqlangunicha u
+            navbat ekranida ko'rinmaydi (bosqich U — check-in tizimi). */}
+        <SmallTile n="02" Icon={CircleCheckBig} title={t.tCheckin} desc={t.tCheckinDesc} onClick={onCheckin} delay=".06s" tone="green" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, background: "var(--k-divider)" }}>
-          <SmallTile n="02" Icon={ClipboardList} title={t.tPrices} desc={t.tPricesDesc} onClick={onPrices} delay=".06s" />
-          <SmallTile n="03" Icon={Stethoscope} title={t.tDoctors} desc={t.tDoctorsDesc} onClick={onDoctors} delay=".12s" />
+          <SmallTile n="03" Icon={ClipboardList} title={t.tPrices} desc={t.tPricesDesc} onClick={onPrices} delay=".12s" />
+          <SmallTile n="04" Icon={Stethoscope} title={t.tDoctors} desc={t.tDoctorsDesc} onClick={onDoctors} delay=".18s" />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, background: "var(--k-divider)" }}>
-          <SmallTile n="04" Icon={BedDouble} title={t.tInpatient} desc={t.tInpatientDesc} onClick={onInpatient} delay=".18s" />
-          <SmallTile n="05" Icon={Users} title={t.tQueue} desc={t.tQueueDesc} onClick={onQueue} delay=".24s" tone="green" />
+          <SmallTile n="05" Icon={BedDouble} title={t.tInpatient} desc={t.tInpatientDesc} onClick={onInpatient} delay=".24s" />
+          <SmallTile n="06" Icon={Users} title={t.tQueue} desc={t.tQueueDesc} onClick={onQueue} delay=".3s" />
         </div>
       </div>
     </div>

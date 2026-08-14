@@ -25,6 +25,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { normalizePhone } from '../services/patient-store.js';
 import { createPayment } from '../services/payment-gateway.js';
+import { checkInAppointment } from '../services/appointment-checkin.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -754,34 +755,92 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
     }
   });
 
+  // POST /api/kiosk/checkin — bemor kelganini o'zi tasdiqlaydi (access_code
+  // bilan). Registratura va Telegramdagi bir xil funksiyani chaqiradi
+  // (backend/services/appointment-checkin.js) — natija har doim bir xil.
+  const checkinSchema = z.object({
+    access_code: z.string().trim().min(4).max(12),
+  });
+
+  router.post('/checkin', deviceAuth, async (req, res) => {
+    if (!checkRate(`checkin:${req.kioskDevice.id}`, 20, 60_000)) {
+      return res.status(429).json({ success: false, error: 'Juda ko\'p urinish. Registraturaga murojaat qiling.' });
+    }
+    const parsed = checkinSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Kirish kodi noto\'g\'ri' });
+    }
+    try {
+      const r = await checkInAppointment(pool, {
+        tenantId: req.kioskTenantId,
+        accessCode: parsed.data.access_code,
+        source: 'kiosk',
+      });
+      res.json({
+        success: true,
+        already: r.already,
+        appointment: {
+          patient_name: r.appointment.patient_name,
+          doctor_name: r.appointment.doctor_name,
+          scheduled_at: r.appointment.scheduled_at,
+        },
+        message: r.already ? 'Siz allaqachon kelganingizni belgilagansiz.' : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
+      });
+    } catch (e) {
+      res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });
+    }
+  });
+
   // GET /api/kiosk/queue — kutish zali TV ekrani uchun
   //
   // FILTR TARIXI: avval `status IN ('scheduled','in_progress') AND
   // payment_status='paid'` edi. Real ma'lumotda bronlar 'confirmed'+'paid'
   // yoki 'scheduled'+'pending' bo'lgani uchun ekran DOIM bo'sh turardi.
-  // Endi bugungi faol bronlarning hammasi ko'rsatiladi; to'lov holati
-  // alohida maydonda qaytadi (TV uni ko'rsatmasa ham bo'ladi).
+  // Keyin bugungi faol bronlarning hammasi ko'rsatildi — lekin bu ham
+  // noto'g'ri edi: bron qilib KELMAGAN bemorlar ham "navbatda" ko'rinardi,
+  // bu haqiqiy navbat uzunligini bilib bo'lmaydigan qilardi.
+  //
+  // Endi: faqat arrived_at bor (ya'ni jismonan KELGAN) bemorlar ko'rinadi.
+  // Har biriga taxminiy kutish vaqti hisoblanadi — o'sha shifokorda
+  // undan oldin kutayotganlar soni x xizmat davomiyligi.
   router.get('/queue', deviceAuth, async (req, res) => {
     try {
       const rows = await q(
-        `SELECT a.access_code, a.patient_name, a.scheduled_at, a.status,
-                a.payment_status, a.doctor_name, d.specialization
+        `SELECT a.access_code, a.patient_name, a.scheduled_at, a.status, a.arrived_at,
+                a.payment_status, a.doctor_id, a.doctor_name, d.specialization,
+                COALESCE(s.duration_min, 20) AS duration_min
            FROM appointments a
            LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
+           LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
           WHERE a.tenant_id = $1
             AND date(a.scheduled_at) = CURRENT_DATE
             AND a.status IN ('scheduled','confirmed','in_progress')
+            AND a.arrived_at IS NOT NULL
           ORDER BY
-            -- Qabuldagilar tepada, keyin vaqt bo'yicha
+            -- Qabuldagilar tepada, keyin kim OLDIN kelgan bo'lsa shu oldin
             CASE WHEN a.status = 'in_progress' THEN 0 ELSE 1 END,
-            a.scheduled_at ASC
+            a.arrived_at ASC
           LIMIT 30`,
         [req.kioskTenantId]
       );
+
+      // Taxminiy kutish — har shifokor uchun alohida hisoblanadi: undan
+      // oldin (in_progress yoki undan oldin kelgan) nechta bemor bo'lsa,
+      // shularning xizmat davomiyligi yig'indisi.
+      const aheadByDoctor = new Map();
+      const withWait = rows.map((r) => {
+        const key = r.doctor_id || r.doctor_name;
+        const waitedSoFar = aheadByDoctor.get(key) || 0;
+        const isWaiting = r.status !== 'in_progress';
+        const waitMinutes = isWaiting ? waitedSoFar : 0;
+        aheadByDoctor.set(key, waitedSoFar + (r.duration_min || 20));
+        return { ...r, wait_minutes: waitMinutes };
+      });
+
       // PII: to'liq ism ko'rsatilmaydi — kod + familiya bosh harfi
       res.json({
         success: true,
-        queue: rows.map((r) => {
+        queue: withWait.map((r) => {
           const parts = String(r.patient_name || '').trim().split(/\s+/);
           return {
             code: r.access_code,
@@ -793,6 +852,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
             department: r.specialization,
             status: r.status,
             paid: r.payment_status === 'paid',
+            wait_minutes: r.wait_minutes,
           };
         }),
       });

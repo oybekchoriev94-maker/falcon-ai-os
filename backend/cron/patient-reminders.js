@@ -106,9 +106,32 @@ async function tickFollowUps() {
   if (rows.length) console.log(`[CRON follow_up_7d] ${rows.length} ta ko'rildi`);
 }
 
+// Bemor kelmagan bronni "no_show"ga o'tkazadi — check-in tizimi (kiosk/
+// registratura/telegram) qo'shilgandan keyin navbat ro'yxati "kelmaydigan"
+// bronlar bilan tiqilib qolmasligi uchun. 20 daqiqa kechikish — bemorga
+// yo'lda tanaffus berish uchun yetarli, lekin navbatni cho'zib yubormaydi.
+// 2 kundan eski bronlarga tegilmaydi (birinchi joriy etishda eski
+// ma'lumotni ommaviy o'zgartirib yubormaslik uchun ehtiyot chegarasi).
+const NO_SHOW_AFTER_MIN = 20;
+
+async function tickNoShow() {
+  const pool = getPool();
+  const { rows } = await pool.query(`
+    UPDATE appointments
+       SET status = 'no_show'
+     WHERE status IN ('scheduled', 'confirmed')
+       AND arrived_at IS NULL
+       AND scheduled_at < NOW() - INTERVAL '${NO_SHOW_AFTER_MIN} minutes'
+       AND scheduled_at > NOW() - INTERVAL '2 days'
+     RETURNING id, tenant_id, doctor_name, scheduled_at
+  `);
+  if (rows.length) console.log(`[CRON no_show] ${rows.length} ta bron belgilandi`);
+}
+
 async function tick() {
   try { await tickAppointmentReminders(); } catch (e) { console.warn('[CRON tick reminders]', e.message); }
   try { await tickFollowUps(); }             catch (e) { console.warn('[CRON tick followups]', e.message); }
+  try { await tickNoShow(); }                catch (e) { console.warn('[CRON tick no_show]', e.message); }
 }
 
 export function startPatientReminderCron() {

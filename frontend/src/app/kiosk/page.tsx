@@ -26,6 +26,7 @@ import {
   type KioskPayMethod,
   type KioskWard,
   type AdmissionRequestResult,
+  type CheckinResult,
 } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { KIOSK_TEXT, type KioskLang } from "@/lib/kiosk-i18n";
@@ -46,9 +47,10 @@ import {
 import { PricesScreen, DoctorsScreen, QueueScreen, TicketScreen } from "@/components/kiosk/info-screens";
 import { CartScreen, type CartVisit } from "@/components/kiosk/cart-screen";
 import { InpatientScreen } from "@/components/kiosk/inpatient-screen";
+import { CheckinScreen } from "@/components/kiosk/checkin-screen";
 import { ErrorBanner, Spinner } from "@/components/kiosk/ui";
 
-type Screen = "idle" | "home" | "book" | "prices" | "doctors" | "queue" | "ticket" | "inpatient";
+type Screen = "idle" | "home" | "book" | "prices" | "doctors" | "queue" | "ticket" | "inpatient" | "checkin";
 type Identity = "unknown" | "confirmed" | "manual";
 
 const IDLE_MS = 90_000;
@@ -150,6 +152,12 @@ function Kiosk({
 
   const [ticket, setTicket] = useState<BookResult | null>(null);
 
+  // "Men keldim" — check-in
+  const [checkinCode, setCheckinCode] = useState("");
+  const [checkinLoading, setCheckinLoading] = useState(false);
+  const [checkinResult, setCheckinResult] = useState<CheckinResult | null>(null);
+  const [checkinError, setCheckinError] = useState("");
+
   /* ── Soat ── */
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 20_000);
@@ -166,6 +174,7 @@ function Kiosk({
     setTicket(null); setError(""); setCat(null);
     setWardId(null); setAdmDone(false); setAdmSending(false);
     setDay(new Date().toLocaleDateString("en-CA"));
+    setCheckinCode(""); setCheckinResult(null); setCheckinError(""); setCheckinLoading(false);
   }, []);
 
   /* ── Harakatsizlik: 90s tegilmasa ekran-saverga qaytadi.
@@ -336,6 +345,32 @@ function Kiosk({
   const goPrices = async () => { await loadServices(); setScreen("prices"); };
   const goDoctors = async () => { await loadDepartments(); setScreen("doctors"); };
   const goQueue = async () => { await loadQueue(); setScreen("queue"); };
+
+  const goCheckin = () => {
+    setCheckinCode(""); setCheckinResult(null); setCheckinError("");
+    setScreen("checkin");
+  };
+  function checkinKey(ch: string) {
+    setCheckinCode((p) => (p.length < 8 ? p + ch : p));
+  }
+  function checkinBackspace() {
+    setCheckinCode((p) => p.slice(0, -1));
+  }
+  function checkinClear() {
+    setCheckinCode("");
+  }
+  async function submitCheckin() {
+    if (checkinCode.length < 4) return;
+    setCheckinLoading(true); setCheckinError("");
+    try {
+      const r = await kioskApi.post<CheckinResult>("/api/kiosk/checkin", { access_code: checkinCode });
+      setCheckinResult(r);
+    } catch (e) {
+      setCheckinError(e instanceof Error ? e.message : t.errGeneric);
+    } finally {
+      setCheckinLoading(false);
+    }
+  }
 
   const goInpatient = async () => {
     setError(""); setAdmDone(false); setWardId(null); setFocus("phone");
@@ -549,7 +584,24 @@ function Kiosk({
             onDoctors={goDoctors}
             onQueue={goQueue}
             onInpatient={goInpatient}
+            onCheckin={goCheckin}
           />
+        )}
+
+        {screen === "checkin" && (
+          <div className="k-fade" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <CheckinScreen
+              t={t}
+              code={checkinCode}
+              onKey={checkinKey}
+              onBackspace={checkinBackspace}
+              onClear={checkinClear}
+              onSubmit={submitCheckin}
+              loading={checkinLoading}
+              result={checkinResult}
+              error={checkinError}
+            />
+          </div>
         )}
 
         {screen === "inpatient" && (

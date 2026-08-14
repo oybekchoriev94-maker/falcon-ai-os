@@ -14,6 +14,7 @@ export interface KioskT {
   tPrices: string; tPricesDesc: string;
   tDoctors: string; tDoctorsDesc: string;
   tQueue: string; tQueueDesc: string;
+  tCheckin: string; tCheckinDesc: string;
 
   step1: string; step2: string; step3: string; step4: string; step5: string;
   stService: string; stDoctor: string; stTime: string; stData: string; stConfirm: string;
@@ -52,6 +53,12 @@ export interface KioskT {
 
   walkinTitle: string; walkinDesc: string;
   waiting: string; inRoom: string; queueEmpty: string;
+  waitApprox: (n: number) => string;
+
+  checkinTitle: string; checkinDesc: string; checkinCodeLabel: string;
+  checkinBackspace: string; checkinSubmit: string;
+  checkinDoneTitle: string; checkinAlreadyTitle: string;
+  checkinDoneNote: (doctor: string) => string;
 
   back: string; home: string; next: string; confirmBtn: string;
   newBooking: string; print: string;
@@ -77,6 +84,8 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     tDoctorsDesc: "Mutaxassislar va qabul vaqtlari",
     tQueue: "Jonli navbat",
     tQueueDesc: "Bugungi navbat holati",
+    tCheckin: "Men keldim",
+    tCheckinDesc: "Oldindan yozilgan bo'lsangiz shu yerda tasdiqlang",
 
     // Bron qadamlari
     step1: "1-qadam",
@@ -169,6 +178,17 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     waiting: "kutmoqda",
     inRoom: "qabulda",
     queueEmpty: "Hozircha navbatda bemor yo'q",
+    waitApprox: (n: number) => (n <= 0 ? "navbat sizniki" : `~${n} daqiqa kutish`),
+
+    // Men keldim
+    checkinTitle: "Kelganingizni tasdiqlang",
+    checkinDesc: "Yozilganda bergan kirish kodini kiriting",
+    checkinCodeLabel: "Kirish kodi",
+    checkinBackspace: "O'chirish",
+    checkinSubmit: "Tasdiqlash",
+    checkinDoneTitle: "Xush kelibsiz!",
+    checkinAlreadyTitle: "Siz allaqachon kelganingizni belgilagansiz",
+    checkinDoneNote: (doctor: string) => `Siz ${doctor} navbatiga qo'shildingiz. Kutish zalida o'tiring.`,
 
     // Chrome
     back: "Orqaga",
@@ -199,6 +219,8 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     tDoctorsDesc: "Специалисты и часы приёма",
     tQueue: "Живая очередь",
     tQueueDesc: "Состояние очереди на сегодня",
+    tCheckin: "Я пришёл",
+    tCheckinDesc: "Если вы уже записаны — подтвердите здесь",
 
     step1: "Шаг 1",
     step2: "Шаг 2",
@@ -286,6 +308,16 @@ export const KIOSK_TEXT: Record<"uz" | "ru", KioskT> = {
     waiting: "ожидает",
     inRoom: "на приёме",
     queueEmpty: "Пока нет пациентов в очереди",
+    waitApprox: (n: number) => (n <= 0 ? "ваша очередь" : `~${n} мин. ожидания`),
+
+    checkinTitle: "Подтвердите прибытие",
+    checkinDesc: "Введите код, полученный при записи",
+    checkinCodeLabel: "Код входа",
+    checkinBackspace: "Стереть",
+    checkinSubmit: "Подтвердить",
+    checkinDoneTitle: "Добро пожаловать!",
+    checkinAlreadyTitle: "Вы уже подтвердили прибытие",
+    checkinDoneNote: (doctor: string) => `Вы добавлены в очередь к ${doctor}. Ожидайте в зале.`,
 
     back: "Назад",
     home: "Главная",

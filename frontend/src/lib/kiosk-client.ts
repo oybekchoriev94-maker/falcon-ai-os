@@ -182,10 +182,20 @@ export interface QueueItem {
   /** scheduled | confirmed | in_progress */
   status: string;
   paid: boolean;
+  /** Taxminiy kutish (daqiqa) — faqat jismonan kelganlar (check-in qilganlar) uchun */
+  wait_minutes: number;
 }
 export interface QueueResult {
   success: true;
   queue: QueueItem[];
+}
+
+/** "Men keldim" — check-in natijasi */
+export interface CheckinResult {
+  success: true;
+  already: boolean;
+  appointment: { patient_name: string; doctor_name: string; scheduled_at: string };
+  message: string;
 }
 
 /** Statsionar bo'limi va undagi bo'sh joy soni */

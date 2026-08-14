@@ -251,16 +251,21 @@ export function QueueScreen({ t, queue, loading }: { t: KioskT; queue: QueueItem
                     <span>{new Date(q.time).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                 </div>
-                <div
-                  style={{
-                    ...KICKER,
-                    fontSize: 13,
-                    padding: "6px 12px",
-                    background: active ? "var(--k-green-100)" : "var(--k-n-200)",
-                    color: active ? "var(--k-green-800)" : "var(--k-n-700)",
-                  }}
-                >
-                  {active ? t.inRoom : t.waiting}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                  <div
+                    style={{
+                      ...KICKER,
+                      fontSize: 13,
+                      padding: "6px 12px",
+                      background: active ? "var(--k-green-100)" : "var(--k-n-200)",
+                      color: active ? "var(--k-green-800)" : "var(--k-n-700)",
+                    }}
+                  >
+                    {active ? t.inRoom : t.waiting}
+                  </div>
+                  {!active && (
+                    <div style={{ fontSize: 13, color: "var(--k-n-600)" }}>{t.waitApprox(q.wait_minutes)}</div>
+                  )}
                 </div>
               </div>
             );
