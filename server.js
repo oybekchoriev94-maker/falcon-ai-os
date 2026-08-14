@@ -67,6 +67,7 @@ import insightsRoutes from './backend/routes/insights.js';
 import copilotRoutes from './backend/routes/copilot.js';
 import patientBotRoutes from './backend/routes/patient-bot.js';
 import kioskRoutes from './backend/routes/kiosk.js';
+import attendanceRoutes from './backend/routes/attendance.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
@@ -442,6 +443,9 @@ async function main() {
       // Kiosk — qurilma tokeni bilan himoyalangan (X-Kiosk-Token sarlavhasi).
       // /devices endpointlari JWT + ceo/admin talab qiladi (route ichida).
       app.use(`${p}/kiosk`, tenantRateLimit('api'), kioskRoutes(getPool(), authMiddleware, checkRole));
+      // Xodimlar davomati — agent qurilma tokeni bilan hodisa yuboradi,
+      // hisobotlar JWT bilan o'qiladi. Yuz shablonlari bu yerga kelmaydi.
+      app.use(`${p}/attendance`, tenantRateLimit('api'), attendanceRoutes(getPool(), authMiddleware, checkRole));
     }
     mountRoutes('/api');
     mountRoutes(API_PREFIX);

@@ -1,0 +1,6 @@
+# Yuz tanish uchun og'ir kutubxona kerak emas — OpenCV o'zida
+# YuNet va SFace ni ONNX orqali yurgizadi. PyTorch, dlib, face_recognition
+# ATAYLAB ishlatilmagan: ular yuzlab MB va o'rnatish qiyin.
+opencv-contrib-python>=4.9
+numpy>=1.24
+requests>=2.31

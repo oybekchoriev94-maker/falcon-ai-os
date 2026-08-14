@@ -13,7 +13,7 @@ import { api } from "@/lib/api-client";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Monitor, Plus, Copy, Check, Power, Loader2, Tv, ScanLine, AlertTriangle,
+  Monitor, Plus, Copy, Check, Power, Loader2, Tv, ScanLine, AlertTriangle, UserCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 interface Device {
   id: string;
   name: string;
-  kind: "entry" | "queue_tv" | "result";
+  kind: "entry" | "queue_tv" | "result" | "attendance";
   location: string | null;
   token_prefix: string;
   is_active: boolean;
@@ -42,9 +42,12 @@ interface Device {
 }
 
 const KIND_META = {
-  entry:    { label: "Kirish kioski",  Icon: Monitor,   hint: "Bemor o'zi qabulga yoziladi" },
-  queue_tv: { label: "Navbat ekrani",  Icon: Tv,        hint: "Kutish zali TV" },
-  result:   { label: "Natija kioski",  Icon: ScanLine,  hint: "Bemor natijasini oladi" },
+  entry:      { label: "Kirish kioski", Icon: Monitor,   hint: "Bemor o'zi qabulga yoziladi" },
+  queue_tv:   { label: "Navbat ekrani", Icon: Tv,        hint: "Kutish zali TV" },
+  result:     { label: "Natija kioski", Icon: ScanLine,  hint: "Bemor natijasini oladi" },
+  // Kiosk emas — klinika kompyuteridagi davomat agenti. Qurilma tokeni
+  // tizimi bir xil bo'lgani uchun shu ro'yxatda boshqariladi.
+  attendance: { label: "Davomat kamerasi", Icon: UserCheck, hint: "Xodimlar keldi-ketdi" },
 } as const;
 
 function fmtSeen(iso: string | null): string {

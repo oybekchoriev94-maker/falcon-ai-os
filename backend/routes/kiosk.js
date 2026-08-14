@@ -822,7 +822,9 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
 
   const deviceSchema = z.object({
     name: z.string().min(2).max(100),
-    kind: z.enum(['entry', 'queue_tv', 'result']).default('entry'),
+    // 'attendance' — klinika kompyuteridagi davomat agenti. Kiosk emas,
+    // lekin qurilma tokeni tizimi bir xil, shuning uchun shu jadvalda.
+    kind: z.enum(['entry', 'queue_tv', 'result', 'attendance']).default('entry'),
     location: z.string().max(200).optional(),
   });
 

@@ -91,3 +91,10 @@ get-token.mjs
 scripts/stt-compare/audio*/
 scripts/stt-compare/models/
 scripts/stt-compare/natija*.md
+
+# Davomat agenti — biometrik ma'lumot va sozlama GIT'GA TUSHMASIN
+agent/attendance/faces/
+agent/attendance/data/
+agent/attendance/models/
+agent/attendance/config.json
+agent/attendance/venv/
