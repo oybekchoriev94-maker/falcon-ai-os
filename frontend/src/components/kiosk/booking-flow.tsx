@@ -60,6 +60,10 @@ const DOCTOR_MATCHES: Record<string, (s: KioskService) => boolean> = {
     s.category === "Rentgen · Kontrastli" ||
     s.category === "Laboratoriya · Onkomarker" ||
     s.category === "UZI",
+  // Reproduktolog "Shifokor ko'rigi"ni ham bajaradi — ikkalasi ham
+  // services_catalog.specialty = 'reproduktolog' bilan belgilangan.
+  reproduktolog: (s) => s.specialty === "reproduktolog",
+  xirurg: (s) => s.specialty === "xirurg",
   laborant: (s) => (s.category || "").startsWith("Laboratoriya"),
   fizioterapevt: (s) => s.category === "Fizioterapiya",
   ekg: (s) => s.category === "Diagnostika",
@@ -140,6 +144,8 @@ const DEPT_LABEL: Record<string, string> = {
   uzi: "UZI mutaxassisi",
   fizioterapevt: "Fizioterapevt",
   rentgen: "Rentgenolog",
+  reproduktolog: "Reproduktolog",
+  xirurg: "Xirurg",
   therapy: "Terapevt",
 };
 export function deptLabel(n: string) {
