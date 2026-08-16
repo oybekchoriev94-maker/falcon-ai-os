@@ -5,7 +5,12 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Bemor Kabineti</title>
-<script src="https://telegram.org/js/telegram-webapp.js"></script>
+<!-- O'zimizda joylashtirilgan — telegram.org domeni ba'zi provayderlarda
+     bloklangan bo'lishi mumkin (Telegram ilovasining o'zi ishlaydi, lekin
+     oddiy https://telegram.org sayti yopiq bo'lishi mumkin). Shu skript
+     bo'lmasa window.Telegram.WebApp umuman yaratilmaydi va initData
+     yo'qolib, HAMMA so'rov 401 bilan qaytadi. -->
+<script src="/telegram-webapp.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <style>
@@ -358,23 +363,6 @@ const initDataRaw=tg?.initData||'',initData=tg?.initDataUnsafe||{};
 telegramId=initData?.user?.id?.toString()||'';userName=initData?.user?.first_name||'Bemor';
 if(!telegramId){const p=new URLSearchParams(window.location.search);telegramId=p.get('telegram_id')||''}
 if(!telegramId)telegramId='demo_user';
-
-// VAQTINCHALIK DIAGNOSTIKA — nima uchun initData bo'sh kelayotganini
-// ekrandan o'qish uchun (telefonda konsolga kirish qiyin).
-(function(){
-  const d=document.createElement('div');
-  d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:8px;white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto';
-  d.textContent=[
-    'window.Telegram: '+(typeof window.Telegram),
-    'WebApp bor: '+(!!tg),
-    'platform: '+(tg?.platform||'-'),
-    'version: '+(tg?.version||'-'),
-    'initData uzunligi: '+(initDataRaw?initDataRaw.length:0),
-    'initDataUnsafe.user: '+JSON.stringify(initData?.user||null),
-    'URL: '+location.href,
-  ].join('\n');
-  document.body.prepend(d);
-})();
 
 async function api(method,path,body){
   const opts={method,headers:{}};
