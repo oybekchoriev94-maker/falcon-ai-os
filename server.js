@@ -195,6 +195,22 @@ app.get('/', (req, res) => res.redirect('/login.html'));
 // ============================================================
 let patientBot = null, referralBot = null;
 
+// Klinika nomini bazadan olamiz — kodga yozib qo'yilsa, har bir klinika
+// uchun alohida o'zgartirish kerak bo'lardi (bu SaaS, bitta klinika emas).
+// Bir marta o'qib keshlaymiz: /start har safar bazaga bormasin.
+let _clinicNameCache = null;
+async function getClinicName() {
+  if (_clinicNameCache) return _clinicNameCache;
+  try {
+    const tenantId = process.env.TMA_TENANT_ID || 'default';
+    const row = await qGet('SELECT name FROM tenants WHERE id = $1', [tenantId]);
+    _clinicNameCache = row?.name || 'Klinika';
+  } catch {
+    _clinicNameCache = 'Klinika';
+  }
+  return _clinicNameCache;
+}
+
 function initBots() {
   const tokenP = process.env.TELEGRAM_TOKEN_PATIENT;
   const tokenR = process.env.TELEGRAM_TOKEN_REFERRAL;
@@ -220,7 +236,8 @@ function initBots() {
             ])
           );
         } else if (patientUrl) {
-          ctx.reply('Assalomu alaykum! Klinika Hayot botiga xush kelibsiz.',
+          const clinicName = await getClinicName();
+          ctx.reply(`Assalomu alaykum! ${clinicName} botiga xush kelibsiz.`,
             Markup.inlineKeyboard([Markup.button.webApp('Bemor kabineti', patientUrl)])
           );
         } else {

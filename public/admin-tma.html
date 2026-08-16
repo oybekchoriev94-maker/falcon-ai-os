@@ -61,7 +61,7 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.5)}
 <div class="header">
   <h1>⚙️ Admin panel</h1>
   <div><span class="role-badge" id="roleBadge">—</span></div>
-  <p id="userNameDisplay">Klinika Hayot boshqaruv tizimi</p>
+  <p id="userNameDisplay">Oqtosh Klinikasi boshqaruv tizimi</p>
 </div>
 
 <div class="tabs" id="tabBar"></div>
@@ -202,7 +202,7 @@ async function initApp() {
   window.currentUserId = d.user.id || d.user.telegram_id || 'admin';
 
   document.getElementById('roleBadge').textContent = roleLabel(d.user.role);
-  document.getElementById('userNameDisplay').textContent = d.user.name || 'Klinika Hayot';
+  document.getElementById('userNameDisplay').textContent = d.user.name || 'Oqtosh Klinikasi';
 
   const tabBar = document.getElementById('tabBar');
   tabBar.innerHTML = '';
