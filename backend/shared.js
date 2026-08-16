@@ -135,17 +135,20 @@ function hmacHex(key, msg) {
 }
 
 /**
- * Telegram initData imzosini tekshiradi.
+ * Telegram initData `hash` imzosini bot tokeni bilan tekshiradi.
  *
- * `signature` HAQIDA: Bot API 8.0 (2024-noyabr) initData'ga `signature`
- * maydonini qo'shdi (uchinchi tomon tekshiruvi uchun Ed25519 imzo).
- * Uni `hash` hisobiga qo'shish/qo'shmaslik borasida mijoz versiyalari
- * o'rtasida farq bor va rasmiy hujjat bilan kutubxonalar bir-biriga
- * mos kelmaydi. Taxmin qilish o'rniga IKKALA variantni ham sinaymiz —
- * ikkalasi ham bot tokenini bilishni talab qiladi, shuning uchun bu
- * xavfsizlikni zaiflashtirmaydi.
+ * QOIDA: data_check_string'dan FAQAT `hash` chiqariladi. `signature`
+ * boshqa maydonlar kabi hisobga KIRADI.
  *
- * @returns {{ ok: true, fields: Map, variant: string } | { ok: false, error: string, debug?: object }}
+ * Bu joyda bir marta xato qilingan, shuning uchun izohlab qo'yamiz:
+ * Bot API 8.0 initData'ga `signature` (Ed25519) maydonini qo'shdi. U
+ * bot tokeni YO'Q uchinchi tomonlar uchun. Ikkalasi ikki xil tekshiruv:
+ *   - `hash`      (HMAC, bot tokeni bilan) -> faqat `hash` chiqariladi
+ *   - `signature` (Ed25519, ochiq kalit)   -> `hash` VA `signature` chiqariladi
+ * Ed25519 qoidasini HMAC yo'liga qo'llash — har bir so'rovni 403 qiladi.
+ * Bu production'da haqiqiy payload va haqiqiy token bilan tasdiqlangan.
+ *
+ * @returns {{ ok: true, fields: Map } | { ok: false, error: string, debug?: object }}
  */
 function checkInitDataSignature(initData, botToken) {
   const pairs = parseInitData(initData);
@@ -153,36 +156,27 @@ function checkInitDataSignature(initData, botToken) {
   if (!hashPair) return { ok: false, error: 'Hash topilmadi' };
   const receivedHash = hashPair[1];
 
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-
-  const build = (excludeSignature) => pairs
-    .filter(([k]) => k !== 'hash' && !(excludeSignature && k === 'signature'))
+  const dataCheckString = pairs
+    .filter(([k]) => k !== 'hash')
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `${k}=${v}`)
     .join('\n');
 
-  const variants = [
-    ['signature-siz', build(true)],
-    ['signature-bilan', build(false)],
-  ];
-
-  for (const [name, dcs] of variants) {
-    if (hmacHex(secretKey, dcs) === receivedHash) {
-      return { ok: true, fields: new Map(pairs), variant: name };
-    }
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+  if (hmacHex(secretKey, dataCheckString) === receivedHash) {
+    return { ok: true, fields: new Map(pairs) };
   }
 
   // Sabab noma'lum qolmasin: kalitlar ro'yxati, hash boshlari va bot
   // identifikatori (tokendan OLDINGI qism — maxfiy emas) loglanadi.
-  // Bot ID mos kelmasa — TELEGRAM_TOKEN_PATIENT boshqa botniki degani.
+  // Bot ID kutilganidan boshqa bo'lsa — token boshqa botniki degani.
   return {
     ok: false,
     error: 'hash mos kelmadi',
     debug: {
       kalitlar: pairs.map(([k]) => k).sort().join(','),
       kelgan_hash: receivedHash.slice(0, 12),
-      hisoblangan_signature_siz: hmacHex(secretKey, variants[0][1]).slice(0, 12),
-      hisoblangan_signature_bilan: hmacHex(secretKey, variants[1][1]).slice(0, 12),
+      hisoblangan: hmacHex(secretKey, dataCheckString).slice(0, 12),
       bot_id: String(botToken).split(':')[0] || '?',
       initData_uzunligi: String(initData).length,
     },
