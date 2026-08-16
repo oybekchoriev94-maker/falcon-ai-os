@@ -104,25 +104,46 @@ export async function validateNonce(req, res, next) {
   next();
 }
 
+/**
+ * Telegram initData imzosini tekshiradi.
+ *
+ * DIQQAT — `signature`: Bot API 8.0 (2024-noyabr) dan boshlab Telegram
+ * initData'ga `signature` maydonini qo'shdi (uchinchi tomon tekshiruvi uchun
+ * Ed25519 imzo). U `hash` hisobiga KIRMAYDI — `hash` kabi chetlab o'tilishi
+ * shart. Aks holda data_check_string boshqacha chiqib, yangi mijozlarda
+ * (tdesktop 9.6, mobil ilovaning yangi versiyalari) tekshiruv HAR DOIM
+ * muvaffaqiyatsiz bo'ladi. Eski mijozlarda `signature` bo'lmaydi —
+ * delete() shunchaki hech narsa qilmaydi, shuning uchun ikkalasi ham ishlaydi.
+ *
+ * @returns {{ ok: true, params: URLSearchParams } | { ok: false, error: string }}
+ */
+function checkInitDataSignature(initData, botToken) {
+  const params = new URLSearchParams(initData);
+  const hash = params.get('hash');
+  if (!hash) return { ok: false, error: 'Hash topilmadi' };
+  params.delete('hash');
+  params.delete('signature');
+  const dataCheckString = Array.from(params.entries())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n');
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  if (computedHash !== hash) return { ok: false, error: 'hash mos kelmadi' };
+  return { ok: true, params };
+}
+
 export function verifyTelegramAuth(req, res, next) {
   const initData = req.headers['x-telegram-init-data'];
   if (!initData) return next();
   try {
     const botToken = process.env.TELEGRAM_TOKEN_PATIENT || process.env.TELEGRAM_TOKEN_REFERRAL || '';
     if (!botToken) return res.status(500).json({ success: false, error: 'BOT_TOKEN aniqlanmadi' });
-    const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
-    if (!hash) return res.status(403).json({ success: false, error: 'Hash topilmadi' });
-    params.delete('hash');
-    const dataCheckString = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n');
-    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    if (computedHash !== hash) {
-      return res.status(403).json({ success: false, error: 'Telegram autentifikatsiyasi muvaffaqiyatsiz: hash mos kelmadi' });
+    const check = checkInitDataSignature(initData, botToken);
+    if (!check.ok) {
+      return res.status(403).json({ success: false, error: `Telegram autentifikatsiyasi muvaffaqiyatsiz: ${check.error}` });
     }
+    const { params } = check;
     const authDate = params.get('auth_date');
     if (!authDate) return res.status(403).json({ success: false, error: 'Avtorizatsiya vaqti ko\'rsatilmagan' });
     if (Math.floor(Date.now() / 1000) - parseInt(authDate, 10) > 300) {
@@ -186,19 +207,12 @@ export function verifyTelegramInitData(req, res, next) {
   try {
     const botToken = process.env.TELEGRAM_TOKEN_PATIENT || process.env.TELEGRAM_TOKEN_REFERRAL || '';
     if (!botToken) return res.status(500).json({ success: false, error: 'BOT_TOKEN aniqlanmadi' });
-    const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
-    if (!hash) return res.status(403).json({ success: false, error: 'Hash topilmadi' });
-    params.delete('hash');
-    const dataCheckString = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n');
-    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    if (computedHash !== hash) {
+    const check = checkInitDataSignature(initData, botToken);
+    if (!check.ok) {
+      console.warn('[TMA AUTH] initData rad etildi:', check.error);
       return res.status(403).json({ success: false, error: 'Telegram autentifikatsiyasi muvaffaqiyatsiz' });
     }
+    const { params } = check;
     const authDate = params.get('auth_date');
     if (!authDate || Math.floor(Date.now() / 1000) - parseInt(authDate, 10) > 86400) {
       return res.status(403).json({ success: false, error: 'Avtorizatsiya vaqti o\'tgan, ilovani qayta yuklang' });
@@ -208,6 +222,7 @@ export function verifyTelegramInitData(req, res, next) {
     req.telegramUser = JSON.parse(userStr);
     return next();
   } catch (e) {
+    console.error('[TMA AUTH] xato:', e.message);
     return res.status(403).json({ success: false, error: 'Avtorizatsiya xatosi' });
   }
 }
