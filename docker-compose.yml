@@ -59,6 +59,9 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       TELEGRAM_TOKEN_PATIENT: ${TELEGRAM_TOKEN_PATIENT:-}
       TELEGRAM_TOKEN_REFERRAL: ${TELEGRAM_TOKEN_REFERRAL:-}
+      # Bemor boti hozircha bitta klinikaga xizmat qiladi — shu klinikaning
+      # tenants.id qiymati. Yangi Telegram bemor shu tenantga bog'lanadi.
+      TMA_TENANT_ID: ${TMA_TENANT_ID:-default}
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
       SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:-ceo-change-me-now}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin-change-me-now}

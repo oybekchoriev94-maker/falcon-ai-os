@@ -8,6 +8,12 @@ import { checkInAppointment } from '../services/appointment-checkin.js';
 // mantig'i (backend/routes/booking.js: createBookingCore). Shu tufayli
 // Telegram orqali yozilgan bemor registratura va kiosk bilan bir xil
 // `appointments` jadvalida, bir xil navbatda ko'rinadi.
+// Bu bot HOZIRCHA faqat BITTA klinikaga xizmat qiladi. Yangi bemor hali
+// hech qanday tenantga bog'lanmagan bo'lsa, shu tenantga tushadi. Agar
+// kelajakda bir nechta klinika shu botdan foydalansa (har biri o'z tokeni
+// bilan emas), buni so'rov manbasidan aniqlashga o'tkazish kerak bo'ladi.
+const PATIENT_BOT_TENANT_ID = process.env.TMA_TENANT_ID || 'default';
+
 export default function tmaRoutes(pool, bookingCore) {
   const router = Router();
   const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
@@ -30,11 +36,10 @@ export default function tmaRoutes(pool, bookingCore) {
     return req.telegramUser?.id?.toString() || '';
   }
 
-  // tenant_id — telegram_users yozuvidan; hali sync bo'lmagan bo'lsa 'default'
-  // (production hozircha yagona tenant, booking.js'dagi resolvePublicTenant bilan bir xil taxmin)
+  // tenant_id — telegram_users yozuvidan; hali sync bo'lmagan bo'lsa PATIENT_BOT_TENANT_ID
   async function getTenantId(telegramId) {
     const row = await qGet('SELECT tenant_id FROM telegram_users WHERE telegram_id = $1', [telegramId]);
-    return row?.tenant_id || 'default';
+    return row?.tenant_id || PATIENT_BOT_TENANT_ID;
   }
 
   // Bemor kartasini telegram_id orqali topadi — check-in va navbat uchun kerak
@@ -57,7 +62,7 @@ export default function tmaRoutes(pool, bookingCore) {
       }
 
       // Find tenant by looking up if this user already has a patient record
-      let tenantId = 'default';
+      let tenantId = PATIENT_BOT_TENANT_ID;
       const patientByPhone = await qGet("SELECT tenant_id FROM patients WHERE phone = $1 LIMIT 1", [req.body.phone || '']);
       if (patientByPhone) tenantId = patientByPhone.tenant_id;
 
@@ -108,7 +113,7 @@ export default function tmaRoutes(pool, bookingCore) {
 
       // Verify telegram user exists or create one
       let telegramUser = await qGet("SELECT tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
-      const tenantId = telegramUser?.tenant_id || req.headers['x-tenant-id'] || 'default';
+      const tenantId = telegramUser?.tenant_id || req.headers['x-tenant-id'] || PATIENT_BOT_TENANT_ID;
 
       // Create new patient
       const id = uuidv4();
@@ -232,7 +237,7 @@ export default function tmaRoutes(pool, bookingCore) {
       }
 
       const user = await qGet("SELECT tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
-      const tenantId = user?.tenant_id || 'default';
+      const tenantId = user?.tenant_id || PATIENT_BOT_TENANT_ID;
 
       const result = await q(
         "INSERT INTO medication_reminders (tenant_id, telegram_id, medicine_name, dosage, reminder_time) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -254,9 +259,15 @@ export default function tmaRoutes(pool, bookingCore) {
   });
 
   // ===== Doctors list for TMA =====
+  // Tenant bo'yicha filtrlanadi — aks holda boshqa klinikalarning
+  // shifokorlari ham aralashib chiqadi (bir bazada bir nechta klinika bor).
   router.get('/doctors', async (req, res) => {
     try {
-      const docs = await q("SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE status = 'Faol' ORDER BY first_name");
+      const tenantId = await getTenantId(getTelegramId(req));
+      const docs = await q(
+        "SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND status = 'Faol' ORDER BY first_name",
+        [tenantId]
+      );
       res.json({ success: true, doctors: docs });
     } catch (e) { safeError(res, e); }
   });
@@ -264,9 +275,11 @@ export default function tmaRoutes(pool, bookingCore) {
   // ===== Services list for TMA (bron uchun xizmat tanlash) =====
   router.get('/services', async (req, res) => {
     try {
+      const tenantId = await getTenantId(getTelegramId(req));
       const rows = await q(
         `SELECT id, name, category, specialty, price::float8 AS price, duration_min
-           FROM services_catalog WHERE active = TRUE ORDER BY category NULLS LAST, name`
+           FROM services_catalog WHERE tenant_id = $1 AND active = TRUE ORDER BY category NULLS LAST, name`,
+        [tenantId]
       );
       res.json({ success: true, services: rows });
     } catch (e) { safeError(res, e); }
