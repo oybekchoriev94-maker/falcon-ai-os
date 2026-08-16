@@ -79,9 +79,13 @@ function normalizeServiceIds(d) {
   return [...new Set(list)];
 }
 
-export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, serverError) {
-  const router = Router();
-
+// Bron yaratish/vaqt hisoblash — booking.js VA tma.js (Telegram Mini App)
+// SHU BITTA implementatsiyani ishlatadi. Ilgari tma.js o'zining alohida
+// (eski `bookings` jadvaliga yozuvchi) mantig'iga ega edi — bu ikki
+// tizimni bir-biridan ko'rinmaydigan qilib qo'ygan edi (Telegram orqali
+// yozilgan bemor na registraturada, na kiosk navbatida ko'rinmasdi).
+// Endi ikkalasi ham shu yerga keladi, shuning uchun natija har doim bir xil.
+export function createBookingCore(pool, serverError) {
   async function q(sql, params = []) {
     const r = await pool.query(sql, params);
     return /^SELECT/i.test(sql.trim()) ? r.rows : r;
@@ -89,16 +93,6 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
   async function qGet(sql, params = []) {
     const r = await pool.query(sql, params);
     return r.rows[0] || null;
-  }
-  const tid = (req) => req.user?.tenant_id || req.tenant_id;
-
-  // Bemor (public) so'rovi uchun tenant: ?clinic=<id|code>, aks holda 'default'.
-  // Production hozircha yagona 'default' tenant — ko'p klinika bo'lganda code orqali.
-  async function resolvePublicTenant(req) {
-    const clinic = String(req.query.clinic || req.body?.clinic || '').trim();
-    if (!clinic) return 'default';
-    const row = await qGet('SELECT id FROM tenants WHERE id = $1 OR code = $2 LIMIT 1', [clinic, clinic]);
-    return row?.id || 'default';
   }
 
   // ---- Umumiy: bo'sh vaqtlarni hisoblash ----
@@ -339,6 +333,23 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       }
     }
     return res.status(500).json({ success: false, error: 'Access code yaratib bo\'lmadi, qayta urinib ko\'ring' });
+  }
+
+  return { q, qGet, computeSlots, handleCreate };
+}
+
+export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, serverError) {
+  const router = Router();
+  const { q, qGet, computeSlots, handleCreate } = createBookingCore(pool, serverError);
+  const tid = (req) => req.user?.tenant_id || req.tenant_id;
+
+  // Bemor (public) so'rovi uchun tenant: ?clinic=<id|code>, aks holda 'default'.
+  // Production hozircha yagona 'default' tenant — ko'p klinika bo'lganda code orqali.
+  async function resolvePublicTenant(req) {
+    const clinic = String(req.query.clinic || req.body?.clinic || '').trim();
+    if (!clinic) return 'default';
+    const row = await qGet('SELECT id FROM tenants WHERE id = $1 OR code = $2 LIMIT 1', [clinic, clinic]);
+    return row?.id || 'default';
   }
 
   // ============================================================

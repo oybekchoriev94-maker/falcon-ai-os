@@ -60,7 +60,7 @@ import scribeRoutes from './backend/routes/scribe.js';
 import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
 import servicesRoutes from './backend/routes/services.js';
-import bookingRoutes from './backend/routes/booking.js';
+import bookingRoutes, { createBookingCore } from './backend/routes/booking.js';
 import cashierRoutes from './backend/routes/cashier.js';
 import alertsRoutes from './backend/routes/alerts.js';
 import insightsRoutes from './backend/routes/insights.js';
@@ -203,6 +203,9 @@ function initBots() {
   if (tokenP && tokenP.length > 10) {
     try {
       patientBot = new Telegraf(tokenP);
+      // booking.js va boshqa routelar req.app.locals.patientBot orqali
+      // xabar yuboradi — shu yerda o'rnatilmasa, ular jim ishlamay qoladi.
+      app.locals.patientBot = patientBot;
       patientBot.start(async (ctx) => {
         const userId = ctx.from?.id;
         const staff = userId ? await qGet("SELECT id, full_name, role FROM staff_members WHERE telegram_id = $1 AND is_active = true", [userId]) : null;
@@ -433,7 +436,9 @@ async function main() {
       app.use(`${p}`, inpatientRoutes(getPool(), authMiddleware, checkRole, upload));
       app.use(`${p}/labs`, labsRoutes(getPool(), authMiddleware, checkRole));
       app.use(`${p}/legal`, legalRoutes(getPool(), authMiddleware, checkRole));
-      app.use(`/api/tma`, tmaRoutes(getPool()));
+      // tma.js booking.js bilan BIR XIL yozuv mantig'ini ishlatadi (createBookingCore) —
+      // Telegram orqali yozilgan bemor registratura/kiosk bilan bir xil navbatda ko'rinsin uchun.
+      app.use(`/api/tma`, tmaRoutes(getPool(), createBookingCore(getPool(), serverError)));
       app.use(`${p}/appointments`, appointmentRoutes(getPool(), authMiddleware));
       app.use(`${p}/billing`, authMiddleware, billingRoutes(getPool(), authMiddleware, validate, schemas));
       app.use(`${p}/services`, tenantRateLimit('api'), servicesRoutes(getPool(), authMiddleware, checkRole, serverError));
