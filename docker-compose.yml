@@ -26,7 +26,14 @@ services:
   stt:
     <<: *common
     build: ./stt-service
-    ports: ["8081:8081"]
+    # PORT ATAYLAB CHIQARILMAGAN. Ilgari `ports: ["8081:8081"]` turgan va
+    # xizmatni INTERNETGA ochib qo'ygan edi: istalgan kishi klinika
+    # protsessorida transkripsiya qildira olardi va 2 ta parallel slotni
+    # band qilib, shifokorning o'z AI Scribe'ini ishlamay qo'ya olardi.
+    # `app` unga Docker tarmog'i ichidan (http://stt:8081) murojaat qiladi —
+    # buning uchun portni tashqariga chiqarish SHART EMAS.
+    # Lokal sozlashda kerak bo'lsa: docker compose port yoki SSH tunnel.
+    expose: ["8081"]
     mem_limit: 2g
     environment:
       MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
@@ -35,6 +42,9 @@ services:
       COMPUTE_TYPE: int8
       STT_CONCURRENCY: "2"
       MAX_AUDIO_MB: "25"
+      # Ikkinchi himoya qatlami. Ilgari bu o'zgaruvchi FAQAT `app` ga
+      # berilardi — ya'ni app tokenni yuborardi, lekin STT uni tekshirmasdi.
+      STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
       - stt-cache:/cache
     healthcheck:
