@@ -395,6 +395,11 @@ function ObhodDialog({ bed, onClose }: { bed: Bed | null; onClose: () => void })
   const queryClient = useQueryClient();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Til MAJBURIY yuborilishi kerak. Ilgari yuborilmasdi va backend sukut
+  // bo'yicha "uz" deb olardi — model esa ruscha audioni o'zbekcha deb
+  // o'qib, ma'nosiz matn chiqarardi (ai/engines/stt.js izohiga qarang).
+  // O'sha matn keyin vitalAnomaly xavfsizlik agentiga tushardi.
+  const [lang, setLang] = useState<"uz" | "ru">("uz");
   const [text, setText] = useState("");
   const [aiSummary, setAiSummary] = useState("");
   const [temp, setTemp] = useState("");
@@ -435,6 +440,7 @@ function ObhodDialog({ bed, onClose }: { bed: Bed | null; onClose: () => void })
           const fd = new FormData();
           fd.append("audio", blob, "obhod.webm");
           fd.append("admission_id", bed.admission_id!);
+          fd.append("language", lang);
           const res = await api.upload<{
             data: {
               transcription: string;
@@ -508,6 +514,23 @@ function ObhodDialog({ bed, onClose }: { bed: Bed | null; onClose: () => void })
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Til tanlash — model avtomatik aniqlay olmaydi, noto'g'ri til
+              tanlansa matn ma'nosiz chiqadi */}
+          <div className="flex items-center justify-center gap-2">
+            {(["uz", "ru"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLang(l)}
+                disabled={recording || busy}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  lang === l ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {l === "uz" ? "🇺🇿 O'zbekcha" : "🇷🇺 Ruscha"}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center justify-center py-4">
             <Button
               size="lg"

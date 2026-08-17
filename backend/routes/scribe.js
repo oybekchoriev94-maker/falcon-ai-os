@@ -41,6 +41,19 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       } else {
         return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
       }
+
+      // BO'SH MATNNI HECH QACHON SAQLAMAYMIZ.
+      // VAD nutq topmasa (mikrofon o'chiq, noto'g'ri qurilma tanlangan,
+      // shifokor uzoqda gapirgan) STT xatosiz "" qaytaradi. Ilgari shu
+      // holatda LLM bo'sh matndan javob "o'ylab topar", tibbiy kartaga
+      // bo'sh yozuv tushar va shifokorga "muvaffaqiyatli" deb ko'rsatilardi.
+      if (!String(text || '').trim()) {
+        return res.status(422).json({
+          success: false,
+          code: 'EMPTY_TRANSCRIPT',
+          error: 'Ovoz aniqlanmadi. Mikrofonni va tanlangan qurilmani tekshirib, qaytadan yozing.',
+        });
+      }
       // Mutaxassislik: so'rovda tanlangani ustun, aks holda shifokor profilidagi qiymat.
       // /upload bilan bir xil qoida — UI qaysi endpointga yuborsa ham shablon bir xil.
       const specialization =
@@ -118,7 +131,16 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       } else {
         text = String(req.body.raw_text).trim();
       }
-      if (!text) return res.status(400).json({ success: false, error: 'Diktant matni bo\'sh' });
+      // /transcribe bilan bir xil qoida — bo'sh matn hech qachon saqlanmaydi
+      if (!String(text || '').trim()) {
+        return res.status(422).json({
+          success: false,
+          code: 'EMPTY_TRANSCRIPT',
+          error: req.file
+            ? 'Ovoz aniqlanmadi. Mikrofonni va tanlangan qurilmani tekshirib, qaytadan yozing.'
+            : 'Diktant matni bo\'sh',
+        });
+      }
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
       const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." + NUMBER_RULE, text);
       const consId = uuidv4();

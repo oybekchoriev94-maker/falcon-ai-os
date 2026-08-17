@@ -1029,6 +1029,19 @@ export default function(pool, authMiddleware, checkRole, upload) {
         }
         const text = stt.text || '';
 
+        // BO'SH MATNDA TO'XTAYMIZ.
+        // Bu yerda xato ayniqsa qimmatga tushadi: bo'sh matndan LLM
+        // ko'rsatkichlarni "o'ylab topadi", ular daily_notes ga yoziladi
+        // VA vitalAnomaly xavfsizlik agentiga uzatiladi — ya'ni ogohlantirish
+        // tizimi mavjud bo'lmagan o'lchovlar ustida ishlaydi.
+        if (!text.trim()) {
+          return res.status(422).json({
+            success: false,
+            code: 'EMPTY_TRANSCRIPT',
+            error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, obhodni qaytadan aytib bering.',
+          });
+        }
+
         const prompt =
           "Siz shifokor yordamchisisiz. Statsionar bemorining obhod paytidagi ovozli " +
           "yozuvidan quyidagi JSON kalitlarini ajratib qaytaring (yo'q bo'lsa null yoki bo'sh string): " +
