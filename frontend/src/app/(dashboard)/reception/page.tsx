@@ -128,7 +128,7 @@ export default function ReceptionPage() {
   const [fDistrict, setFDistrict] = useState("");
   const [fMahalla, setFMahalla] = useState("");
   const [fDoctor, setFDoctor] = useState("");
-  const [fService, setFService] = useState("");
+  const [fServiceIds, setFServiceIds] = useState<string[]>([]);
   const [fCategory, setFCategory] = useState("");  // xizmat bo'limi filtri
   const [fDate, setFDate] = useState(todayStr());
   const [fSlot, setFSlot] = useState<string | null>(null);
@@ -227,7 +227,19 @@ export default function ReceptionPage() {
   const mahallaOptions = mahallaData?.mahallas ?? [];
 
   const selectedDoctor = doctors.find((d) => d.id === fDoctor) || null;
-  const selectedService = services.find((s) => s.id === fService) || null;
+  // Bemor bir kelishida bir nechta xizmat oladi (masalan "Shifokor ko'rigi"
+  // + EKG). Backend buni allaqachon qo'llab-quvvatlaydi (service_ids[] va
+  // appointment_services jadvali) — bu yerda faqat interfeys cheklab turgan edi.
+  const selectedServices = fServiceIds
+    .map((id) => services.find((s) => s.id === id))
+    .filter((s): s is Service => !!s);
+  const servicesTotal = selectedServices.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const serviceIdsKey = fServiceIds.join(",");
+
+  function toggleService(id: string) {
+    setFServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setFSlot(null);   // davomiylik o'zgardi — vaqt qayta tanlanadi
+  }
 
   // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin
   const svcCategories = useMemo(() => {
@@ -250,11 +262,13 @@ export default function ReceptionPage() {
   }, [services, fCategory]);
 
   const { data: slotData, isFetching: slotsFetching } = useQuery({
-    queryKey: ["slots", fDoctor, fDate, fService],
+    queryKey: ["slots", fDoctor, fDate, serviceIdsKey],
     enabled: !!fDoctor && !!fDate,
     queryFn: async () => {
       let url = `/api/booking/slots?doctor_id=${fDoctor}&date=${fDate}`;
-      if (fService) url += `&service_id=${fService}`;
+      // Bir nechta xizmat tanlansa, backend ularning davomiyligini QO'SHIB
+      // hisoblaydi — ya'ni ko'rik+EKG uchun uzunroq oraliq ajratiladi.
+      if (serviceIdsKey) url += `&service_ids=${serviceIdsKey}`;
       const res = await api.get<{ slots: Slot[]; reason?: string }>(url);
       if (res.success) return res;
       throw new Error(res.error);
@@ -274,7 +288,7 @@ export default function ReceptionPage() {
           district: fDistrict || null,
           mahalla: fMahalla.trim() || null,
           doctor_id: fDoctor,
-          service_id: fService,
+          service_ids: fServiceIds,
           scheduled_at: fSlot,
           payment_method: payMethod,
           source: "reception",
@@ -382,7 +396,7 @@ export default function ReceptionPage() {
 
   /* ── Helpers ── */
   function resetBook() {
-    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFService(""); setFCategory("");
+    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFServiceIds([]); setFCategory("");
     setFSlot(null); setFDate(todayStr()); setPayMethod("cashier");
   }
 
@@ -442,7 +456,7 @@ export default function ReceptionPage() {
   function submitBooking() {
     if (!fName.trim()) return toast.error("Bemor ismini kiriting");
     if (!fDoctor) return toast.error("Shifokorni tanlang");
-    if (!fService) return toast.error("Xizmatni tanlang");
+    if (fServiceIds.length === 0) return toast.error("Kamida bitta xizmatni tanlang");
     if (!fSlot) return toast.error("Vaqtni tanlang");
     bookMutation.mutate();
   }
@@ -674,29 +688,57 @@ export default function ReceptionPage() {
                   ))}
                 </div>
               )}
-              <Select value={fService} onValueChange={(v) => { setFService(v ?? ""); setFSlot(null); }}>
-                <SelectTrigger>
-                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
-                    {selectedService
-                      ? `${selectedService.icon ? selectedService.icon + " " : ""}${selectedService.name} — ${fmtSum(selectedService.price)}`
-                      : <span className="text-muted-foreground">{fCategory ? `${fCategory} — xizmatni tanlang` : "Xizmatni tanlang"}</span>}
-                  </span>
-                </SelectTrigger>
-                <SelectContent className="max-h-[60vh] w-[min(94vw,520px)]" alignItemWithTrigger={false}>
-                  {groupedServices.map((g) => (
-                    <SelectGroup key={g.name}>
-                      <SelectLabel>{g.name}</SelectLabel>
-                      {g.items.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.icon ? s.icon + " " : ""}{s.name} — {fmtSum(s.price)}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+              {/* Ko'p tanlovli ro'yxat: bemor bir kelishida ham shifokor
+                  ko'rigini, ham tekshiruvni oladi. Tanlanganlar tepada
+                  chip bo'lib turadi, bosilsa olib tashlanadi. */}
+              {selectedServices.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {selectedServices.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleService(s.id)}
+                      className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                      title="Olib tashlash"
+                    >
+                      {s.name} · {fmtSum(s.price)}
+                      <XCircle className="size-3.5" />
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
-              {selectedService && (
-                <p className="text-right text-sm font-semibold text-emerald-600 dark:text-emerald-400">{fmtSum(selectedService.price)}</p>
+                </div>
+              )}
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-input">
+                {groupedServices.map((g) => (
+                  <div key={g.name}>
+                    <div className="sticky top-0 bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                      {g.name}
+                    </div>
+                    {g.items.map((s) => {
+                      const on = fServiceIds.includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => toggleService(s.id)}
+                          className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted ${on ? "bg-primary/10" : ""}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className={`flex size-4 shrink-0 items-center justify-center rounded border ${on ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}>
+                              {on && <CheckCircle2 className="size-3" />}
+                            </span>
+                            {s.icon ? s.icon + " " : ""}{s.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">{fmtSum(s.price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              {selectedServices.length > 0 && (
+                <p className="text-right text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                  {selectedServices.length} ta xizmat · Jami {fmtSum(servicesTotal)}
+                </p>
               )}
             </div>
 
