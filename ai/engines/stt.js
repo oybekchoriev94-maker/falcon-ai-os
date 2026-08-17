@@ -84,6 +84,40 @@ function makeForm(audioBuffer, filename, opts) {
   return form;
 }
 
+// STT xizmatining endpoint nomi ikki xil bo'lishi mumkin:
+//   /v1/audio/transcriptions — asosiy (OpenAI-mos)
+//   /transcribe              — eski nom, klinikadagi GPU konteynerida shu
+// Nomi mos kelmasa 404 chiqadi va shifokor "ovoz qabul qilinmadi" deb ko'radi —
+// bu aynan production'da sodir bo'lgan. Shuning uchun birinchi so'rovda
+// ikkalasini sinaymiz va ishlaganini eslab qolamiz (keyingi so'rovlar tez ketadi).
+const STT_PATHS = ['/v1/audio/transcriptions', '/transcribe'];
+let _workingSttPath = null;
+
+async function postToWhisper(audioBuffer, filename, opts) {
+  const paths = _workingSttPath ? [_workingSttPath] : STT_PATHS;
+  let lastRes = null;
+
+  for (const path of paths) {
+    const res = await fetch(`${WHISPER_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STT_AUTH_TOKEN || 'not-needed'}` },
+      // FormData har urinishda qaytadan quriladi — oqim bir marta o'qiladi
+      body: makeForm(audioBuffer, filename, opts),
+      signal: AbortSignal.timeout(60000),
+    });
+    // Faqat 404 boshqa yo'lni sinashga arziydi; qolgan xatolar haqiqiy xato.
+    if (res.status !== 404) {
+      _workingSttPath = path;
+      return res;
+    }
+    lastRes = res;
+  }
+  // Eslab qo'yilgan yo'l endi 404 bera boshlasa (xizmat almashtirilgan) —
+  // keshni tozalaymiz, keyingi so'rov ikkalasini qaytadan sinaydi.
+  _workingSttPath = null;
+  return lastRes;
+}
+
 export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}) {
   // Til siyosati: faqat o'zbek va rus. Boshqa til so'ralsa — aniq xato.
   const langCheck = validateLanguage(opts.language);
@@ -97,14 +131,15 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
   // Aynan shu API (https://api.groq.com/openai/v1/audio/transcriptions) bilan bir xil
   if (isLocal()) {
     try {
-      const form = makeForm(audioBuffer, filename, opts);
-      const res = await fetch(`${WHISPER_URL}/v1/audio/transcriptions`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${STT_AUTH_TOKEN || 'not-needed'}` },
-        body: form,
-        signal: AbortSignal.timeout(60000) // 1 min (katta audio uchun)
-      });
-      if (!res.ok) throw new Error(`STT HTTP ${res.status}`);
+      const res = await postToWhisper(audioBuffer, filename, opts);
+      if (!res.ok) {
+        // Xato tanasini o'qiymiz — server aniq sababni yozadi (til qo'llab-
+        // quvvatlanmaydi / fayl katta / model hali yuklanmoqda). Ilgari
+        // faqat status raqami olinardi va shifokorga har doim "STT
+        // konteyneri ishlayotganini tekshiring" deb noto'g'ri maslahat berilardi.
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ? `${body.detail} (HTTP ${res.status})` : `STT HTTP ${res.status}`);
+      }
       const data = await res.json();
       const text = data.text || '';
       return { text, segments: data.segments || null, language: normalizeLanguage(opts.language), error: null };

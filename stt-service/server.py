@@ -55,6 +55,15 @@ _sem: asyncio.Semaphore | None = None
 
 
 def download_model():
+    # MODEL_NAME allaqachon lokal papka bo'lsa — yuklab olish shart emas.
+    # Busiz `/models/rubaistt-...` kabi yo'l HuggingFace repo nomi deb
+    # qabul qilinib, xizmat ishga tushmasdan yiqilardi. Aynan shu sababdan
+    # klinika kompyuterida server.py qo'lda tuzatilgan va git'dan uzilib
+    # qolgan edi (u yerdagi versiyada endpoint nomi ham boshqacha edi).
+    if os.path.isdir(MODEL_NAME):
+        print(f"Using local model directory: {MODEL_NAME}", flush=True)
+        return MODEL_NAME
+
     from huggingface_hub import snapshot_download
     dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
     if os.path.exists(os.path.join(dest, "model.bin")):
@@ -118,7 +127,14 @@ def _run_transcribe(tmp_path: str, language: str, temperature: float, prompt: st
     return " ".join(s.text for s in segments).strip()
 
 
+# Ikkita yo'l bir xil ishlovchiga boradi:
+#   /v1/audio/transcriptions — asosiy (OpenAI API bilan mos, ilova shuni ishlatadi)
+#   /transcribe              — eski nom. README va 04-serve-gpu.sh shuni yozgan,
+#                              klinikadagi qo'lda tuzatilgan versiyada ham shu edi.
+# Faqat bittasini qoldirsak, ikki tomondan biri 404 oladi — bu allaqachon
+# production'da sodir bo'lgan (ilova /v1/... yuborardi, klinika /transcribe kutardi).
 @app.post("/v1/audio/transcriptions")
+@app.post("/transcribe")
 async def transcribe(
     file: UploadFile = File(...),
     response_format: str = Form("json"),
