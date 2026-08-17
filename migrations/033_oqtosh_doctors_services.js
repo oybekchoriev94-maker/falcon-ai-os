@@ -91,7 +91,15 @@ export async function up(knex) {
     const samePerson = existingDocs.filter(
       (d) => norm(d.first_name) === norm(firstName) && norm(d.last_name) === norm(lastName)
     );
-    const unclaimed = samePerson.filter((d) => !specializations.includes(d.specialization));
+    // FAQAT ixtisosi belgilanmagan yozuvni qayta ishlatamiz.
+    // DIQQAT: ilgari bu yerda "ixtisosi ro'yxatda yo'q" yozuvlar ham
+    // qayta ishlatilardi — natijada Jamshid Tursunpo'latovning MAVJUD
+    // "uzi" yozuvi "xirurg"ga aylanib, u UZI xizmatlaridan butunlay
+    // yo'qolardi (Qurbonov ham "ginekolog"dan chiqib ketardi).
+    // Mavjud haqiqiy ixtisosga tegmaymiz — kerak bo'lsa YANGI yozuv ochamiz.
+    const unclaimed = samePerson.filter(
+      (d) => !d.specialization || d.specialization === 'doctor'
+    );
 
     for (const spec of specializations) {
       // 1) Shu ixtisosdagi yozuv allaqachon bormi?
