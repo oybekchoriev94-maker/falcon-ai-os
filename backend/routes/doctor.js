@@ -7,7 +7,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
-export default function doctorRoutes(pool, authMiddleware, checkRole, _validate, _schemas, _telegramOrJwtAuth, _upload) {
+export default function doctorRoutes(pool, authMiddleware, checkRole, _validate, _schemas, _telegramOrJwtAuth, upload) {
   // Standart xato yordamchisi. Ilgari server.js'dan `serverError` uzatilishi
   // kutilardi, lekin haqiqatda `validate` funksiyasi yetkazilardi (signatura
   // mos kelmasdi). Endi lokal fallback bilan barqarorlaymiz.
@@ -26,6 +26,42 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
     return r.rows[0] || null;
   }
   const tenantOf = (req) => req.user?.tenant_id || req.tenant_id || 'default';
+
+  /**
+   * Ko'rikda buyurilgan dorilarni allergiya va faol dorilar bilan tekshiradi.
+   *
+   * `medicines` — erkin matn ("Amoksitsillin 500mg 3 mahal, Ibuprofen 200mg").
+   * Agent bitta dori kutadi, shuning uchun ro'yxatni ajratamiz: aks holda
+   * butun satr bitta "dori nomi" deb solishtirilib, allergiya mosligi
+   * o'tkazib yuborilishi mumkin edi.
+   */
+  async function runDrugSafety(tenantId, patientId, consultationId, medicinesText) {
+    if (!patientId) return; // Kartaga bog'lanmagan yozuvda tekshiradigan tarix yo'q
+    const { drugInteraction } = await import('../../ai/agents/safety-agents.js');
+    const { saveAlerts, fetchAllergies, fetchActiveMeds } = await import('../services/alerts.js');
+
+    const drugs = String(medicinesText)
+      .split(/[,;\n]+/).map((s) => s.trim()).filter((s) => s.length >= 3)
+      .slice(0, 10); // Bir ko'rikda 10 tadan ortiq dori — LLM sarfini cheklaymiz
+    if (!drugs.length) return;
+
+    const [allergies, activeMeds] = await Promise.all([
+      fetchAllergies(pool, tenantId, patientId),
+      fetchActiveMeds(pool, tenantId, patientId),
+    ]);
+
+    const all = [];
+    for (const d of drugs) {
+      const di = await drugInteraction.handler({ new_drug: d, allergies, active_meds: activeMeds });
+      if (di?.alerts?.length) all.push(...di.alerts);
+    }
+    if (all.length) {
+      await saveAlerts(pool, {
+        tenantId, patientId, sourceKind: 'consultation',
+        sourceId: consultationId, agentName: 'drug-interaction',
+      }, all);
+    }
+  }
 
   // ── ESKI ENDPOINTLAR (dashboard kartalarga kerak — buzmasdan qoldirdik) ──
   router.get('/my-patients', authMiddleware, checkRole('doctor'), async (req, res) => {
@@ -92,6 +128,85 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
         params
       );
       res.json({ success: true, date: date || new Date().toISOString().slice(0, 10), queue: rows });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // ── OVOZLI KO'RIK ──
+  // Shifokor ko'rik natijasini gapiradi; STT matnga o'giradi, orkestrator
+  // `visit-scribe` agenti maydonlarga ajratadi va TAKLIF qaytaradi.
+  //
+  // BAZAGA HECH NARSA YOZMAYDI — bu ataylab. `/api/scribe/transcribe`
+  // har diktantda alohida `patient_consultations` yozuvi yaratadi va u
+  // `appointment_id` siz bo'ladi; qabul oqimida ishlatilsa bitta tashrifga
+  // ikkita karta yozilardi. Bu yerda yozuvni faqat shifokor tasdiqlagach
+  // `/complete` yozadi — bitta tashrif, bitta karta.
+  router.post('/visit/:appointmentId/voice', authMiddleware, checkRole('doctor'),
+    upload.single('audio'), async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const appointmentId = req.params.appointmentId;
+
+      // Boshqa shifokorning bemori diktant qilinmasin
+      const appt = await qGet(
+        `SELECT a.id, a.patient_id, a.patient_name, d.specialization
+           FROM appointments a
+           LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
+          WHERE a.tenant_id = $1 AND a.id = $2 AND a.doctor_id = $3`,
+        [tenantId, appointmentId, req.user.id]
+      );
+      if (!appt) {
+        return res.status(404).json({ success: false, error: 'Bron topilmadi yoki sizga tegishli emas' });
+      }
+
+      const { transcribe } = await import('../../ai/orchestrator.js');
+      let text;
+      if (req.file) {
+        const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm',
+          { language: req.body?.language });
+        if (stt.error) {
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 502)
+            .json({ success: false, error: stt.error, code: stt.code });
+        }
+        text = stt.text;
+      } else if (req.body?.raw_text) {
+        text = String(req.body.raw_text);
+      } else {
+        return res.status(400).json({ success: false, error: 'Audio yoki matn talab qilinadi' });
+      }
+
+      // Bo'sh transkripsiya hech qachon o'tmaydi (scribe.js bilan bir xil qoida):
+      // VAD nutq topmasa STT xatosiz "" qaytaradi va LLM bo'sh matndan
+      // javob "o'ylab topardi" — tibbiy kartaga soxta yozuv tushardi.
+      if (!String(text || '').trim()) {
+        return res.status(422).json({
+          success: false, code: 'EMPTY_TRANSCRIPT',
+          error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, qaytadan yozing.',
+        });
+      }
+
+      const { executeAgent } = await import('../../ai/orchestrator.js');
+      const run = await executeAgent('visit-scribe', {
+        text,
+        specialty: req.body?.specialty || appt.specialization || null,
+        patient_name: appt.patient_name || null,
+      }, { tenantId, user: req.user });
+
+      // Agent yiqilsa ham diktant YO'QOLMASIN — shifokor xom matnni ko'radi.
+      if (!run.success) {
+        return res.json({
+          success: true, transcription: text, fields: {}, structured: false,
+          note: `AI matnni ajrata olmadi (${run.error}). Diktant matni saqlangan, maydonlarni qo'lda to'ldiring.`,
+        });
+      }
+
+      res.json({
+        success: true,
+        transcription: text,
+        fields: run.data.fields,
+        next_step: run.data.next_step,
+        structured: run.data.structured,
+        note: run.data.note || null,
+      });
     } catch (e) { serverError(res, e); }
   });
 
@@ -189,6 +304,19 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, _validate,
       }
 
       await client.query('COMMIT');
+
+      // AUTO-AGENT: dori xavfsizligi. Shifokor dori buyurgan bo'lsa,
+      // bemor allergiyasi va faol dorilari bilan tekshiriladi; xavf topilsa
+      // `ai_alerts` ga yoziladi va UI'da qizil ogohlantirish chiqadi.
+      //
+      // JAVOB KUTILMAYDI (fire-and-forget): tekshiruv LLM'ga borishi mumkin,
+      // shifokorni kutdirish qabul oqimini sekinlashtiradi. Xavfsizlik
+      // tekshiruvi ko'rik yozuvini BLOKLAMAYDI — u qo'shimcha qatlam.
+      if (dataJson.medicines) {
+        runDrugSafety(tenantId, appt.patient_id, consId, dataJson.medicines)
+          .catch((e) => console.warn('[SAFETY drug-interaction]', e.message));
+      }
+
       res.json({
         success: true,
         consultation_id: consId,

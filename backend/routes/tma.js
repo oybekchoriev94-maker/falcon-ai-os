@@ -4,6 +4,7 @@ import { safeError } from '../services/safe-error.js';
 import { verifyTelegramInitData } from '../shared.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
 import { generateMrn } from '../services/patient-store.js';
+import { listConsultations } from '../services/consultation-catalog.js';
 
 // bookingCore — booking.js bilan BIR XIL bron yozish/vaqt hisoblash
 // mantig'i (backend/routes/booking.js: createBookingCore). Shu tufayli
@@ -333,11 +334,22 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const tenantId = await getTenantId(getTelegramId(req));
       const rows = await q(
-        `SELECT id, name, category, specialty, price::float8 AS price, duration_min
+        `SELECT id, name, category, specialty, price::float8 AS price, duration_min,
+                COALESCE(is_consultation, false) AS is_consultation
            FROM services_catalog WHERE tenant_id = $1 AND active = TRUE ORDER BY category NULLS LAST, name`,
         [tenantId]
       );
       res.json({ success: true, services: rows });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // GET /api/tma/consultations — "Shifokor qabuli" bo'limi.
+  // Kiosk va registratura bilan AYNAN bir xil ro'yxat (yagona manba).
+  router.get('/consultations', async (req, res) => {
+    try {
+      const tenantId = await getTenantId(getTelegramId(req));
+      const data = await listConsultations(pool, tenantId);
+      res.json({ success: true, specialties: data.specialties });
     } catch (e) { safeError(res, e); }
   });
 

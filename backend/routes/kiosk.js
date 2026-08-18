@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { normalizePhone } from '../services/patient-store.js';
 import { createPayment } from '../services/payment-gateway.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
+import { listConsultations } from '../services/consultation-catalog.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -282,7 +283,8 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   router.get('/services', deviceAuth, async (req, res) => {
     try {
       const rows = await q(
-        `SELECT id, name, category, specialty, price::float8 AS price, duration_min
+        `SELECT id, name, category, specialty, price::float8 AS price, duration_min,
+                COALESCE(is_consultation, false) AS is_consultation
            FROM services_catalog
           WHERE tenant_id = $1 AND active = TRUE
           ORDER BY category NULLS LAST, name
@@ -290,6 +292,17 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         [req.kioskTenantId]
       );
       res.json({ success: true, services: rows });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // GET /api/kiosk/consultations — "Shifokor qabuli" bo'limi.
+  // Registratura va Telegram bilan AYNAN bir xil ro'yxat (yagona manba).
+  router.get('/consultations', deviceAuth, async (req, res) => {
+    try {
+      const data = await listConsultations(pool, req.kioskTenantId);
+      res.json({ success: true, specialties: data.specialties });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
     }

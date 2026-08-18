@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { createPayment } from '../services/payment-gateway.js';
 import { upsertPatientByPhone } from '../services/patient-store.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
+import { listConsultations } from '../services/consultation-catalog.js';
 
 // Telegram "Men keldim" tugmasi — autentifikatsiyasiz, shuning uchun
 // access_code brute-force'iga qarshi oddiy IP bo'yicha limit.
@@ -502,12 +503,36 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       const params = [tenantId];
       let where = 'tenant_id = $1 AND active = TRUE';
       if (req.query.specialty) { params.push(String(req.query.specialty).trim().toLowerCase()); where += ` AND specialty = $${params.length}`; }
+      // `is_consultation` ham qaytadi: qabul xizmatlari alohida "Shifokor
+      // qabuli" bo'limida ko'rsatiladi, shuning uchun UI ularni umumiy
+      // xizmatlar ro'yxatidan chiqarib tashlaydi (aks holda ikki marta chiqadi).
       const rows = await q(
-        `SELECT id, name, category, specialty, icon, price::float8 AS price, duration_min
+        `SELECT id, name, category, specialty, icon, price::float8 AS price, duration_min,
+                COALESCE(is_consultation, false) AS is_consultation
          FROM services_catalog WHERE ${where} ORDER BY category NULLS LAST, name`,
         params
       );
       res.json({ success: true, services: rows });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // GET /public/consultations — "Shifokor qabuli" bo'limi (bemor uchun)
+  router.get('/public/consultations', async (req, res) => {
+    try {
+      const tenantId = await resolvePublicTenant(req);
+      const data = await listConsultations(pool, tenantId);
+      // missing_setup faqat xodimga — bemorga klinika sozlamalari haqida
+      // ichki ma'lumot chiqarmaymiz.
+      res.json({ success: true, specialties: data.specialties });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // GET /consultations — xuddi shu bo'lim, lekin xodim uchun:
+  // sozlanmagan yo'nalishlar ro'yxati bilan (registratura kamchilikni ko'rsin).
+  router.get('/consultations', authMiddleware, async (req, res) => {
+    try {
+      const data = await listConsultations(pool, tid(req));
+      res.json({ success: true, ...data });
     } catch (e) { serverError(res, e); }
   });
 
