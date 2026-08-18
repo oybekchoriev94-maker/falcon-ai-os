@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useAuth, type User } from "@/lib/auth-store";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Stethoscope,
@@ -15,6 +15,7 @@ import {
   DollarSign,
   Wallet,
   Mic,
+  Square,
   FolderOpen,
   MapPin,
   CheckCircle2,
@@ -446,6 +447,95 @@ function VisitDialog({
   const [admissionReason, setAdmissionReason] = useState("");
   const [admissionDepartment, setAdmissionDepartment] = useState("");
 
+  /* ── Ovozli ko'rik ── */
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<"uz" | "ru">("uz");
+  const [transcript, setTranscript] = useState("");
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  /** Mikrofon oqimini to'liq yopadi — aks holda brauzerda yozuv indikatori
+      qolib ketadi va keyingi bemorda ham "yozilmoqda" bo'lib turadi. */
+  function releaseMic() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    mediaRef.current = null;
+  }
+
+  // Dialog yopilganda yozuv davom etmasin (shifokor "X" bosib chiqib ketsa)
+  useEffect(() => {
+    if (!item) {
+      if (mediaRef.current?.state === "recording") mediaRef.current.stop();
+      releaseMic();
+      setRecording(false);
+      setTranscript("");
+    }
+  }, [item]);
+
+  async function startVoice() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => { void sendVoice(new Blob(chunksRef.current, { type: "audio/webm" })); };
+      mediaRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch {
+      toast.error("Mikrofonga ruxsat berilmadi");
+    }
+  }
+
+  function stopVoice() {
+    mediaRef.current?.stop();
+    setRecording(false);
+  }
+
+  async function sendVoice(blob: Blob) {
+    releaseMic();
+    if (!item) return;
+    setVoiceBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, "visit.webm");
+      fd.append("language", voiceLang);
+      const res = await api.upload<{
+        transcription: string;
+        fields?: Record<string, string>;
+        next_step?: "home" | "labs" | "admission" | "referral" | null;
+        structured?: boolean;
+        note?: string | null;
+      }>(`/api/doctor/visit/${item.id}/voice`, fd);
+
+      if (!res.success) { toast.error(res.error || "Ovoz qabul qilinmadi"); return; }
+      setTranscript(res.transcription || "");
+
+      // AI TAKLIF QILADI, SHIFOKOR QAROR QILADI: qo'lda yozilgan matn
+      // ustidan yozmaymiz — faqat bo'sh maydonlarni to'ldiramiz.
+      const f = res.fields || {};
+      if (f.diagnosis) setDiagnosis((cur) => cur || f.diagnosis);
+      if (f.procedure) setProcedure((cur) => cur || f.procedure);
+      if (f.medicines) setMedicines((cur) => cur || f.medicines);
+      const extra = [f.complaints, f.anamnesis, f.objective, f.recommendations]
+        .filter(Boolean).join("\n");
+      if (extra) setNotes((cur) => (cur ? `${cur}\n${extra}` : extra));
+      // "referral" alohida dialog orqali bo'ladi — bu yerda tanlanmaydi
+      if (res.next_step && res.next_step !== "referral") setNextStep(res.next_step);
+
+      if (res.note) toast.warning(res.note);
+      else if (res.structured) toast.success("Diktant maydonlarga ajratildi — tekshirib tasdiqlang");
+      else toast.info("Matn olindi, maydonlarni qo'lda to'ldiring");
+    } catch {
+      toast.error("Ovozni yuborishda xatolik");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
   // Shu bemorning oxirgi 30 kunlik boshqa doktorlar xulosalari
   const { data: priorData } = useQuery({
     queryKey: ["prior-visits", item?.id],
@@ -588,6 +678,49 @@ function VisitDialog({
                 </div>
               </div>
             )}
+
+            {/* ── OVOZLI KO'RIK ──
+                Shifokor natijani gapiradi; STT matnga o'giradi, `visit-scribe`
+                agenti maydonlarga ajratadi. Natija TAKLIF — shifokor
+                tahrirlab tasdiqlaydi, avtomatik saqlanmaydi. */}
+            <div className="rounded-lg border border-primary/25 bg-primary/[0.04] p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Mic className="size-4 text-primary" />
+                  <span className="text-sm font-medium">Ovozli ko&apos;rik</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select value={voiceLang} onChange={(e) => setVoiceLang(e.target.value as "uz" | "ru")}
+                    disabled={recording || voiceBusy}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs">
+                    <option value="uz">O&apos;zbekcha</option>
+                    <option value="ru">Ruscha</option>
+                  </select>
+                  <Button type="button" size="sm" disabled={voiceBusy}
+                    variant={recording ? "destructive" : "secondary"}
+                    onClick={recording ? stopVoice : startVoice}>
+                    {voiceBusy ? (
+                      <><Loader2 className="size-4 animate-spin" /> Tahlil…</>
+                    ) : recording ? (
+                      <><Square className="size-4" /> To&apos;xtatish</>
+                    ) : (
+                      <><Mic className="size-4" /> Yozishni boshlash</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {recording && (
+                <p className="text-xs text-destructive">
+                  Yozilmoqda… Ko&apos;rik natijasini gapiring, tugagach &quot;To&apos;xtatish&quot;ni bosing.
+                </p>
+              )}
+              {transcript && (
+                <div className="rounded-md bg-background/70 p-2">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1">Diktant matni</p>
+                  <p className="text-xs whitespace-pre-wrap">{transcript}</p>
+                </div>
+              )}
+            </div>
 
             {/* Xulosa maydonlari */}
             <div className="grid gap-3">

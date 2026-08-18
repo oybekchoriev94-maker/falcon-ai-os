@@ -47,7 +47,8 @@ export default function servicesRoutes(pool, authMiddleware, checkRole, serverEr
       if (specialty) { params.push(specialty); where += ` AND specialty = $${params.length}`; }
       const rows = await q(
         `SELECT id, name, category, specialty, icon, description, price::float8 AS price,
-                duration_min, active, created_at, updated_at
+                duration_min, active, COALESCE(is_consultation, false) AS is_consultation,
+                created_at, updated_at
          FROM services_catalog WHERE ${where} ORDER BY category NULLS LAST, name`,
         params
       );
@@ -59,7 +60,8 @@ export default function servicesRoutes(pool, authMiddleware, checkRole, serverEr
     try {
       const row = await qGet(
         `SELECT id, name, category, specialty, icon, description, price::float8 AS price,
-                duration_min, active, created_at, updated_at
+                duration_min, active, COALESCE(is_consultation, false) AS is_consultation,
+                created_at, updated_at
          FROM services_catalog WHERE tenant_id = $1 AND id = $2`,
         [tid(req), req.params.id]
       );

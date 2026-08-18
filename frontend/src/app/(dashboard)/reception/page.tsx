@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   CheckCircle2,
   XCircle,
+  Stethoscope,
   Clock,
   Users,
   RefreshCw,
@@ -62,6 +63,16 @@ interface Service {
   duration_min?: number;
   icon?: string;
   category?: string | null;
+  is_consultation?: boolean;
+}
+/* "Shifokor qabuli" bo'limi — backend/services/consultation-catalog.js dan.
+   Kiosk va Telegram AYNAN shu ma'lumotni oladi. */
+interface ConsultSpecialty {
+  key: string;
+  label: string;
+  from_price: number;
+  services: { id: string; name: string; price: number; duration_min: number }[];
+  doctors: { id: string; name: string }[];
 }
 interface Slot {
   time: string;
@@ -130,6 +141,7 @@ export default function ReceptionPage() {
   const [fDoctor, setFDoctor] = useState("");
   const [fServiceIds, setFServiceIds] = useState<string[]>([]);
   const [fCategory, setFCategory] = useState("");  // xizmat bo'limi filtri
+  const [fSpecialty, setFSpecialty] = useState(""); // "Shifokor qabuli" yo'nalishi
   const [fDate, setFDate] = useState(todayStr());
   const [fSlot, setFSlot] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState<"cashier" | "online">("cashier");
@@ -216,6 +228,20 @@ export default function ReceptionPage() {
   });
   const services = svcData?.services ?? [];
 
+  // "Shifokor qabuli" bo'limi — kiosk va Telegram bilan bitta manbadan
+  const { data: consultData } = useQuery({
+    queryKey: ["consultations"],
+    queryFn: async () => {
+      const res = await api.get<{ specialties: ConsultSpecialty[]; missing_setup: { doctor: string; label: string; reason: string }[] }>(
+        "/api/booking/consultations"
+      );
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const consultSpecialties = useMemo(() => consultData?.specialties ?? [], [consultData]);
+  const missingSetup = consultData?.missing_setup ?? [];
+
   const { data: mahallaData } = useQuery({
     queryKey: ["mahallas", fDistrict],
     enabled: !!fDistrict,
@@ -241,15 +267,40 @@ export default function ReceptionPage() {
     setFSlot(null);   // davomiylik o'zgardi — vaqt qayta tanlanadi
   }
 
-  // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin
+  const activeSpecialty = consultSpecialties.find((s) => s.key === fSpecialty) || null;
+  const consultServiceIds = useMemo(
+    () => new Set(services.filter((s) => s.is_consultation).map((s) => s.id)),
+    [services]
+  );
+
+  /**
+   * Qabulga yozish: shifokor tanlanadi va uning qabul xizmati savatga tushadi.
+   *
+   * Bitta tashrifda ikkita qabul bo'lmaydi (bemor bir shifokorga yoziladi),
+   * shuning uchun oldingi qabul xizmati almashtiriladi. Qo'shimcha
+   * xizmatlar (EKG, UZI) esa saqlanib qoladi — aynan shu klinikaning
+   * oqimi: ko'rik + tekshiruv bitta kelishda.
+   */
+  function pickConsultation(spec: ConsultSpecialty, doctorId: string, serviceId: string) {
+    setFDoctor(doctorId);
+    setFServiceIds((prev) => [...prev.filter((id) => !consultServiceIds.has(id)), serviceId]);
+    setFSpecialty(spec.key);
+    setFSlot(null);
+  }
+
+  // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin.
+  // Qabul xizmatlari BU RO'YXATDA YO'Q — ular yuqoridagi "Shifokor qabuli"
+  // bo'limida, aks holda bitta narsa ikki joyda chiqib chalkashtirardi.
+  const extraServices = useMemo(() => services.filter((s) => !s.is_consultation), [services]);
+
   const svcCategories = useMemo(() => {
     const m = new Map<string, number>();
-    for (const s of services) m.set(s.category || "Boshqa", (m.get(s.category || "Boshqa") || 0) + 1);
+    for (const s of extraServices) m.set(s.category || "Boshqa", (m.get(s.category || "Boshqa") || 0) + 1);
     return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [services]);
+  }, [extraServices]);
 
   const groupedServices = useMemo(() => {
-    const list = fCategory ? services.filter((s) => (s.category || "Boshqa") === fCategory) : services;
+    const list = fCategory ? extraServices.filter((s) => (s.category || "Boshqa") === fCategory) : extraServices;
     const m = new Map<string, Service[]>();
     for (const s of list) {
       const k = s.category || "Boshqa";
@@ -259,7 +310,7 @@ export default function ReceptionPage() {
     return [...m.entries()]
       .map(([name, items]) => ({ name, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [services, fCategory]);
+  }, [extraServices, fCategory]);
 
   const { data: slotData, isFetching: slotsFetching } = useQuery({
     queryKey: ["slots", fDoctor, fDate, serviceIdsKey],
@@ -396,7 +447,7 @@ export default function ReceptionPage() {
 
   /* ── Helpers ── */
   function resetBook() {
-    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFServiceIds([]); setFCategory("");
+    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFServiceIds([]); setFCategory(""); setFSpecialty("");
     setFSlot(null); setFDate(todayStr()); setPayMethod("cashier");
   }
 
@@ -650,6 +701,75 @@ export default function ReceptionPage() {
               </div>
             </div>
 
+            {/* ── SHIFOKOR QABULI ──
+                Alohida bo'lim: bemor avval yo'nalishni, keyin shifokorni
+                tanlaydi va qabul xizmati o'zi savatga tushadi. Kiosk va
+                Telegram bilan bir xil ro'yxat (/api/booking/consultations). */}
+            {consultSpecialties.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-primary/25 bg-primary/[0.03] p-3">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="size-4 text-primary" />
+                  <Label className="text-sm font-semibold">Shifokor qabuli</Label>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {consultSpecialties.map((sp) => (
+                    <button key={sp.key} type="button"
+                      onClick={() => setFSpecialty(fSpecialty === sp.key ? "" : sp.key)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        fSpecialty === sp.key
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:border-primary"
+                      }`}>
+                      {sp.label} · {fmtSum(sp.from_price)}dan
+                    </button>
+                  ))}
+                </div>
+
+                {activeSpecialty && (
+                  <div className="space-y-2">
+                    {activeSpecialty.services.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        Qabul turini shifokor tugmasidan keyin tanlang
+                      </p>
+                    )}
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {activeSpecialty.doctors.map((doc) =>
+                        activeSpecialty.services.map((svc) => {
+                          const on = fDoctor === doc.id && fServiceIds.includes(svc.id);
+                          return (
+                            <button key={`${doc.id}:${svc.id}`} type="button"
+                              onClick={() => pickConsultation(activeSpecialty, doc.id, svc.id)}
+                              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                                on ? "border-primary bg-primary/10" : "border-input hover:border-primary"
+                              }`}>
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{doc.name}</span>
+                                <span className="block truncate text-xs text-muted-foreground">{svc.name}</span>
+                              </span>
+                              <span className="shrink-0 text-xs font-semibold">{fmtSum(svc.price)}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sozlanmagan shifokorlar — bemorga ko'rsatilmaydi, chunki
+                    ularga yozib bo'lmaydi. Registratura sababini bilsin. */}
+                {missingSetup.length > 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {missingSetup.length} ta shifokor qabulga chiqmayapti:{" "}
+                    {missingSetup.slice(0, 3).map((m) =>
+                      `${m.doctor} (${m.reason === "ish_jadvali_yoq" ? "jadval yo'q" : "qabul xizmati yo'q"})`
+                    ).join(", ")}
+                    {missingSetup.length > 3 ? " …" : ""}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label>Shifokor *</Label>
               <Select value={fDoctor} onValueChange={(v) => { setFDoctor(v ?? ""); setFSlot(null); }}>
@@ -672,7 +792,7 @@ export default function ReceptionPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Xizmat *</Label>
+              <Label>Qo&apos;shimcha xizmatlar</Label>
               {/* Bo'lim chiplari — 80+ xizmatni tekis ro'yxatdan topish qiyin */}
               {svcCategories.length > 1 && (
                 <div className="flex flex-wrap gap-1.5 pb-1">
