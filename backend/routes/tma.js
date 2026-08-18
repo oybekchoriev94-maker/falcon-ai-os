@@ -343,9 +343,15 @@ export default function tmaRoutes(pool, bookingCore) {
     } catch (e) { safeError(res, e); }
   });
 
-  // GET /api/tma/consultations — "Shifokor qabuli" bo'limi.
+  // GET /api/tma/consultation-catalog — "Shifokor qabuli" bo'limi.
   // Kiosk va registratura bilan AYNAN bir xil ro'yxat (yagona manba).
-  router.get('/consultations', async (req, res) => {
+  //
+  // NOMI NEGA "catalog": bu routerda `/consultations` ALLAQACHON band —
+  // u bemorning O'TGAN tibbiy yozuvlarini qaytaradi (220-qator) va
+  // tma.html boshqaruv panelida ishlatiladi. Express birinchi mos
+  // marshrutni oladi, shuning uchun bir xil nom qo'yilsa bu endpoint
+  // umuman ishlamas edi. Nom uchala kanalda bir xil saqlanadi.
+  router.get('/consultation-catalog', async (req, res) => {
     try {
       const tenantId = await getTenantId(getTelegramId(req));
       const data = await listConsultations(pool, tenantId);

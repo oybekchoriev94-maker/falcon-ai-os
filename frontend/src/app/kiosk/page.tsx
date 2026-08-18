@@ -115,6 +115,8 @@ function Kiosk({
 
   // Ma'lumotlar
   const [departments, setDepartments] = useState<KioskDepartment[]>([]);
+  // Yo'nalish -> shifokorlar soni ("Shifokor qabuli" bo'limi uchun)
+  const [doctorCounts, setDoctorCounts] = useState<Record<string, number>>({});
   const [services, setServices] = useState<KioskService[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -208,6 +210,22 @@ function Kiosk({
       setLoading(false);
     }
   }, [services.length, t]);
+
+  // "Shifokor qabuli" bo'limi — registratura va Telegram bilan bitta manba.
+  // Bu yerda faqat shifokorlar SONI kerak (1-qadamda "7 ta shifokor" deb
+  // ko'rsatiladi); to'liq ro'yxatni 2-qadam departments dan oladi.
+  const loadConsultations = useCallback(async () => {
+    try {
+      const r = await kioskApi.get<{ specialties: { key: string; doctors: unknown[] }[] }>(
+        "/api/kiosk/consultation-catalog"
+      );
+      const counts: Record<string, number> = {};
+      for (const sp of r.specialties || []) counts[sp.key] = sp.doctors.length;
+      setDoctorCounts(counts);
+    } catch {
+      // Bo'lim baribir ishlaydi — faqat shifokorlar soni ko'rinmaydi
+    }
+  }, []);
 
   const loadDepartments = useCallback(async () => {
     if (departments.length) return;
@@ -341,7 +359,7 @@ function Kiosk({
   }
 
   /* ── Navigatsiya ── */
-  const startBooking = async () => { await loadServices(); setScreen("book"); setStep(1); };
+  const startBooking = async () => { await Promise.all([loadServices(), loadConsultations()]); setScreen("book"); setStep(1); };
   const goPrices = async () => { await loadServices(); setScreen("prices"); };
   const goDoctors = async () => { await loadDepartments(); setScreen("doctors"); };
   const goQueue = async () => { await loadQueue(); setScreen("queue"); };
@@ -633,7 +651,7 @@ function Kiosk({
             {error && <ErrorBanner msg={error} />}
 
             {step === 1 && (
-              <StepService t={t} services={services} loading={loading} activeCat={cat} onCat={setCat} onPick={pickService} />
+              <StepService t={t} services={services} loading={loading} activeCat={cat} onCat={setCat} onPick={pickService} doctorCounts={doctorCounts} />
             )}
             {step === 2 && (
               <StepDoctor t={t} doctors={doctorList} exact={exact} serviceName={service?.name} onPick={pickDoctor} />

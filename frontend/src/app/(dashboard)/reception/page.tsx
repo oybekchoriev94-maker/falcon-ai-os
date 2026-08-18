@@ -233,7 +233,7 @@ export default function ReceptionPage() {
     queryKey: ["consultations"],
     queryFn: async () => {
       const res = await api.get<{ specialties: ConsultSpecialty[]; missing_setup: { doctor: string; label: string; reason: string }[] }>(
-        "/api/booking/consultations"
+        "/api/booking/consultation-catalog"
       );
       if (res.success) return res;
       throw new Error(res.error);

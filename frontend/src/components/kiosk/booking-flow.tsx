@@ -137,6 +137,10 @@ function catIcon(c: string): LucideIcon {
   return CAT_ICON.find((x) => x.test(c))?.Icon ?? Layers;
 }
 
+/* Qabul xizmatlarining kategoriyasi — 034 migratsiyasi shu nomga
+   keltiradi. Uchala kanalda bir xil nom (yagona manba). */
+export const CONSULT_CAT = "Shifokor qabuli";
+
 const DEPT_LABEL: Record<string, string> = {
   ginekolog: "Ginekolog",
   laborant: "Laborant",
@@ -199,6 +203,7 @@ export function StepService({
   activeCat,
   onCat,
   onPick,
+  doctorCounts,
 }: {
   t: KioskT;
   services: KioskService[];
@@ -206,8 +211,15 @@ export function StepService({
   activeCat: string | null;
   onCat: (c: string) => void;
   onPick: (s: KioskService) => void;
+  /** Yo'nalish -> shifokorlar soni (/api/kiosk/consultations dan) */
+  doctorCounts?: Record<string, number>;
 }) {
-  const cats = [...new Set(services.map((s) => s.category || "Boshqa"))];
+  // "Shifokor qabuli" HAR DOIM birinchi: bemorlarning ko'pchiligi
+  // aynan shifokorga keladi, tekshiruvga emas. Ilgari bu bo'lim
+  // alifbo tartibida o'rtada qolib ketardi.
+  const cats = [...new Set(services.map((s) => s.category || "Boshqa"))].sort((a, b) =>
+    a === CONSULT_CAT ? -1 : b === CONSULT_CAT ? 1 : 0
+  );
   const cat = activeCat && cats.includes(activeCat) ? activeCat : cats[0];
   const list = services.filter((s) => (s.category || "Boshqa") === cat);
 
@@ -273,11 +285,21 @@ export function StepService({
             >
               <div>
                 <div style={{ ...HEAD, fontSize: 21, lineHeight: 1.2, letterSpacing: "-0.01em" }}>{s.name}</div>
-                {s.duration_min ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 16, color: "var(--k-n-700)", marginTop: 4 }}>
-                    <Clock size={15} strokeWidth={1.8} /> {s.duration_min} daqiqa
-                  </div>
-                ) : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 16, color: "var(--k-n-700)", marginTop: 4 }}>
+                  {s.duration_min ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <Clock size={15} strokeWidth={1.8} /> {s.duration_min} daqiqa
+                    </span>
+                  ) : null}
+                  {/* Qabulda nechta shifokor borligi — bemor keyingi qadamda
+                      nimani ko'rishini oldindan biladi */}
+                  {doctorCounts?.[(s.specialty || "").toLowerCase()] ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <Stethoscope size={15} strokeWidth={1.8} />
+                      {doctorCounts[(s.specialty || "").toLowerCase()]} ta shifokor
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div style={{ ...HEAD, fontSize: 22, textAlign: "right", whiteSpace: "nowrap" }}>{fmtSum(s.price)}</div>
               <ChevronRight className="k-arrow" size={26} strokeWidth={2} color="var(--k-accent)" />

@@ -516,8 +516,8 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     } catch (e) { serverError(res, e); }
   });
 
-  // GET /public/consultations — "Shifokor qabuli" bo'limi (bemor uchun)
-  router.get('/public/consultations', async (req, res) => {
+  // GET /public/consultation-catalog — "Shifokor qabuli" bo'limi (bemor uchun)
+  router.get('/public/consultation-catalog', async (req, res) => {
     try {
       const tenantId = await resolvePublicTenant(req);
       const data = await listConsultations(pool, tenantId);
@@ -527,9 +527,9 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
     } catch (e) { serverError(res, e); }
   });
 
-  // GET /consultations — xuddi shu bo'lim, lekin xodim uchun:
+  // GET /consultation-catalog — xuddi shu bo'lim, lekin xodim uchun:
   // sozlanmagan yo'nalishlar ro'yxati bilan (registratura kamchilikni ko'rsin).
-  router.get('/consultations', authMiddleware, async (req, res) => {
+  router.get('/consultation-catalog', authMiddleware, async (req, res) => {
     try {
       const data = await listConsultations(pool, tid(req));
       res.json({ success: true, ...data });

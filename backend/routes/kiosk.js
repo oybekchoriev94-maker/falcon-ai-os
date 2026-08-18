@@ -297,9 +297,9 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
     }
   });
 
-  // GET /api/kiosk/consultations — "Shifokor qabuli" bo'limi.
+  // GET /api/kiosk/consultation-catalog — "Shifokor qabuli" bo'limi.
   // Registratura va Telegram bilan AYNAN bir xil ro'yxat (yagona manba).
-  router.get('/consultations', deviceAuth, async (req, res) => {
+  router.get('/consultation-catalog', deviceAuth, async (req, res) => {
     try {
       const data = await listConsultations(pool, req.kioskTenantId);
       res.json({ success: true, specialties: data.specialties });
