@@ -7,10 +7,15 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
-export default function doctorRoutes(pool, authMiddleware, checkRole, _validate, _schemas, _telegramOrJwtAuth, upload) {
-  // Standart xato yordamchisi. Ilgari server.js'dan `serverError` uzatilishi
-  // kutilardi, lekin haqiqatda `validate` funksiyasi yetkazilardi (signatura
-  // mos kelmasdi). Endi lokal fallback bilan barqarorlaymiz.
+// DIQQAT: server.js bu faylni FAQAT 4 argument bilan chaqiradi —
+//   doctorViewRoutes(getPool(), authMiddleware, checkRole, serverError)
+// Ilgari signatura 7 ta parametr kutar edi (_validate, _schemas,
+// _telegramOrJwtAuth kabi hech qachon kelmaydigan o'lik parametrlar),
+// shuning uchun `upload` (7-o'rin) doim undefined bo'lib, ovozli ko'rik
+// endpointi `upload.single is not a function` bilan butun serverni
+// ishga tushmay qo'yardi (production'da sinab ko'rilganda topildi).
+// Endi signatura chaqiruv bilan AYNAN mos: 4-o'rin — upload.
+export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
   const serverError = (res, e) => {
     console.error('[DOCTOR]', e);
     res.status(500).json({ success: false, error: e?.message || 'Server xatosi' });

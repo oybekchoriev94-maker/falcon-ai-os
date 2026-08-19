@@ -436,7 +436,7 @@ async function main() {
     // authMiddleware oldin turadi: tenant JWT dan olinsin (x-tenant-id header orqali soxtalashtirib bo'lmasin).
     app.use(`/api/scribe`, authMiddleware, checkSubscription, tenantRateLimit('ai'), checkAiLimit,
       scribeRoutes(getPool(), authMiddleware, checkRole, upload, serverError, logger));
-    app.use(`/api/doctor`, doctorViewRoutes(getPool(), authMiddleware, checkRole, serverError));
+    app.use(`/api/doctor`, doctorViewRoutes(getPool(), authMiddleware, checkRole, upload));
     app.use(`/api/b2b`, b2bRoutes(getPool(), authMiddleware, checkRole, validate, schemas, serverError));
     function mountRoutes(prefix) {
       const p = prefix || '';
