@@ -54,6 +54,53 @@ model: WhisperModel | None = None
 _sem: asyncio.Semaphore | None = None
 
 
+def _convert_to_ct2(repo_id: str, out_dir: str):
+    """Xom (transformers/safetensors) Whisper checkpointini CTranslate2
+    formatiga o'giradi — faster-whisper faqat shu formatni tushunadi.
+
+    NEGA KERAK: ko'p Whisper fine-tune'lari (masalan rubaiSTT) HuggingFace'da
+    faqat transformers formatida e'lon qilinadi, CT2 versiyasi yo'q. Buni
+    ilgari qo'lda, klinika kompyuterida `scripts/stt-compare/02-convert-model.sh`
+    orqali qilingan edi va natija faqat o'sha kompyuterda qolgan edi — VPS
+    boshqa model kerak bo'lganda hech narsaga tayana olmasdi. Endi xizmat
+    o'zi birinchi ishga tushishda o'giradi va natijani keshlaydi (MODEL_DIR),
+    keyingi qayta ishga tushirishlar bir zumda bo'ladi.
+    """
+    import subprocess
+    import shutil
+    from transformers import WhisperTokenizerFast, WhisperProcessor
+
+    print(f"'{repo_id}' CT2 formatida emas — birinchi marta o'girilmoqda "
+          f"(bir necha daqiqa davom etishi mumkin)...", flush=True)
+
+    tokdir = tempfile.mkdtemp()
+    try:
+        # Ko'p fine-tune repolarda tokenizer.json yo'q (faqat vocab.json +
+        # merges.txt) — CTranslate2 esa aynan tokenizer.json'ni kutadi.
+        WhisperTokenizerFast.from_pretrained(repo_id).save_pretrained(tokdir)
+        WhisperProcessor.from_pretrained(repo_id).save_pretrained(tokdir)
+
+        # CPU'da int8, GPU'da float16 — DEVICE ga qarab (RAM/VRAM tejash).
+        quant = "int8" if DEVICE == "cpu" else "float16"
+        subprocess.run(
+            [
+                "ct2-transformers-converter", "--model", repo_id,
+                "--output_dir", out_dir, "--quantization", quant, "--force",
+                "--copy_files", "preprocessor_config.json",
+                "tokenizer_config.json", "special_tokens_map.json",
+            ],
+            check=True,
+        )
+        for f in ("tokenizer.json", "preprocessor_config.json"):
+            src = os.path.join(tokdir, f)
+            if os.path.exists(src):
+                shutil.copy(src, out_dir)
+    finally:
+        shutil.rmtree(tokdir, ignore_errors=True)
+
+    print(f"O'girish tugadi: {out_dir}", flush=True)
+
+
 def download_model():
     # MODEL_NAME allaqachon lokal papka bo'lsa — yuklab olish shart emas.
     # Busiz `/models/rubaistt-...` kabi yo'l HuggingFace repo nomi deb
@@ -64,23 +111,40 @@ def download_model():
         print(f"Using local model directory: {MODEL_NAME}", flush=True)
         return MODEL_NAME
 
-    from huggingface_hub import snapshot_download
-    dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
-    if os.path.exists(os.path.join(dest, "model.bin")):
-        print(f"Model already cached at {dest}", flush=True)
-        return dest
-    print(f"Downloading {MODEL_NAME} to {dest}...", flush=True)
     os.makedirs(MODEL_DIR, exist_ok=True)
-    path = snapshot_download(
-        MODEL_NAME,
-        cache_dir=MODEL_DIR,
-        local_dir=dest,
-        local_dir_use_symlinks=False,
-        resume_download=True,
-        ignore_patterns=["*.h5", "*.ot"],
-    )
-    print(f"Model downloaded to {path}", flush=True)
-    return path
+    dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
+    ct2_dest = dest + "-ct2"
+
+    # Avvalgi ishga tushirishda o'girilgan bo'lsa — qayta o'girmaymiz.
+    if os.path.exists(os.path.join(ct2_dest, "model.bin")):
+        print(f"CT2 model keshdan olindi: {ct2_dest}", flush=True)
+        return ct2_dest
+    if os.path.exists(os.path.join(dest, "model.bin")):
+        print(f"Model keshdan olindi: {dest}", flush=True)
+        return dest
+
+    # Repo CT2 formatida bo'lishi mumkin (masalan hostmepanda'niki) —
+    # avval shuni tekshiramiz, aks holda bitta modelni ikki marta
+    # (xom + o'girilgan) yuklab olib, joy va vaqtni isrof qilardik.
+    from huggingface_hub import HfApi, snapshot_download
+    try:
+        files = {f.rfilename for f in HfApi().model_info(MODEL_NAME).siblings}
+    except Exception as e:
+        raise RuntimeError(f"HuggingFace'dan '{MODEL_NAME}' haqida ma'lumot olib bo'lmadi: {e}")
+
+    if "model.bin" in files:
+        print(f"Downloading {MODEL_NAME} (CT2) to {dest}...", flush=True)
+        path = snapshot_download(
+            MODEL_NAME, cache_dir=MODEL_DIR, local_dir=dest,
+            local_dir_use_symlinks=False, resume_download=True,
+            ignore_patterns=["*.h5", "*.ot"],
+        )
+        print(f"Model downloaded to {path}", flush=True)
+        return path
+
+    # Xom (transformers) checkpoint — CT2'ga o'giramiz.
+    _convert_to_ct2(MODEL_NAME, ct2_dest)
+    return ct2_dest
 
 
 @asynccontextmanager

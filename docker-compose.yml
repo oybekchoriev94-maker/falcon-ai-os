@@ -34,9 +34,22 @@ services:
     # buning uchun portni tashqariga chiqarish SHART EMAS.
     # Lokal sozlashda kerak bo'lsa: docker compose port yoki SSH tunnel.
     expose: ["8081"]
+    # DIQQAT: VPS'da bor-yo'g'i ~3.7GB RAM bor (tekshirilgan). Xom
+    # (transformers) checkpointni CT2'ga o'girish PyTorch orqali butun
+    # modelni xotiraga yuklaydi (~3GB+) — shu resursda db/app/frontend
+    # bilan bir vaqtda ishga tushirilsa, butun serverni OOM bilan
+    # qulatib qo'yishi mumkin. Shuning uchun MODEL_NAME lokal, OLDINDAN
+    # o'girilgan papkaga ko'rsatiladi (pastga qarang) — konvertatsiya
+    # BU serverda HECH QACHON ishlamaydi, faqat tayyor CT2 model o'qiladi.
     mem_limit: 2g
     environment:
-      MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
+      # rubaiSTT v2 medium — klinika kompyuterida (GPU, ko'p RAM) allaqachon
+      # int8'ga o'girilib, /models/rubaistt-v2-medium-ct2 papkasidan shu
+      # yerga ko'chirilgan (pastdagi volumes qarang). Xom HuggingFace
+      # repo nomi ATAYLAB EMAS — server.py buni ko'rsa avtomatik o'girishga
+      # urinardi, VPS'ning tor xotirasida bu xavfli (yuqoridagi izohga q.).
+      # Eski modelga qaytarish: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
+      MODEL_NAME: /models/rubaistt-v2-medium-ct2
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
@@ -47,6 +60,10 @@ services:
       STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
       - stt-cache:/cache
+      # Klinika kompyuterida int8'ga o'girilgan model shu papkaga scp
+      # qilinadi (README: scripts/stt-compare/README.md). Faqat o'qish —
+      # xizmat modelni o'zgartira olmaydi.
+      - ./stt-models:/models:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       interval: 30s

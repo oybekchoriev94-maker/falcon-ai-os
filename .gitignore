@@ -92,6 +92,10 @@ scripts/stt-compare/audio*/
 scripts/stt-compare/models/
 scripts/stt-compare/natija*.md
 
+# VPS'da ishlatiladigan STT model og'irliklari (GB'larcha, binary) —
+# klinika kompyuteridan scp orqali ko'chiriladi, git'ga tushmaydi.
+/stt-models/
+
 # Davomat agenti — biometrik ma'lumot va sozlama GIT'GA TUSHMASIN
 agent/attendance/faces/
 agent/attendance/data/
