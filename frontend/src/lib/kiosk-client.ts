@@ -217,7 +217,11 @@ export interface AdmissionRequestResult {
 // ── Formatlash yordamchilari ─────────────────────────────────
 
 export function fmtSum(n: number): string {
-  return new Intl.NumberFormat("uz-UZ").format(Math.round(n)) + " so'm";
+  // Reception (`fmtSum` in reception/page.tsx) va TMA (`sumFmt` in tma.html)
+  // narxi yo'q/noto'g'ri bo'lsa 0 ga tushiradi — shu yerda YO'Q edi, shuning
+  // uchun `price` undefined bo'lganda "NaN so'm" chiqib, narx "ko'rinmayapti"
+  // deb tuyulardi. Uchala kanal bir xil ishlashi kerak (yagona manba talabi).
+  return new Intl.NumberFormat("uz-UZ").format(Math.round(Number(n) || 0)) + " so'm";
 }
 
 /** 9 raqamli lokal telefonni ko'rinishga keltirish: "901234567" -> "90 123 45 67" */
