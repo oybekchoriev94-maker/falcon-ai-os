@@ -210,9 +210,9 @@ export default function ReceptionVoicePage() {
       const fd = new FormData();
       fd.append("audio", audio, "rec.webm");
       fd.append("language", lang);
-      const res = await api.upload<{ transcript: string; extraction: Extraction }>("/api/reception/voice-register", fd);
+      const res = await api.upload<{ transcript: string; extraction: Extraction; ai_failed?: boolean }>("/api/reception/voice-register", fd);
       if (!res.success) throw new Error((res as { error?: string }).error || "Tushunarli emas");
-      return res as unknown as { transcript: string; extraction: Extraction };
+      return res as unknown as { transcript: string; extraction: Extraction; ai_failed?: boolean };
     },
     onSuccess: (res) => {
       const ex = res.extraction || {};
@@ -243,9 +243,20 @@ export default function ReceptionVoicePage() {
         filled.push(`${ids.length} ta xizmat`);
       }
 
-      toast.success("Ovoz tahlil qilindi", {
-        description: filled.length ? filled.join(" · ") : "Ma'lumot to'ldirildi",
-      });
+      // ROSTGO'Y XABAR. Ilgari hech nima to'lmagan taqdirda ham
+      // "Ovoz tahlil qilindi · Ma'lumot to'ldirildi" deb yozardi —
+      // registratura ishonib, bo'sh formani yubormoqchi bo'lardi.
+      if (filled.length) {
+        toast.success("Ovoz tahlil qilindi", { description: filled.join(" · ") });
+      } else if (res.ai_failed) {
+        toast.error("AI ma'lumotni ajrata olmadi", {
+          description: "Diktant matni pastda turibdi — maydonlarni qo'lda to'ldiring.",
+        });
+      } else {
+        toast.warning("Hech qanday ma'lumot topilmadi", {
+          description: "Bemor ismi, shifokor yoki xizmat aniq aytilmagan bo'lishi mumkin. Qaytadan urinib ko'ring.",
+        });
+      }
     },
     onError: (e: Error) => toast.error("Xatolik", { description: e.message }),
   });

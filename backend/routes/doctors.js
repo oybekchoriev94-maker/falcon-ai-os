@@ -272,7 +272,24 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
           text,
           { temperature: 0.0 }
         );
-        if (typeof fixed === 'string') cleaned = fixed;
+        // DIQQAT: llm() BO'SH satr qaytarishi mumkin (model bo'sh javob
+        // berdi, kvota tugadi, javob JSON deb noto'g'ri talqin qilindi).
+        // Ilgari shu bo'sh satr `cleaned` ga o'tib ketardi va DIKTANT
+        // BUTUNLAY YO'QOLARDI: transkripsiya bo'sh, ajratish bo'sh matn
+        // ustida ishlaydi, natijada hech nima to'lmaydi — lekin so'rov
+        // "muvaffaqiyatli" hisoblanib, registratura "Ma'lumot to'ldirildi"
+        // degan xabarni ko'rardi. Aynan shu production'da sodir bo'ldi.
+        //
+        // Imlo tuzatish — YAXSHILASH, majburiy qadam emas. Ishonchsiz
+        // bo'lsa asl STT matnini saqlaymiz: imlosi biroz noto'g'ri matn
+        // yo'q matndan ko'ra ancha foydali.
+        const f = typeof fixed === 'string' ? fixed.trim() : '';
+        // Uzunlik keskin qisqargan bo'lsa — model matnni tuzatmay, kesib
+        // yuborgan yoki javob berishdan bosh tortgan. Bunday natijaga
+        // ishonmaymiz.
+        if (f && f.length >= text.trim().length * 0.5) cleaned = f;
+        else if (f) console.warn('[VOICE-REG] LLM tuzatishi shubhali (qisqarib ketdi) — asl matn saqlandi');
+        else console.warn('[VOICE-REG] LLM bo\'sh qaytardi — asl matn saqlandi');
       }
       // Klinikaning HAQIQIY ro'yxatlari — LLM taxmin qilmasin, shulardan tanlasin
       const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
@@ -326,6 +343,11 @@ QOIDALAR:
 
       const transcript = cleaned;
       const r = (typeof raw === 'object' && raw !== null && !raw.error) ? raw : {};
+      // AI ajratish ishlamagan bo'lsa buni YASHIRMAYMIZ. Ilgari bu holat
+      // bo'sh `extraction` bilan "muvaffaqiyat" sifatida qaytardi va
+      // registratura "Ovoz tahlil qilindi" degan xabarni ko'rib, aslida
+      // hech nima to'lmaganini keyin sezardi. Endi frontend aniq ayta oladi.
+      const aiFailed = !(typeof raw === 'object' && raw !== null && !raw.error);
 
       // Indekslarni haqiqiy yozuvlarga aylantiramiz (chegaradan chiqsa e'tiborsiz)
       const di = Number(r.doctor_index);
@@ -352,7 +374,7 @@ QOIDALAR:
         preferred_time: r.preferred_time || '',
         notes: r.notes || '',
       };
-      res.json({ success: true, transcript, extraction });
+      res.json({ success: true, transcript, extraction, ai_failed: aiFailed });
     } catch (e) { safeError(res, e); }
   });
 
