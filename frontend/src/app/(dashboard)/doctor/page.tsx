@@ -478,15 +478,44 @@ function VisitDialog({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const rec = new MediaRecorder(stream);
+
+      // Formatni ANIQ tanlaymiz va yozuvni O'SHA nom bilan yuboramiz.
+      // Ilgari `new MediaRecorder(stream)` deb formatsiz yaratilardi va
+      // natija har doim "audio/webm" deb belgilanardi — brauzer boshqa
+      // formatda yozsa (Safari `audio/mp4`), server faylni o'qiy olmasdi
+      // va shifokor "ovozni olmayapti" deb ko'rardi.
+      const mime = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/mp4",
+      ].find((m) => MediaRecorder.isTypeSupported?.(m)) || "";
+
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-      rec.onstop = () => { void sendVoice(new Blob(chunksRef.current, { type: "audio/webm" })); };
+      rec.onstop = () => {
+        const actual = rec.mimeType || mime || "audio/webm";
+        const ext = actual.includes("mp4") ? "mp4" : actual.includes("ogg") ? "ogg" : "webm";
+        void sendVoice(new Blob(chunksRef.current, { type: actual }), ext);
+      };
       mediaRef.current = rec;
-      rec.start();
+      // 1s bo'laklab yozamiz: uzun diktantda butun yozuv bitta bo'lakda
+      // to'planib qolmaydi va brauzer fonga o'tsa ham ma'lumot yig'iladi.
+      rec.start(1000);
       setRecording(true);
-    } catch {
-      toast.error("Mikrofonga ruxsat berilmadi");
+    } catch (e) {
+      // Sababni ajratamiz — shifokorga nima qilishni aytish uchun.
+      const name = (e as Error)?.name || "";
+      if (name === "NotAllowedError") {
+        toast.error("Mikrofonga ruxsat berilmadi", {
+          description: "Brauzer manzil satridagi qulf belgisini bosib, mikrofonga ruxsat bering.",
+        });
+      } else if (name === "NotFoundError") {
+        toast.error("Mikrofon topilmadi", { description: "Qurilma ulanganini tekshiring." });
+      } else {
+        toast.error("Mikrofonni ochib bo'lmadi", { description: name || "Noma'lum xato" });
+      }
     }
   }
 
@@ -495,13 +524,27 @@ function VisitDialog({
     setRecording(false);
   }
 
-  async function sendVoice(blob: Blob) {
+  async function sendVoice(blob: Blob, ext = "webm") {
     releaseMic();
     if (!item) return;
+
+    // Bo'sh/juda kichik yozuvni SERVERGA YUBORMAYMIZ. Mikrofon jim
+    // qolganda (noto'g'ri qurilma tanlangan, tizimda ovoz o'chirilgan)
+    // server to'g'ri javob beradi — "Ovoz aniqlanmadi" — lekin shifokor
+    // buni "tizim ovozimni olmayapti" deb tushunadi va sababini bilmaydi.
+    // Bu yerda muammo mikrofonda ekanini aniq aytamiz.
+    if (blob.size < 1024) {
+      console.warn("[VOICE] bo'sh yozuv:", blob.size, "bayt,", blob.type);
+      toast.error("Mikrofondan ovoz kelmadi", {
+        description: "Tizim sozlamalarida to'g'ri mikrofon tanlanganini va ovozi o'chiq emasligini tekshiring.",
+      });
+      return;
+    }
+
     setVoiceBusy(true);
     try {
       const fd = new FormData();
-      fd.append("audio", blob, "visit.webm");
+      fd.append("audio", blob, `visit.${ext}`);
       fd.append("language", voiceLang);
       const res = await api.upload<{
         transcription: string;
