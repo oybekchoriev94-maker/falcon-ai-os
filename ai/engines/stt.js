@@ -1,6 +1,14 @@
 // ============================================================
-// Falcon AI OS — Local STT Engine (whisper.cpp + Fallback Cloud)
-// RTX 5070 → whisper-large-v3-turbo @ http://localhost:8081
+// Falcon AI OS — Lokal STT Engine (faster-whisper + cloud fallback)
+//
+// Production: `stt-service/` konteyneri (FastAPI + faster-whisper),
+// model — rubaiSTT v2 medium (islomov/rubaistt_v2_medium), CTranslate2
+// int8 formatida, /models/rubaistt-v2-medium-ct2 papkasidan o'qiladi.
+// Docker tarmog'i ichida: http://stt:8081 (port tashqariga chiqarilmagan).
+//
+// Bu modul HTTP orqali gaplashadi va OpenAI Audio API formatini
+// ishlatadi — shuning uchun narigi tomonda faster-whisper, whisper.cpp
+// yoki Groq turishi mumkin, kod o'zgarmaydi. Faqat WHISPER_URL almashadi.
 // ============================================================
 
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8081';
@@ -26,11 +34,16 @@ function cloudFallbackAllowed() { return process.env.STT_CLOUD_FALLBACK === 'tru
 export const SUPPORTED_LANGUAGES = ['uz', 'ru'];
 export const DEFAULT_LANGUAGE = 'uz';
 
-// DIQQAT: joriy o'zbekcha fine-tuned model initial_prompt bilan ishlamaydi —
-// prompt yuborilsa transkripsiya buziladi (production'da tekshirilgan:
-// o'zbekcha promptda "zg zg z", ruscha promptda bo'sh matn). Shuning uchun
-// tibbiy prompt sukut bo'yicha YUBORILMAYDI. Boshqa model ishlatilganda
-// STT_USE_PROMPT=true qilib yoqish mumkin.
+// DIQQAT — bu cheklov ESKI modelda kuzatilgan, YANGISIDA TEKSHIRILMAGAN.
+// Nafaqaga chiqarilgan `hostmepanda/whisper-large-v3-turbo-uzbek-ct2`
+// initial_prompt bilan ishlamasdi: prompt yuborilsa transkripsiya buzilardi
+// (production'da tekshirilgan: o'zbekcha promptda "zg zg z", ruscha promptda
+// bo'sh matn). Hozirgi model — rubaiSTT v2 medium — buni ko'tara oladimi,
+// HALI O'LCHANMAGAN.
+// Shuning uchun tibbiy prompt sukut bo'yicha hamon YUBORILMAYDI: prompt
+// modelni buzsa, natija bemor kartasiga tushadi — sinovsiz yoqish mumkin
+// emas. O'lchash: scripts/stt-compare/03-compare.sh uz prompt
+// Natija ijobiy bo'lsa — STT_USE_PROMPT=true (ilova va stt-service'da).
 const USE_PROMPT = process.env.STT_USE_PROMPT === 'true';
 
 const MEDICAL_PROMPTS = {
@@ -132,9 +145,11 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
   }
   opts = { ...opts, language: langCheck.language };
 
-  // 1-URINISH: Lokal whisper.cpp
-  // MUHIM: whisper.cpp server OpenAI API formatini to'liq qo'llab-quvvatlaydi!
-  // Aynan shu API (https://api.groq.com/openai/v1/audio/transcriptions) bilan bir xil
+  // 1-URINISH: Lokal STT xizmati (stt-service — faster-whisper + rubaiSTT v2)
+  // MUHIM: xizmat OpenAI Audio API formatini to'liq qo'llab-quvvatlaydi —
+  // aynan shu API (https://api.groq.com/openai/v1/audio/transcriptions) bilan
+  // bir xil. Shu sababli pastdagi cloud fallback bir xil `makeForm()` ni
+  // ishlatadi va model almashtirilganda bu kodga tegilmaydi.
   if (isLocal()) {
     try {
       const res = await postToWhisper(audioBuffer, filename, opts);
@@ -160,7 +175,7 @@ export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}
 
   // 2-URINISH: Cloud (Groq Whisper)
   const key = groqKey();
-  if (!key) return { text: '', error: 'STT kaliti sozlanmagan. whisper.cpp yoki GROQ_API_KEY kerak.' };
+  if (!key) return { text: '', error: 'STT sozlanmagan. Lokal STT xizmati (stt konteyneri) yoki GROQ_API_KEY kerak.' };
 
   try {
     const form = makeForm(audioBuffer, filename, opts);

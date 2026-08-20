@@ -10,15 +10,45 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.responses import JSONResponse
 from faster_whisper import WhisperModel
 
-MODEL_NAME = os.getenv("MODEL_NAME", "hostmepanda/whisper-large-v3-turbo-uzbek-ct2")
+# SUKUT BO'YICHA MODEL — nega aynan shu qiymat.
+#
+# Ilgari bu yerda `hostmepanda/whisper-large-v3-turbo-uzbek-ct2` (HuggingFace
+# repo nomi) turardi. U model NAFAQAGA CHIQARILDI: production'da ham,
+# klinika kompyuterida ham rubaiSTT v2 medium ishlaydi. Eski qiymatni
+# qoldirish xavfli edi — MODEL_NAME muhit o'zgaruvchisi biror sababdan
+# yo'qolsa (compose fayli almashtirildi, `docker run` qo'lda yozildi),
+# xizmat JIM-JITLIK bilan eski modelni HuggingFace'dan tortib olib ishga
+# tushardi va hech kim buni sezmasdi — bemor kartasiga boshqa model yozgan
+# matn tushardi.
+#
+# Nima uchun HuggingFace repo nomi EMAS (masalan islomov/rubaistt_v2_medium):
+# u xom transformers checkpoint, server.py uni CT2'ga o'girishga urinadi va
+# bu PyTorch orqali ~3GB+ xotira talab qiladi. VPS'da jami ~3.7GB RAM bor —
+# butun server OOM bilan qulaydi (docker-compose.yml dagi izohga q.).
+#
+# Nima uchun aynan bu YO'L: /models/rubaistt-v2-medium-ct2 ikkala joyda ham
+# bir xil — VPS'da ./stt-models bind-mount orqali, klinika GPU kompyuterida
+# esa scripts/stt-compare/04-serve-gpu.sh ayni shu yo'lni ulaydi. Ya'ni
+# sukut qiymati ikkala muhitda ham TO'G'RI ishlaydi.
+#
+# Papka bo'lmasa/bo'sh bo'lsa — download_model() ichidagi model.bin tekshiruvi
+# darhol aniq xato beradi. Bu "jim ishlab ketgan noto'g'ri model" dan
+# ancha yaxshi: noto'g'ri model sezilmaydi, ishga tushmagan xizmat darhol
+# seziladi.
+MODEL_NAME = os.getenv("MODEL_NAME", "/models/rubaistt-v2-medium-ct2")
 MODEL_DIR = os.getenv("MODEL_DIR", "/cache")
 DEVICE = os.getenv("DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "int8")
 BEAM_SIZE = int(os.getenv("BEAM_SIZE", "3"))
-# DIQQAT: bu fine-tuned model initial_prompt bilan ishlamaydi — prompt berilsa
-# chiqish buziladi (bo'sh matn yoki "zg zg z" kabi takrorlanish). Production'da
-# tekshirilgan. Shuning uchun sukut bo'yicha o'chirilgan; boshqa model
-# ishlatilsa STT_USE_PROMPT=true bilan yoqish mumkin.
+# DIQQAT — bu cheklov ESKI model uchun aniqlangan, yangisida TEKSHIRILMAGAN.
+# Nafaqaga chiqarilgan `hostmepanda/whisper-large-v3-turbo-uzbek-ct2` modeli
+# initial_prompt bilan ishlamasdi: prompt berilsa chiqish buzilardi (bo'sh
+# matn yoki "zg zg z" kabi takrorlanish). Bu production'da tasdiqlangan edi.
+# Hozirgi model — rubaiSTT v2 medium — promptni ko'tara oladimi, HALI
+# O'LCHANMAGAN. Shuning uchun sukut bo'yicha hamon o'chirib qo'yilgan
+# (ehtiyotkorlik: buzilsa bemor kartasiga axlat matn tushadi).
+# Sinash: scripts/stt-compare/03-compare.sh uz prompt — natija ijobiy
+# bo'lsa STT_USE_PROMPT=true qilib yoqish mumkin.
 USE_PROMPT = os.getenv("STT_USE_PROMPT", "false").lower() == "true"
 # Til siyosati: klinika faqat o'zbek va rus tillarida ishlaydi.
 # Boshqa til so'ralsa rad etamiz (model uni "o'zbekcha" deb axlat matn chiqaradi).
@@ -140,7 +170,7 @@ def download_model():
         print(f"Model keshdan olindi: {dest}", flush=True)
         return dest
 
-    # Repo CT2 formatida bo'lishi mumkin (masalan hostmepanda'niki) —
+    # Ba'zi repolar allaqachon CT2 formatida e'lon qilinadi (model.bin bor) —
     # avval shuni tekshiramiz, aks holda bitta modelni ikki marta
     # (xom + o'girilgan) yuklab olib, joy va vaqtni isrof qilardik.
     from huggingface_hub import HfApi, snapshot_download

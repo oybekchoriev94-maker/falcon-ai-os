@@ -43,12 +43,20 @@ services:
     # BU serverda HECH QACHON ishlamaydi, faqat tayyor CT2 model o'qiladi.
     mem_limit: 2g
     environment:
-      # rubaiSTT v2 medium — klinika kompyuterida (GPU, ko'p RAM) allaqachon
-      # int8'ga o'girilib, /models/rubaistt-v2-medium-ct2 papkasidan shu
-      # yerga ko'chirilgan (pastdagi volumes qarang). Xom HuggingFace
-      # repo nomi ATAYLAB EMAS — server.py buni ko'rsa avtomatik o'girishga
-      # urinardi, VPS'ning tor xotirasida bu xavfli (yuqoridagi izohga q.).
-      # Eski modelga qaytarish: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
+      # rubaiSTT v2 medium — YAGONA production modeli. Klinika kompyuterida
+      # (GPU, ko'p RAM) int8'ga o'girilib, /models/rubaistt-v2-medium-ct2
+      # papkasidan shu yerga ko'chirilgan (pastdagi volumes qarang). Xom
+      # HuggingFace repo nomi ATAYLAB EMAS — server.py buni ko'rsa avtomatik
+      # o'girishga urinardi, VPS'ning tor xotirasida bu xavfli (yuqoriga q.).
+      #
+      # ORQAGA QAYTARISH YO'Q. Eski model
+      # (hostmepanda/whisper-large-v3-turbo-uzbek-ct2) NAFAQAGA CHIQARILDI va
+      # uning keshi (stt-cache volume) o'chirildi — bu qiymatni o'zgartirib
+      # "qaytarib" bo'lmaydi: xizmat modelni HuggingFace'dan qayta tortadi,
+      # bu esa tor xotirali VPS'da ishga tushmaslik xavfini tug'diradi.
+      # Model bilan bog'liq muammo chiqsa — orqaga qaytarish emas, klinika
+      # kompyuterida qayta o'girib (scripts/stt-compare/02-convert-model.sh)
+      # ./stt-models ga qaytadan scp qilish kerak.
       MODEL_NAME: /models/rubaistt-v2-medium-ct2
       MODEL_DIR: /cache
       DEVICE: cpu
