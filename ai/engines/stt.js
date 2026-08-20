@@ -103,7 +103,13 @@ async function postToWhisper(audioBuffer, filename, opts) {
       headers: { 'Authorization': `Bearer ${STT_AUTH_TOKEN || 'not-needed'}` },
       // FormData har urinishda qaytadan quriladi — oqim bir marta o'qiladi
       body: makeForm(audioBuffer, filename, opts),
-      signal: AbortSignal.timeout(60000),
+      // 60s -> 120s: rubaiSTT (medium, 24 dekoder qatlami) CPU'da
+      // avvalgi turbo modeldan (4 qatlam) sezilarli sekinroq. VPS'da
+      // xotira ham tor bo'lgani uchun STT_CONCURRENCY=1 qilingan — bu
+      // navbatga tushgan so'rovni yanada uzaytirishi mumkin. Uzun
+      // diktant o'rtada kesilib, matn butunlay yo'qolishidan ko'ra
+      // ko'proq kutish yaxshiroq.
+      signal: AbortSignal.timeout(120000),
     });
     // Faqat 404 boshqa yo'lni sinashga arziydi; qolgan xatolar haqiqiy xato.
     if (res.status !== 404) {

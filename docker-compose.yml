@@ -53,7 +53,11 @@ services:
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
-      STT_CONCURRENCY: "2"
+      # 2 -> 1: medium modelning og'irligi turbo'dan ancha katta (24
+      # dekoder qatlami vs 4). 2 GB xotirada 2 ta parallel transkripsiya
+      # bir vaqtda ishlasa OOM xavfi bor — ayniqsa VPS'da jami atigi
+      # 3.7 GB RAM bor. Yuk testi o'tkazilib tasdiqlangach oshirish mumkin.
+      STT_CONCURRENCY: "1"
       MAX_AUDIO_MB: "25"
       # Ikkinchi himoya qatlami. Ilgari bu o'zgaruvchi FAQAT `app` ga
       # berilardi — ya'ni app tokenni yuborardi, lekin STT uni tekshirmasdi.

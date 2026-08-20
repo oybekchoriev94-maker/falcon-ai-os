@@ -108,6 +108,23 @@ def download_model():
     # klinika kompyuterida server.py qo'lda tuzatilgan va git'dan uzilib
     # qolgan edi (u yerdagi versiyada endpoint nomi ham boshqacha edi).
     if os.path.isdir(MODEL_NAME):
+        # DIQQAT: agar bu Docker bind-mount bo'lsa (masalan ./stt-models),
+        # host papkasi mavjud bo'lmasa Docker uni BO'SH holda avtomatik
+        # yaratadi — `os.path.isdir()` bunda ham True qaytaradi (scp
+        # hali bajarilmagan yoki uzilib qolgan holatga to'g'ri keladi).
+        # Tekshirmasdan qaytarsak, WhisperModel() lifespan() ichida
+        # tushunarsiz xato bilan yiqiladi va bu SOG'LIQ TEKSHIRUVINI
+        # abadiy "loading" holatida ushlab qoladi — `app` esa `stt`
+        # sog'lom bo'lishini kutgani uchun BUTUN KLINIKA (registratura,
+        # kassa, hammasi) ishga tushmay qoladi, faqat ovoz emas.
+        # Shuning uchun aniq xato bilan DARHOL to'xtaymiz.
+        if not os.path.exists(os.path.join(MODEL_NAME, "model.bin")):
+            raise RuntimeError(
+                f"MODEL_NAME papka sifatida berilgan ({MODEL_NAME}), lekin "
+                f"ichida model.bin yo'q — model hali ko'chirilmagan yoki "
+                f"ko'chirish uzilib qolgan. `docker compose up` dan oldin "
+                f"scp orqali to'liq model papkasi joylashtirilganini tekshiring."
+            )
         print(f"Using local model directory: {MODEL_NAME}", flush=True)
         return MODEL_NAME
 
