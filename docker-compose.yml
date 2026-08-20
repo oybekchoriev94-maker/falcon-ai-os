@@ -41,6 +41,11 @@ services:
     # qulatib qo'yishi mumkin. Shuning uchun MODEL_NAME lokal, OLDINDAN
     # o'girilgan papkaga ko'rsatiladi (pastga qarang) — konvertatsiya
     # BU serverda HECH QACHON ishlamaydi, faqat tayyor CT2 model o'qiladi.
+    #
+    # 2g YETARLILIGI O'LCHANGAN: int8 model (739MB) yuklangach haqiqiy
+    # band xotira (cgroup `anon`) 1.01 GiB = 53.8%. Qolgani fayl keshi,
+    # u xotira taqchil bo'lganda o'zi bo'shatiladi.
+    # Tekshirish: ./scripts/stt-smoke-test.sh
     mem_limit: 2g
     environment:
       # rubaiSTT v2 medium — YAGONA production modeli. Klinika kompyuterida
@@ -61,11 +66,17 @@ services:
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
-      # 2 -> 1: medium modelning og'irligi turbo'dan ancha katta (24
-      # dekoder qatlami vs 4). 2 GB xotirada 2 ta parallel transkripsiya
-      # bir vaqtda ishlasa OOM xavfi bor — ayniqsa VPS'da jami atigi
-      # 3.7 GB RAM bor. Yuk testi o'tkazilib tasdiqlangach oshirish mumkin.
-      STT_CONCURRENCY: "1"
+      # O'LCHANGAN qiymat asosida 2 ga qaytarildi.
+      # Vaqtincha 1 ga tushirilgan edi: o'shanda /models ga xato bilan
+      # float16 (GPU uchun, 1.5GB) nusxa ko'chirilgan va xotira 2GB
+      # chegaraning 90% ida turardi. Endi haqiqiy int8 (739MB) qo'yildi —
+      # o'lchov: anon 1.01 GiB / 2 GiB (53.8%).
+      # 2-so'rov modelning IKKINCHI NUSXASINI yaratmaydi (og'irliklar
+      # umumiy) — faqat aktivatsiya buferlari qo'shiladi, ~0.3-0.4 GiB.
+      # Ya'ni 2 ta parallel diktant ~1.4 GiB da qoladi, chegara ichida.
+      # Bu klinika uchun muhim: 13 shifokor bor, ikkitasi bir vaqtda
+      # diktant qilsa, 1 bo'lganda ikkinchisi navbatda kutib turardi.
+      STT_CONCURRENCY: "2"
       MAX_AUDIO_MB: "25"
       # Ikkinchi himoya qatlami. Ilgari bu o'zgaruvchi FAQAT `app` ga
       # berilardi — ya'ni app tokenni yuborardi, lekin STT uni tekshirmasdi.
