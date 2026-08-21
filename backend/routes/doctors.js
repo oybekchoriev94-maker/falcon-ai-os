@@ -257,10 +257,34 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   router.post('/reception/voice-register', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), upload.single('audio'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
+
+      const tenantIdEarly = req.user?.tenant_id || req.tenant_id || 'default';
+      const { saveRecording, markTranscribed, markFailed } =
+        await import('../services/voice-store.js');
+      // AVVAL DISKKA — registrator bemor yonida gapiradi, xato bo'lsa
+      // bemorni ikkinchi marta so'roqqa tutish kerak bo'lardi.
+      const rec = await saveRecording(pool, {
+        tenantId: tenantIdEarly, userId: req.user?.id, source: 'reception_register',
+        refId: null, patientId: null,
+        buffer: req.file.buffer, mime: req.file.mimetype,
+        originalName: req.file.originalname, language: req.body?.language,
+      });
+
       const { text, error, code } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
       // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
-      if (error) return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error, code });
-      if (!text || !text.trim()) return res.status(400).json({ success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring' });
+      if (error) {
+        await markFailed(pool, rec?.id, error);
+        return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500)
+          .json({ success: false, error, code, recording_saved: !!rec });
+      }
+      if (!text || !text.trim()) {
+        await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
+        return res.status(400).json({
+          success: false, error: 'Ovoz tushunarli emas, qaytadan urinib ko\'ring',
+          recording_saved: !!rec,
+        });
+      }
+      await markTranscribed(pool, rec?.id, text);
       // Imlo tuzatish faqat o'zbekcha diktant uchun — ruscha matnni buzmasligi kerak
       const isRu = String(req.body?.language || '').toLowerCase().startsWith('ru');
       let cleaned = text;

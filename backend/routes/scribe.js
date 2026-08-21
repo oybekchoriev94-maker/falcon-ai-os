@@ -26,13 +26,24 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { transcribe, llm } = await import('../../ai/orchestrator.js');
+      const { saveRecording, markTranscribed, markFailed } =
+        await import('../services/voice-store.js');
       let text;
       let sttLanguage = null;
+      let rec = null;
       if (req.file) {
+        // AVVAL DISKKA — transkripsiya yiqilsa diktant yo'qolmasin
+        rec = await saveRecording(pool, {
+          tenantId, userId: req.user?.id, source: 'scribe',
+          refId: null, patientId: req.body?.patient_id || null,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language: req.body?.language,
+        });
         const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
         if (stt.error) {
           // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
-          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code });
+          await markFailed(pool, rec?.id, stt.error);
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code, recording_saved: !!rec });
         }
         text = stt.text;
         sttLanguage = stt.language || null;
@@ -48,12 +59,15 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       // holatda LLM bo'sh matndan javob "o'ylab topar", tibbiy kartaga
       // bo'sh yozuv tushar va shifokorga "muvaffaqiyatli" deb ko'rsatilardi.
       if (!String(text || '').trim()) {
+        await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
         return res.status(422).json({
           success: false,
           code: 'EMPTY_TRANSCRIPT',
           error: 'Ovoz aniqlanmadi. Mikrofonni va tanlangan qurilmani tekshirib, qaytadan yozing.',
+          recording_saved: !!rec,
         });
       }
+      await markTranscribed(pool, rec?.id, text);
       // Mutaxassislik: so'rovda tanlangani ustun, aks holda shifokor profilidagi qiymat.
       // /upload bilan bir xil qoida — UI qaysi endpointga yuborsa ham shablon bir xil.
       const specialization =
@@ -120,11 +134,22 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       const prompt = (MEDICAL_SKILLS[specialization]?.systemPrompt) ||
         "Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {\"patient_name\":\"...\",\"diagnosis\":\"...\",\"procedure\":\"...\",\"medicines\":\"...\"}";
       let text, sttLanguage = null;
+      let rec = null;
+      const { saveRecording, markTranscribed, markFailed } =
+        await import('../services/voice-store.js');
       if (req.file) {
+        // AVVAL DISKKA — transkripsiya yiqilsa diktant yo'qolmasin
+        rec = await saveRecording(pool, {
+          tenantId, userId: req.user?.id, source: 'scribe',
+          refId: null, patientId: req.body?.patient_id || null,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language: req.body?.language,
+        });
         const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
         if (stt.error) {
           // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
-          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code });
+          await markFailed(pool, rec?.id, stt.error);
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error: stt.error, code: stt.code, recording_saved: !!rec });
         }
         text = stt.text;
         sttLanguage = stt.language || null;
@@ -133,14 +158,17 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       }
       // /transcribe bilan bir xil qoida — bo'sh matn hech qachon saqlanmaydi
       if (!String(text || '').trim()) {
+        await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
         return res.status(422).json({
           success: false,
           code: 'EMPTY_TRANSCRIPT',
           error: req.file
             ? 'Ovoz aniqlanmadi. Mikrofonni va tanlangan qurilmani tekshirib, qaytadan yozing.'
             : 'Diktant matni bo\'sh',
+          recording_saved: !!rec,
         });
       }
+      await markTranscribed(pool, rec?.id, text);
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
       const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." + NUMBER_RULE, text);
       const consId = uuidv4();

@@ -7,6 +7,8 @@ import { registerAgent } from '../core/registry.js';
 import * as medicalScribe from './medical-scribe.js';
 // Shifokor qabuli: ovozli diktantni ko'rik kartasi maydonlariga ajratadi
 import * as visitScribe from './visit-scribe.js';
+// Statsionar: yotqizish diktantini 003-forma maydonlariga ajratadi
+import * as admissionScribe from './admission-scribe.js';
 import * as receptionist from './receptionist.js';
 import * as inventoryManager from './inventory-manager.js';
 import * as analyticsAgent from './analytics-agent.js';
@@ -31,6 +33,7 @@ import { CHATBOT_AGENTS } from './patient-chatbot.js';
 const ALL = [
   medicalScribe,
   visitScribe,
+  admissionScribe,
   receptionist,
   inventoryManager,
   analyticsAgent,

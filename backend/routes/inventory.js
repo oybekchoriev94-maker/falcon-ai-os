@@ -395,10 +395,37 @@ export default function inventoryRoutes(
         // transcribe and llm are imported at the server level; we bridge via safe import
         // or require them here. The orchestrator is a peer dependency.
         const { transcribe, llm } = await import('../../ai/orchestrator.js');
+        const { saveRecording, markTranscribed, markFailed } =
+          await import('../services/voice-store.js');
+
+        const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+        const rec = await saveRecording(pool, {
+          tenantId, userId: req.user?.id, source: 'inventory',
+          refId: null, patientId: null,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language: req.body?.language,
+        });
 
         const { text, error, code } = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language: req.body?.language });
         // Til siyosati buzilgan bo'lsa — 400 (mijoz xatosi), aks holda 500
-        if (error) return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500).json({ success: false, error, code });
+        if (error) {
+          await markFailed(pool, rec?.id, error);
+          return res.status(code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500)
+            .json({ success: false, error, code, recording_saved: !!rec });
+        }
+
+        // BO'SH MATN TEKSHIRUVI — bu yerda YO'Q edi.
+        // Bo'sh matndan LLM material nomini "o'ylab topishi" mumkin va
+        // omborga mavjud bo'lmagan tovar kirim qilinardi (qoldiq buziladi).
+        if (!String(text || '').trim()) {
+          await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
+          return res.status(422).json({
+            success: false, code: 'EMPTY_TRANSCRIPT',
+            error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, qaytadan aytib bering.',
+            recording_saved: !!rec,
+          });
+        }
+        await markTranscribed(pool, rec?.id, text);
 
         const result = await llm(
           'Siz omborchi asistentsiz. Ovozli buyruqdan: material nomi, miqdor, partiya raqami va yaroqlilik muddatini (YYYY-MM-DD) ajrating. Agar partiya raqami aytilmagan bo\'lsa, batch_number ga null qo\'ying. Agar sana aytilmagan bo\'lsa, expiration_date ga null qo\'ying. JSON format: {"name":"...","quantity":1,"batch_number":"...","expiration_date":"YYYY-MM-DD"}. MUHIM: miqdor va boshqa sonlarni RAQAMLARDA yozing, so\'z bilan emas (masalan "yigirma besh" -> 25).',
@@ -424,7 +451,7 @@ export default function inventoryRoutes(
         const batchNo = safeBatch || ('BATCH-AUTO-' + now.toISOString().slice(0, 10).replace(/-/g, ''));
         const expDate = result.expiration_date || new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString().slice(0, 10);
         const userId = req.user?.id || req.user?.username || 'admin';
-        const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+        // tenantId yuqorida (audio saqlashdan oldin) allaqachon aniqlangan
 
         // ACID transaction
         await withTransaction(async () => {

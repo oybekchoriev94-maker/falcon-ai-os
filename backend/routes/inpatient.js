@@ -1004,6 +1004,86 @@ export default function(pool, authMiddleware, checkRole, upload) {
   // maydonlariga ajratadi + qisqa ai_summary yozadi.
   //
   // Xato bo'lsa saqlanmaydi — shifokor qo'lda kiritish oynasiga tushadi.
+  // ── OVOZLI YOTQIZISH (003-forma) ──
+  // Shifokor bemor yonida gapiradi: "Shoshilinch yotqizamiz, kirish tashxisi
+  // o'tkir appenditsit, uch kundan beri og'riq, tez yordam olib keldi,
+  // harorat 37.8, bo'yi 172, vazni 68, parhez 1-stol".
+  //
+  // YOTQIZISHNI YARATMAYDI — faqat formani to'ldirish uchun maydonlarni
+  // qaytaradi. Yotqizish huquqiy oqibatga ega (rozilik + shartnoma
+  // tekshiruvi bor) va uni shifokor formani ko'rib, tasdiqlab yaratadi.
+  router.post('/inpatient/admissions/voice',
+    authMiddleware, checkRole('ceo', 'admin', 'doctor', 'receptionist'),
+    upload ? upload.single('audio') : (req, _res, next) => next(),
+    async (req, res) => {
+      try {
+        const tenantId = getTenantId(req);
+        const { language, patient_name } = req.body || {};
+        if (!req.file) return res.status(400).json({ success: false, error: 'Audio fayl majburiy' });
+
+        const { transcribe, executeAgent } = await import('../../ai/orchestrator.js');
+        const { saveRecording, markTranscribed, markFailed } =
+          await import('../services/voice-store.js');
+
+        // Yotqizish hali yaratilmagan — refId yo'q, patientId ham hali
+        // noma'lum bo'lishi mumkin. Yozuv baribir saqlanadi: keyin
+        // kerak bo'lsa vaqt bo'yicha topiladi.
+        const rec = await saveRecording(pool, {
+          tenantId, userId: req.user?.id, source: 'admission',
+          refId: null, patientId: null,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language,
+        });
+
+        const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language });
+        if (stt.error) {
+          await markFailed(pool, rec?.id, stt.error);
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 502)
+            .json({ success: false, error: stt.error, code: stt.code, recording_saved: !!rec });
+        }
+        const text = stt.text || '';
+
+        // Bo'sh matn hech qachon o'tmaydi — aks holda LLM bo'sh matndan
+        // tashxis "o'ylab topadi" va u kasallik tarixiga tushadi.
+        if (!text.trim()) {
+          await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
+          return res.status(422).json({
+            success: false, code: 'EMPTY_TRANSCRIPT',
+            error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, qaytadan aytib bering.',
+            recording_saved: !!rec,
+          });
+        }
+        await markTranscribed(pool, rec?.id, text);
+
+        const run = await executeAgent('admission-scribe',
+          { text, patient_name: patient_name || null },
+          { tenantId, user: req.user });
+
+        // Agent yiqilsa ham diktant yo'qolmaydi — shifokor xom matnni ko'radi
+        if (!run.success) {
+          return res.json({
+            success: true, transcription: text, fields: {}, structured: false,
+            recording_saved: !!rec,
+            note: `AI matnni ajrata olmadi (${run.error}). Diktant saqlangan, formani qo'lda to'ldiring.`,
+          });
+        }
+
+        res.json({
+          success: true,
+          transcription: text,
+          language: stt.language || null,
+          fields: run.data.fields,
+          structured: run.data.structured,
+          recording_saved: !!rec,
+          note: run.data.note || null,
+        });
+      } catch (e) {
+        console.error('[INPATIENT admission voice]', e);
+        res.status(500).json({ success: false, error: e.message });
+      }
+    }
+  );
+
   router.post('/inpatient/daily-notes/voice',
     authMiddleware, checkRole('ceo', 'admin', 'doctor'),
     upload ? upload.single('audio') : (req, _res, next) => next(),
@@ -1020,12 +1100,25 @@ export default function(pool, authMiddleware, checkRole, upload) {
         );
         if (!adm) return res.status(404).json({ success: false, error: 'Yotqizish topilmadi' });
 
-        // STT + LLM chaqiruv (scribe bilan bir xil orchestrator)
-        const { transcribe, llm } = await import('../../ai/orchestrator.js');
+        const { transcribe, executeAgent } = await import('../../ai/orchestrator.js');
+        const { saveRecording, markTranscribed, markFailed } =
+          await import('../services/voice-store.js');
+
+        // AVVAL DISKKA YOZAMIZ. Obhod kun davomida bir marta bo'ladi va
+        // shifokor bir necha bemorni ketma-ket aytadi — xato bo'lsa
+        // qaysi bemor haqida nima aytganini eslash deyarli imkonsiz.
+        const rec = await saveRecording(pool, {
+          tenantId, userId: req.user?.id, source: 'obhod',
+          refId: admission_id, patientId: adm.patient_id,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language,
+        });
+
         const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm', { language });
         if (stt.error) {
+          await markFailed(pool, rec?.id, stt.error);
           return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 500)
-            .json({ success: false, error: stt.error, code: stt.code });
+            .json({ success: false, error: stt.error, code: stt.code, recording_saved: !!rec });
         }
         const text = stt.text || '';
 
@@ -1035,25 +1128,36 @@ export default function(pool, authMiddleware, checkRole, upload) {
         // VA vitalAnomaly xavfsizlik agentiga uzatiladi — ya'ni ogohlantirish
         // tizimi mavjud bo'lmagan o'lchovlar ustida ishlaydi.
         if (!text.trim()) {
+          await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
           return res.status(422).json({
             success: false,
             code: 'EMPTY_TRANSCRIPT',
             error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, obhodni qaytadan aytib bering.',
+            recording_saved: !!rec,
           });
         }
+        // Matn qo'lga kirdi — endi u bazada, keyingi qadam yiqilsa ham yo'qolmaydi
+        await markTranscribed(pool, rec?.id, text);
 
-        const prompt =
-          "Siz shifokor yordamchisisiz. Statsionar bemorining obhod paytidagi ovozli " +
-          "yozuvidan quyidagi JSON kalitlarini ajratib qaytaring (yo'q bo'lsa null yoki bo'sh string): " +
-          '{"temperature": null, "blood_pressure": "", "pulse": null, "respiration": null, ' +
-          '"saturation": null, "complaints": "", "objective_status": "", "treatment_plan": "", ' +
-          '"ai_summary": ""}. ' +
-          "temperature — o'ndan bir aniqlikda son (37.5), pulse/respiration — butun son, " +
-          "saturation — foizsiz butun (98). blood_pressure — '120/80' formatida. " +
-          "ai_summary — 1-2 gap qisqa xulosa (shifokor tez o'qishi uchun). " +
-          "Sonlarni RAQAMLARDA yozing, so'z bilan emas. Diktant o'zbek yoki rus tilida bo'lishi mumkin.";
+        // ORKESTRATOR ORQALI. Ilgari bu yerda `llm()` to'g'ridan-to'g'ri
+        // chaqirilar va prompt `obhod-scribe` agentidagi promptning
+        // NUSXASI edi — ya'ni agent ro'yxatda turardi, lekin hech qachon
+        // ishlatilmasdi va ikkita nusxa vaqt o'tishi bilan ajralib ketardi.
+        // Agent orqali o'tish qo'shimcha himoya ham beradi: kirish
+        // validatsiyasi (zod), timeout va ishlatilishni hisobga olish.
+        const run = await executeAgent('obhod-scribe', { text, language },
+          { tenantId, user: req.user });
 
-        const parsed = await llm(prompt, text);
+        // AI ajrata olmasa ham obhod YOZILADI — xom matn bilan. Ilgari
+        // `llm()` xato obyekt yoki matn qaytarsa, `parsed.temperature`
+        // undefined bo'lib, hamma maydon jimgina NULL bilan yozilardi va
+        // shifokor buni sezmasdi.
+        const extractedRaw = run.success ? run.data?.extracted : null;
+        const parsed = (extractedRaw && typeof extractedRaw === 'object') ? extractedRaw : {};
+        const aiFailed = !run.success || !extractedRaw || typeof extractedRaw !== 'object';
+        if (aiFailed) {
+          console.warn('[OBHOD] AI ajrata olmadi:', run.error || 'JSON emas');
+        }
 
         // Bazaga yozamiz
         const id = uuidv4();
@@ -1081,31 +1185,51 @@ export default function(pool, authMiddleware, checkRole, upload) {
           [tenantId]
         ).catch(() => {});
 
-        // AUTO-AGENT: vital-anomaly ovozli obhod maydonlaridan
+        // AUTO-AGENT: vital-anomaly ovozli obhod maydonlaridan.
+        // AI ajrata olmagan bo'lsa ISHGA TUSHIRMAYMIZ: barcha ko'rsatkich
+        // NULL bo'ladi va xavfsizlik agenti mavjud bo'lmagan o'lchovlar
+        // ustida ishlaydi — bu eng yaxshi holatda foydasiz, eng yomonida
+        // "hammasi normal" degan yolg'on ishonch beradi.
         let triggeredAlerts = [];
-        try {
-          const va = vitalAnomaly.handler({
-            temperature: parsed.temperature ?? null,
-            blood_pressure: parsed.blood_pressure || null,
-            pulse: parsed.pulse ?? null,
-            respiration: parsed.respiration ?? null,
-            saturation: parsed.saturation ?? null,
-          });
-          triggeredAlerts = va?.alerts || [];
-          if (triggeredAlerts.length) {
-            saveAlerts(pool, {
-              tenantId, patientId: adm.patient_id, admissionId: admission_id,
-              sourceKind: 'daily_note', sourceId: id, agentName: 'vital-anomaly',
-            }, triggeredAlerts).catch(() => {});
+        const hasVitals = parsed.temperature != null || parsed.blood_pressure ||
+                          parsed.pulse != null || parsed.respiration != null ||
+                          parsed.saturation != null;
+        if (hasVitals) {
+          try {
+            const va = vitalAnomaly.handler({
+              temperature: parsed.temperature ?? null,
+              blood_pressure: parsed.blood_pressure || null,
+              pulse: parsed.pulse ?? null,
+              respiration: parsed.respiration ?? null,
+              saturation: parsed.saturation ?? null,
+            });
+            triggeredAlerts = va?.alerts || [];
+            if (triggeredAlerts.length) {
+              saveAlerts(pool, {
+                tenantId, patientId: adm.patient_id, admissionId: admission_id,
+                sourceKind: 'daily_note', sourceId: id, agentName: 'vital-anomaly',
+              }, triggeredAlerts).catch(() => {});
+            }
+          } catch (aiErr) {
+            console.warn('[SAFETY vital-anomaly voice]', aiErr.message);
           }
-        } catch (aiErr) {
-          console.warn('[SAFETY vital-anomaly voice]', aiErr.message);
         }
 
         res.json({
           success: true,
-          data: { id, transcription: text, language: stt.language || null, extracted: parsed, alerts: triggeredAlerts },
-          message: 'Obhod yozib olindi',
+          data: {
+            id, transcription: text, language: stt.language || null,
+            extracted: parsed, alerts: triggeredAlerts,
+          },
+          // Shifokor AI ajratganini TEKSHIRISHI kerakligini bilsin.
+          // Ilgari ajratish yiqilganda ham "Obhod yozib olindi" deb
+          // xabar berilardi va shifokor bo'sh ko'rsatkichlarni sezmasdi.
+          ai_failed: aiFailed,
+          vitals_checked: hasVitals,
+          recording_saved: !!rec,
+          message: aiFailed
+            ? 'Obhod yozib olindi, lekin AI ko\'rsatkichlarni ajrata olmadi — qo\'lda to\'ldiring'
+            : 'Obhod yozib olindi',
         });
       } catch (e) {
         console.error('[INPATIENT voice]', e);
