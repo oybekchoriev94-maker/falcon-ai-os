@@ -139,6 +139,13 @@ services:
       PUBLIC_URL_OVERRIDE: ${TUNNEL_URL:-}
       LOG_LEVEL: info
       LOCAL_ONLY: "${LOCAL_ONLY:-true}"
+      # Lokal LLM (Ollama) manzili — klinika kompyuteridagi Qwen.
+      # DIQQAT: bu qator BO'LMASA, .env ga OLLAMA_URL yozilsa ham
+      # konteynerga YETIB BORMAYDI va llm.js `localhost:11434` ga —
+      # ya'ni konteynerning o'ziga — murojaat qilib, doim yiqiladi.
+      # Bo'sh qoldirilsa shu eski xatti-harakat saqlanadi.
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       # Sukut bo'yicha VPS'ning o'z konteyneri. Klinika kompyuteridagi
       # STT'ga o'tish uchun .env da WHISPER_URL ni o'zgartirish kifoya —
       # compose faylini tahrirlash shart emas, orqaga qaytarish oson.
