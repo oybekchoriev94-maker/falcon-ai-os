@@ -285,11 +285,38 @@ export default function WardsPage() {
         setAdmitForm((prev) => ({ ...prev, urgent_admission: true }));
       }
 
-      // Shikoyat va anamnez uchun alohida ustun yo'q — izohga yig'amiz
+      // Bemor ismi — agent uni bosh harflar bilan qaytaradi
+      const nameFromVoice = String(f.patient_name ?? '').trim();
+      if (nameFromVoice && !patientName.trim()) {
+        setPatientName(nameFromVoice);
+        filled.push('bemor ismi');
+      }
+
+      // Shikoyat va anamnez uchun alohida ustun yo'q — izohga yig'amiz.
+      // Agent allaqachon takrorni olib tashlaydi, lekin bu yerda ham
+      // tekshiramiz: shifokor bir necha marta diktant qilsa (qo'shimcha
+      // aytish uchun) oldingi izoh ustiga bir xil gap yozilmasin.
       const extra = [f.complaints, f.anamnesis, f.notes]
-        .map((x) => String(x ?? '').trim()).filter(Boolean).join('\n');
+        .map((x) => String(x ?? '').trim()).filter(Boolean).join(' ');
       if (extra) {
-        setAdmitForm((prev) => ({ ...prev, notes: prev.notes ? `${prev.notes}\n${extra}` : extra }));
+        setAdmitForm((prev) => {
+          const seen = new Set(
+            (prev.notes || '')
+              .split(/(?<=[.!?])\s+|\n+/)
+              .map((s) => s.trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''))
+              .filter(Boolean)
+          );
+          const fresh = extra
+            .split(/(?<=[.!?])\s+|\n+/)
+            .map((s) => s.trim())
+            .filter((s) => {
+              const k = s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+              return k && !seen.has(k);
+            })
+            .join(' ');
+          if (!fresh) return prev;
+          return { ...prev, notes: prev.notes ? `${prev.notes}\n${fresh}` : fresh };
+        });
         filled.push('shikoyat/anamnez');
       }
 
