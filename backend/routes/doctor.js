@@ -140,11 +140,14 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
   // Shifokor ko'rik natijasini gapiradi; STT matnga o'giradi, orkestrator
   // `visit-scribe` agenti maydonlarga ajratadi va TAKLIF qaytaradi.
   //
-  // BAZAGA HECH NARSA YOZMAYDI — bu ataylab. `/api/scribe/transcribe`
-  // har diktantda alohida `patient_consultations` yozuvi yaratadi va u
-  // `appointment_id` siz bo'ladi; qabul oqimida ishlatilsa bitta tashrifga
-  // ikkita karta yozilardi. Bu yerda yozuvni faqat shifokor tasdiqlagach
-  // `/complete` yozadi — bitta tashrif, bitta karta.
+  // TIBBIY KARTAGA HECH NARSA YOZMAYDI — bu ataylab.
+  // `/api/scribe/transcribe` har diktantda alohida `patient_consultations`
+  // yozuvi yaratadi va u `appointment_id` siz bo'ladi; qabul oqimida
+  // ishlatilsa bitta tashrifga IKKITA karta yozilardi. Bu yerda kartani
+  // faqat shifokor tasdiqlagach `/complete` yozadi.
+  //
+  // `voice_recordings` ga esa YOZADI — bu tibbiy yozuv emas, diktantning
+  // xavfsizlik nusxasi (xato bo'lsa ovoz yo'qolmasin).
   router.post('/visit/:appointmentId/voice', authMiddleware, checkRole('doctor'),
     upload.single('audio'), async (req, res) => {
     try {
@@ -164,13 +167,33 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
       }
 
       const { transcribe } = await import('../../ai/orchestrator.js');
+      const { saveRecording, markTranscribed, markFailed } =
+        await import('../services/voice-store.js');
+
       let text;
+      let rec = null;   // saqlangan audio yozuvi (bo'lmasligi ham mumkin)
+
       if (req.file) {
+        // AVVAL DISKKA YOZAMIZ, keyin transkripsiya. Aks holda STT yiqilsa
+        // yoki tarmoq uzilsa shifokorning diktanti butunlay yo'qolardi va
+        // u ko'rikni eslab, qaytadan gapirishga majbur bo'lardi.
+        rec = await saveRecording(pool, {
+          tenantId, userId: req.user.id, source: 'doctor_visit',
+          refId: appt.id, patientId: appt.patient_id,
+          buffer: req.file.buffer, mime: req.file.mimetype,
+          originalName: req.file.originalname, language: req.body?.language,
+        });
+
         const stt = await transcribe(req.file.buffer, req.file.originalname || 'audio.webm',
           { language: req.body?.language });
         if (stt.error) {
-          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 502)
-            .json({ success: false, error: stt.error, code: stt.code });
+          await markFailed(pool, rec?.id, stt.error);
+          return res.status(stt.code === 'UNSUPPORTED_LANGUAGE' ? 400 : 502).json({
+            success: false, error: stt.error, code: stt.code,
+            // Shifokor diktanti yo'qolmaganini BILISHI kerak — aks holda
+            // u qaytadan gapiradi va vaqt yo'qotadi.
+            recording_saved: !!rec,
+          });
         }
         text = stt.text;
       } else if (req.body?.raw_text) {
@@ -183,11 +206,17 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
       // VAD nutq topmasa STT xatosiz "" qaytaradi va LLM bo'sh matndan
       // javob "o'ylab topardi" — tibbiy kartaga soxta yozuv tushardi.
       if (!String(text || '').trim()) {
+        await markFailed(pool, rec?.id, 'EMPTY_TRANSCRIPT');
         return res.status(422).json({
           success: false, code: 'EMPTY_TRANSCRIPT',
           error: 'Ovoz aniqlanmadi. Mikrofonni tekshirib, qaytadan yozing.',
+          recording_saved: !!rec,
         });
       }
+
+      // Matn qo'lga kirdi — audio yozuvi bilan bog'lab qo'yamiz.
+      // Keyingi qadam (agent) yiqilsa ham matn endi bazada turadi.
+      await markTranscribed(pool, rec?.id, text);
 
       const { executeAgent } = await import('../../ai/orchestrator.js');
       const run = await executeAgent('visit-scribe', {

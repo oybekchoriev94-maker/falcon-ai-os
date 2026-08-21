@@ -11,7 +11,19 @@
 // yoki Groq turishi mumkin, kod o'zgarmaydi. Faqat WHISPER_URL almashadi.
 // ============================================================
 
+// ASOSIY STT — klinika kompyuteridagi GPU (SSH reverse tunnel orqali).
+// O'lchangan farq: 25s audio GPU'da 1.2s, VPS protsessorida ~9.4s (8x).
 const WHISPER_URL = process.env.WHISPER_URL || 'http://localhost:8081';
+
+// ZAXIRA STT — asosiysi javob bermasa shunga o'tiladi.
+//
+// NEGA MAJBURIY: GPU kompyuter o'chsa, tunnel uzilsa yoki klinikada
+// internet yo'qolsa, ovoz BUTUNLAY ishlamay qoladi. Aynan shunday
+// holat allaqachon bo'lgan — Tailscale mesh jimgina o'lgan va buni
+// shifokor "ovoz qabul qilinmadi" xatosini ko'rgandagina sezganmiz.
+// Zaxira VPS'ning o'z konteyneri: sekinroq, lekin ishlaydi va
+// klinika ishi to'xtamaydi.
+const WHISPER_FALLBACK_URL = process.env.WHISPER_FALLBACK_URL || '';
 // Lokal Docker tarmog'ida bo'sh — xizmat tashqariga chiqmaydi.
 // Klinika kompyuteridagi STT tunnel orqali ochilsa, shu token majburiy.
 const STT_AUTH_TOKEN = process.env.STT_AUTH_TOKEN || '';
@@ -104,37 +116,61 @@ function makeForm(audioBuffer, filename, opts) {
 // bu aynan production'da sodir bo'lgan. Shuning uchun birinchi so'rovda
 // ikkalasini sinaymiz va ishlaganini eslab qolamiz (keyingi so'rovlar tez ketadi).
 const STT_PATHS = ['/v1/audio/transcriptions', '/transcribe'];
-let _workingSttPath = null;
+// Ishlagan yo'l HAR SERVER UCHUN ALOHIDA eslab qolinadi. Asosiy va zaxira
+// server turli nomlarni qo'llab-quvvatlashi mumkin (klinikadagi eski
+// konteynerda faqat /transcribe bor edi) — bitta umumiy kesh ishlatilsa,
+// zaxiraga o'tilganda noto'g'ri yo'l tanlanib 404 olinardi.
+const _workingPath = new Map();   // baseUrl -> path
 
-async function postToWhisper(audioBuffer, filename, opts) {
-  const paths = _workingSttPath ? [_workingSttPath] : STT_PATHS;
+async function postToOneServer(baseUrl, audioBuffer, filename, opts) {
+  const known = _workingPath.get(baseUrl);
+  const paths = known ? [known] : STT_PATHS;
   let lastRes = null;
 
   for (const path of paths) {
-    const res = await fetch(`${WHISPER_URL}${path}`, {
+    const res = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${STT_AUTH_TOKEN || 'not-needed'}` },
       // FormData har urinishda qaytadan quriladi — oqim bir marta o'qiladi
       body: makeForm(audioBuffer, filename, opts),
-      // 60s -> 120s: rubaiSTT (medium, 24 dekoder qatlami) CPU'da
-      // avvalgi turbo modeldan (4 qatlam) sezilarli sekinroq. VPS'da
-      // xotira ham tor bo'lgani uchun STT_CONCURRENCY=1 qilingan — bu
-      // navbatga tushgan so'rovni yanada uzaytirishi mumkin. Uzun
-      // diktant o'rtada kesilib, matn butunlay yo'qolishidan ko'ra
-      // ko'proq kutish yaxshiroq.
+      // Uzun diktant o'rtada kesilib, matn butunlay yo'qolishidan ko'ra
+      // ko'proq kutish yaxshiroq. GPU'da bu chegaraga umuman yetilmaydi;
+      // zaxira (protsessor) uchun esa zarur.
       signal: AbortSignal.timeout(120000),
     });
     // Faqat 404 boshqa yo'lni sinashga arziydi; qolgan xatolar haqiqiy xato.
     if (res.status !== 404) {
-      _workingSttPath = path;
+      _workingPath.set(baseUrl, path);
       return res;
     }
     lastRes = res;
   }
   // Eslab qo'yilgan yo'l endi 404 bera boshlasa (xizmat almashtirilgan) —
   // keshni tozalaymiz, keyingi so'rov ikkalasini qaytadan sinaydi.
-  _workingSttPath = null;
+  _workingPath.delete(baseUrl);
   return lastRes;
+}
+
+/**
+ * Asosiy STT'ga yuboradi; u yetib bo'lmasa zaxiraga o'tadi.
+ *
+ * Faqat ULANISH xatosida (GPU kompyuter o'chiq, tunnel uzilgan, timeout)
+ * zaxiraga o'tamiz. Server javob bergan bo'lsa — hatto xato bilan ham —
+ * o'sha javobni qaytaramiz: masalan "til qo'llab-quvvatlanmaydi" (400)
+ * yoki "audio juda katta" (413) zaxirada ham xuddi shunday bo'ladi,
+ * qayta urinish faqat vaqt yo'qotadi va bemorni kutdiradi.
+ */
+async function postToWhisper(audioBuffer, filename, opts) {
+  try {
+    return await postToOneServer(WHISPER_URL, audioBuffer, filename, opts);
+  } catch (e) {
+    if (!WHISPER_FALLBACK_URL || WHISPER_FALLBACK_URL === WHISPER_URL) throw e;
+    console.warn(
+      `[STT] Asosiy STT javob bermadi (${WHISPER_URL}): ${e.message}. ` +
+      `Zaxiraga o'tilmoqda: ${WHISPER_FALLBACK_URL}`
+    );
+    return await postToOneServer(WHISPER_FALLBACK_URL, audioBuffer, filename, opts);
+  }
 }
 
 export async function transcribe(audioBuffer, filename = 'audio.webm', opts = {}) {

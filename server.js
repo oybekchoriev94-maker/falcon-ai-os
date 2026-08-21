@@ -70,6 +70,7 @@ import kioskRoutes from './backend/routes/kiosk.js';
 import attendanceRoutes from './backend/routes/attendance.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { startQueueNotifyCron } from './backend/cron/queue-notify.js';
+import { startVoicePurgeCron } from './backend/services/voice-store.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -404,6 +405,9 @@ function startServer(port) {
     // qismlari ichkarida token yo'qligini o'zi tekshiradi (jim o'tkazib yuboradi).
     startPatientReminderCron();
     startQueueNotifyCron();
+    // Muddati o'tgan ovozli diktantlarni tozalaydi. Transkripsiya matni
+    // bazada QOLADI — o'chadigan narsa faqat audio fayl (disk + maxfiylik).
+    startVoicePurgeCron(getPool());
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port >= MAX_PORT) { console.error(`Port ${PORT}-${MAX_PORT} band`); process.exit(1); }

@@ -147,9 +147,15 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       # Sukut bo'yicha VPS'ning o'z konteyneri. Klinika kompyuteridagi
-      # STT'ga o'tish uchun .env da WHISPER_URL ni o'zgartirish kifoya —
-      # compose faylini tahrirlash shart emas, orqaga qaytarish oson.
+      # GPU STT'ga o'tish uchun .env da WHISPER_URL ni o'zgartirish kifoya
+      # (masalan http://172.17.0.1:8081 — SSH reverse tunnel).
       WHISPER_URL: ${WHISPER_URL:-http://stt:8081}
+      # ZAXIRA STT. Asosiysi (GPU kompyuter) javob bermasa shunga o'tiladi.
+      # Klinika GPU'si o'chsa yoki tunnel uzilsa ovoz BUTUNLAY to'xtab
+      # qolmasligi uchun — aynan shunday holat Tailscale bilan bo'lgan va
+      # jimgina o'tib ketgan edi. Sukut qiymati VPS'ning o'z konteyneri:
+      # sekinroq, lekin klinika ishi to'xtamaydi.
+      WHISPER_FALLBACK_URL: ${WHISPER_FALLBACK_URL:-http://stt:8081}
       # Tunnel orqali ochilgan STT uchun majburiy (lokal tarmoqda bo'sh)
       STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
@@ -158,6 +164,10 @@ services:
       # Klinika logotiplari va PDF hisobotlar deploy'da yo'qolmasligi uchun
       - app-uploads:/app/public/uploads
       - app-reports:/app/public/reports
+      # Ovozli diktantlar. ATAYLAB `public/` dan TASHQARIDA — u statik
+      # tarqatiladi va bemor ovozi internetga ochilib qolardi.
+      # Muddati o'tganlari cron orqali o'chiriladi (VOICE_RETENTION_DAYS).
+      - app-voice:/app/voice-recordings
     depends_on:
       db:
         condition: service_healthy
@@ -196,6 +206,8 @@ volumes:
   # Yuklangan fayllar image ichida emas — har deploy'da yo'qolmasligi uchun
   app-uploads:
   app-reports:
+  # Ovozli diktantlar — xato bo'lganda qayta ishlash uchun saqlanadi
+  app-voice:
   falcon-backup:
   falcon-logs:
   caddy-data:
