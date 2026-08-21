@@ -27,23 +27,32 @@ const NUMBER_RULE =
   "\nMUHIM: barcha sonlarni RAQAMLARDA yozing. \"o'ttiz yetti nuqta besh\" -> 37.5, " +
   "\"bir yuz yetmish\" -> 170, \"oltmish besh\" -> 65.";
 
+// DIQQAT: `admission_type` va `transport_type` qiymatlari formadagi
+// <select> variantlari bilan AYNAN mos bo'lishi shart (wards/page.tsx).
+// Boshqa qiymat qaytarilsa select bo'sh ko'rinadi va shifokor buni
+// sezmay, noto'g'ri yoki bo'sh yotqizish turi bilan saqlab yuboradi.
 const PROMPT =
   "Siz statsionar qabul bo'limi yordamchisisiz. Shifokor bemorni yotqizishda " +
   "aytgan erkin diktantdan 003-forma maydonlarini ajratib, FAQAT JSON qaytaring:\n" +
   '{"diagnosis_initial":"kirish tashxisi",' +
-  '"admission_type":"planli|shoshilinch",' +
+  '"admission_type":"rejali|shoshilinch|tez_yordam",' +
   '"urgent_admission":false,' +
   '"complaints":"shikoyatlar",' +
   '"anamnesis":"kasallik tarixi, qachondan beri",' +
   '"time_since_onset":"kasallik boshlanganidan o\'tgan vaqt",' +
-  '"referring_clinic":"yo\'llagan muassasa",' +
+  '"referring_clinic":"yo\'llagan muassasa nomi",' +
   '"referral_diagnosis":"yo\'llanmadagi tashxis",' +
-  '"transport_type":"o\'zi keldi|tez yordam|boshqa",' +
-  '"transport_details":"qo\'shimcha izoh",' +
+  '"transport_type":"own|wheelchair|stretcher",' +
   '"height_cm":null,"weight_kg":null,"temperature_on_admission":null,' +
   '"diet_number":"parhez raqami yoki nomi",' +
   '"treatment_plan":"davolash rejasi",' +
   '"notes":"boshqa muhim izohlar"}\n' +
+  "\nIZOH — qiymatlar ma'nosi:\n" +
+  "admission_type: rejali (oldindan belgilangan), shoshilinch (zudlik bilan), " +
+  "tez_yordam (tez yordam mashinasida keltirilgan).\n" +
+  "transport_type — bemor QANDAY HARAKATLANADI: own (o'zi yura oladi), " +
+  "wheelchair (aravachada), stretcher (zambilda). Bu tashish vositasi emas, " +
+  "bemorning harakatlanish qobiliyati.\n" +
   "QAT'IY QOIDA: diktantda aytilmagan narsani O'YLAB TOPMANG. Ma'lumot bo'lmasa " +
   "matn maydonini bo'sh satr (\"\"), son maydonini null qoldiring. Bu tibbiy " +
   "hujjat — to'qilgan ma'lumot bemorga zarar keltiradi." + NUMBER_RULE;
@@ -85,23 +94,32 @@ export async function handler(input) {
   }
 
   const str = (k) => String(result[k] ?? '').trim();
-  const type = str('admission_type').toLowerCase();
+
+  /** Faqat formadagi <select> da mavjud qiymatni qaytaramiz. LLM boshqa
+   *  so'z aytsa bo'sh qoldiramiz — noto'g'ri tanlangan variant bo'sh
+   *  variantdan xavfliroq (shifokor sezmay saqlab yuboradi). */
+  const pickEnum = (raw, allowed) => {
+    const v = String(raw ?? '').trim().toLowerCase();
+    return allowed.includes(v) ? v : '';
+  };
+
+  const admissionType = pickEnum(result.admission_type,
+    ['rejali', 'shoshilinch', 'tez_yordam']);
 
   return {
     fields: {
       diagnosis_initial:  str('diagnosis_initial'),
-      // Faqat aniq tanilgan qiymatni qaytaramiz — LLM boshqa so'z aytsa
-      // formada noto'g'ri variant tanlanib qolmasin.
-      admission_type:     type.includes('shoshilinch') ? 'shoshilinch'
-                        : type.includes('planli') ? 'planli' : '',
-      urgent_admission:   result.urgent_admission === true || type.includes('shoshilinch'),
+      admission_type:     admissionType,
+      urgent_admission:   result.urgent_admission === true ||
+                          admissionType === 'shoshilinch' ||
+                          admissionType === 'tez_yordam',
       complaints:         str('complaints'),
       anamnesis:          str('anamnesis'),
       time_since_onset:   str('time_since_onset'),
       referring_clinic:   str('referring_clinic'),
       referral_diagnosis: str('referral_diagnosis'),
-      transport_type:     str('transport_type'),
-      transport_details:  str('transport_details'),
+      transport_type:     pickEnum(result.transport_type,
+                            ['own', 'wheelchair', 'stretcher']),
       height_cm:              num(result.height_cm),
       weight_kg:              num(result.weight_kg),
       temperature_on_admission: num(result.temperature_on_admission),

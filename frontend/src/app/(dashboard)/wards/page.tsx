@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Building2,
   BedDouble,
@@ -14,6 +14,8 @@ import {
   LogOut,
   Search,
   Loader2,
+  Mic,
+  Square,
   Hospital,
   Layers,
   Plus,
@@ -101,7 +103,19 @@ export default function WardsPage() {
     referral_diagnosis: '',
     diet_number: '',
     treatment_plan: '',
+    // Shikoyat va anamnez uchun alohida ustun yo'q — ular `notes` ga
+    // yig'iladi (backend `/inpatient/admissions` shu maydonni qabul qiladi).
+    notes: '',
   });
+
+  /* ── Ovozli yotqizish (003-forma diktanti) ── */
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<"uz" | "ru">("uz");
+  const [transcript, setTranscript] = useState("");
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
   const [dischargeOpen, setDischargeOpen] = useState(false);
   const [addWardOpen, setAddWardOpen] = useState(false);
   const [patientName, setPatientName] = useState("");
@@ -140,6 +154,162 @@ export default function WardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  /** Mikrofon oqimini to'liq yopadi — aks holda brauzerda yozuv
+      indikatori qolib ketadi va keyingi bemorda ham "yozilmoqda" turadi. */
+  function releaseMic() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    mediaRef.current = null;
+  }
+
+  // Dialog yopilsa yozuv davom etmasin
+  useEffect(() => {
+    if (!admitOpen) {
+      if (mediaRef.current?.state === "recording") mediaRef.current.stop();
+      releaseMic();
+      setRecording(false);
+      setTranscript("");
+    }
+  }, [admitOpen]);
+
+  async function startVoice() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      // Formatni ANIQ tanlaymiz va o'sha kengaytma bilan yuboramiz —
+      // brauzer mp4 da yozib, biz uni .webm deb atasak server o'qiy olmaydi.
+      const mime = [
+        "audio/webm;codecs=opus", "audio/webm",
+        "audio/ogg;codecs=opus", "audio/mp4",
+      ].find((m) => MediaRecorder.isTypeSupported?.(m)) || "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const actual = rec.mimeType || mime || "audio/webm";
+        const ext = actual.includes("mp4") ? "mp4" : actual.includes("ogg") ? "ogg" : "webm";
+        void sendVoice(new Blob(chunksRef.current, { type: actual }), ext);
+      };
+      mediaRef.current = rec;
+      rec.start(1000);
+      setRecording(true);
+    } catch (e) {
+      const name = (e as Error)?.name || "";
+      if (name === "NotAllowedError") {
+        toast.error("Mikrofonga ruxsat berilmadi", {
+          description: "Manzil satridagi qulf belgisini bosib ruxsat bering.",
+        });
+      } else if (name === "NotFoundError") {
+        toast.error("Mikrofon topilmadi");
+      } else {
+        toast.error("Mikrofonni ochib bo'lmadi", { description: name || "Noma'lum xato" });
+      }
+    }
+  }
+
+  function stopVoice() {
+    mediaRef.current?.stop();
+    setRecording(false);
+  }
+
+  async function sendVoice(blob: Blob, ext = "webm") {
+    releaseMic();
+    // Bo'sh yozuvni serverga yubormaymiz — muammo mikrofonda ekanini
+    // aniq aytamiz, "ovoz aniqlanmadi" degan umumiy xato o'rniga.
+    if (blob.size < 1024) {
+      toast.error("Mikrofondan ovoz kelmadi", {
+        description: "Tizim sozlamalarida to'g'ri mikrofon tanlanganini tekshiring.",
+      });
+      return;
+    }
+    setVoiceBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, `admission.${ext}`);
+      fd.append("language", voiceLang);
+      if (patientName.trim()) fd.append("patient_name", patientName.trim());
+
+      const res = await api.upload<{
+        transcription: string;
+        fields?: Record<string, string | number | boolean | null>;
+        structured?: boolean;
+        note?: string | null;
+      }>("/api/inpatient/admissions/voice", fd);
+
+      if (!res.success) { toast.error(res.error || "Ovoz qabul qilinmadi"); return; }
+      setTranscript(res.transcription || "");
+
+      // AI TAKLIF QILADI, SHIFOKOR QAROR QILADI: qo'lda yozilgan matn
+      // ustidan YOZMAYMIZ — faqat bo'sh maydonlar to'ldiriladi.
+      const f = res.fields || {};
+      const filled: string[] = [];
+      const setText = (key: keyof typeof admitForm, label: string) => {
+        const v = String(f[key] ?? '').trim();
+        if (!v) return;
+        setAdmitForm((prev) => {
+          if (String(prev[key] ?? '').trim()) return prev;   // qo'lda yozilgan — tegmaymiz
+          filled.push(label);
+          return { ...prev, [key]: v };
+        });
+      };
+      const setNum = (key: keyof typeof admitForm, label: string) => {
+        const v = f[key];
+        if (v === null || v === undefined || v === '') return;
+        setAdmitForm((prev) => {
+          if (String(prev[key] ?? '').trim()) return prev;
+          filled.push(label);
+          return { ...prev, [key]: String(v) };
+        });
+      };
+
+      setText('diagnosis_initial', 'tashxis');
+      setText('referring_clinic', 'yo\'llagan klinika');
+      setText('referral_diagnosis', 'yo\'llanma tashxisi');
+      setText('time_since_onset', 'kasallik muddati');
+      setText('diet_number', 'parhez');
+      setText('treatment_plan', 'davolash rejasi');
+      setNum('height_cm', 'bo\'y');
+      setNum('weight_kg', 'vazn');
+      setNum('temperature_on_admission', 'harorat');
+
+      // Select maydonlari — agent faqat ruxsat etilgan qiymatni qaytaradi
+      if (f.admission_type) {
+        setAdmitForm((prev) => ({ ...prev, admission_type: String(f.admission_type) }));
+        filled.push('yotqizish turi');
+      }
+      if (f.transport_type) {
+        setAdmitForm((prev) => ({ ...prev, transport_type: String(f.transport_type) }));
+        filled.push('harakatlanish');
+      }
+      if (f.urgent_admission === true) {
+        setAdmitForm((prev) => ({ ...prev, urgent_admission: true }));
+      }
+
+      // Shikoyat va anamnez uchun alohida ustun yo'q — izohga yig'amiz
+      const extra = [f.complaints, f.anamnesis, f.notes]
+        .map((x) => String(x ?? '').trim()).filter(Boolean).join('\n');
+      if (extra) {
+        setAdmitForm((prev) => ({ ...prev, notes: prev.notes ? `${prev.notes}\n${extra}` : extra }));
+        filled.push('shikoyat/anamnez');
+      }
+
+      if (res.note) toast.warning(res.note);
+      else if (filled.length) {
+        toast.success(`${filled.length} ta maydon to'ldirildi`, {
+          description: `${filled.join(' · ')} — tekshirib tasdiqlang`,
+        });
+      } else {
+        toast.warning("Diktantdan ma'lumot ajratilmadi", {
+          description: "Matn pastda turibdi — maydonlarni qo'lda to'ldiring.",
+        });
+      }
+    } catch {
+      toast.error("Ovozni yuborishda xatolik");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
   const admitMutation = useMutation({
     mutationFn: async ({
       wardId, bedId, name,
@@ -158,6 +328,7 @@ export default function WardsPage() {
         referral_diagnosis: admitForm.referral_diagnosis || null,
         diet_number: admitForm.diet_number || null,
         treatment_plan: admitForm.treatment_plan || null,
+        notes: admitForm.notes || null,
       };
       // Sonli maydonlar — bo'sh bo'lsa uzatmaymiz
       if (admitForm.height_cm) payload.height_cm = parseFloat(admitForm.height_cm);
@@ -178,7 +349,9 @@ export default function WardsPage() {
         height_cm: '', weight_kg: '', temperature_on_admission: '',
         transport_type: 'own', referring_clinic: '', urgent_admission: false,
         time_since_onset: '', referral_diagnosis: '', diet_number: '', treatment_plan: '',
+        notes: '',
       });
+      setTranscript("");
       setSelectedBed(null);
     },
     onError: (err: Error) => {
@@ -413,6 +586,51 @@ export default function WardsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {/* ── OVOZLI TO'LDIRISH ──
+                Shifokor bemor yonida bir marta aytib chiqadi, forma o'zi
+                to'ladi. Natija TAKLIF: qo'lda yozilgan maydonlar ustidan
+                yozilmaydi, va saqlash faqat shifokor tugmani bosgach. */}
+            <div className="rounded-lg border border-primary/25 bg-primary/[0.04] p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Mic className="size-4 text-primary" />
+                  <span className="text-sm font-medium">Ovozli to&apos;ldirish</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select value={voiceLang} onChange={(e) => setVoiceLang(e.target.value as "uz" | "ru")}
+                    disabled={recording || voiceBusy}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+                    <option value="uz">O&apos;zbekcha</option>
+                    <option value="ru">Ruscha</option>
+                  </select>
+                  <Button type="button" size="sm" disabled={voiceBusy}
+                    variant={recording ? "destructive" : "secondary"}
+                    onClick={recording ? stopVoice : startVoice}>
+                    {voiceBusy ? (<><Loader2 className="size-4 animate-spin" /> Tahlil…</>)
+                      : recording ? (<><Square className="size-4" /> To&apos;xtatish</>)
+                      : (<><Mic className="size-4" /> Yozishni boshlash</>)}
+                  </Button>
+                </div>
+              </div>
+              {recording ? (
+                <p className="text-xs text-destructive">
+                  Yozilmoqda… Tashxis, shikoyat, bo&apos;y-vazn, harorat va davolash rejasini ayting.
+                </p>
+              ) : !transcript && (
+                <p className="text-xs text-muted-foreground">
+                  Masalan: «Shoshilinch yotqizamiz, kirish tashxisi o&apos;tkir appenditsit,
+                  uch kundan beri qorin og&apos;rig&apos;i, o&apos;zi yura oladi, harorat 37.8,
+                  bo&apos;yi 172, vazni 68, birinchi stol parhez.»
+                </p>
+              )}
+              {transcript && (
+                <div className="rounded-md bg-background/70 p-2">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1">Diktant matni</p>
+                  <p className="text-xs whitespace-pre-wrap">{transcript}</p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Bemor ismi *</Label>
@@ -519,6 +737,15 @@ export default function WardsPage() {
                   value={admitForm.treatment_plan}
                   onChange={(e) => setAdmitForm(f => ({ ...f, treatment_plan: e.target.value }))} />
               </div>
+            </div>
+
+            {/* Shikoyat va anamnez uchun bazada alohida ustun yo'q —
+                ular shu izohga yig'iladi (ovozli diktant ham shu yerga tushadi). */}
+            <div className="space-y-1">
+              <Label className="text-xs">Shikoyat, anamnez va boshqa izohlar</Label>
+              <Textarea rows={3} placeholder="Bemor shikoyatlari, kasallik tarixi, qo'shimcha ma'lumot..."
+                value={admitForm.notes}
+                onChange={(e) => setAdmitForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
           <DialogFooter>
