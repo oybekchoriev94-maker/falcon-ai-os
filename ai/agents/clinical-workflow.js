@@ -58,7 +58,30 @@ export const obhodScribe = {
       " Faqat JSON qaytaring, boshqa matn qo'shmang.";
 
     const data = await llmJson(prompt, text);
-    return { transcription: text, extracted: data };
+    if (!data || typeof data !== 'object') {
+      return { transcription: text, extracted: null, structured: false };
+    }
+
+    // DETERMINISTIK TEKSHIRUV — LLM sonlariga ishonmaymiz.
+    // Bu ko'rsatkichlar to'g'ridan-to'g'ri vital-anomaly xavfsizlik
+    // agentiga uzatiladi: noto'g'ri harorat yoki puls soxta ogohlantirish
+    // beradi yoki haqiqiy xavfni yashiradi. Chegaradan tashqarisi NULL.
+    const { sanitizeTemperature, sanitizePulse, sanitizeSaturation,
+            sanitizeRespiration, sanitizeBloodPressure } =
+      await import('../utils/medical-values.js');
+
+    return {
+      transcription: text,
+      structured: true,
+      extracted: {
+        ...data,
+        temperature:    sanitizeTemperature(data.temperature),
+        pulse:          sanitizePulse(data.pulse),
+        respiration:    sanitizeRespiration(data.respiration),
+        saturation:     sanitizeSaturation(data.saturation),
+        blood_pressure: sanitizeBloodPressure(data.blood_pressure),
+      },
+    };
   },
 };
 

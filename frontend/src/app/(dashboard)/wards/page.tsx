@@ -262,6 +262,7 @@ export default function WardsPage() {
         });
       };
 
+      setText('patient_phone', 'telefon');
       setText('diagnosis_initial', 'tashxis');
       setText('referring_clinic', 'yo\'llagan klinika');
       setText('referral_diagnosis', 'yo\'llanma tashxisi');

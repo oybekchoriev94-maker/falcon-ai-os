@@ -19,6 +19,9 @@
 
 import { z } from 'zod';
 import { llmJson } from '../core/tools.js';
+import {
+  sanitizeTemperature, sanitizeHeight, sanitizeWeight, sanitizePhone,
+} from '../utils/medical-values.js';
 
 // Whisper sonlarni so'z bilan chiqaradi ("o'ttiz yetti nuqta besh").
 // Bo'y, vazn, harorat — hammasi raqam bo'lishi shart, aks holda ular
@@ -49,6 +52,7 @@ const PROMPT =
   "Siz statsionar qabul bo'limi yordamchisisiz. Shifokor bemorni yotqizishda " +
   "aytgan erkin diktantdan 003-forma maydonlarini ajratib, FAQAT JSON qaytaring:\n" +
   '{"patient_name":"bemor F.I.O.",' +
+  '"patient_phone":"telefon raqami (aytilgan bo\'lsa)",' +
   '"diagnosis_initial":"kirish tashxisi",' +
   '"admission_type":"rejali|shoshilinch|tez_yordam",' +
   '"urgent_admission":false,' +
@@ -65,6 +69,9 @@ const PROMPT =
   "\nMAYDONLAR MA'NOSI — ADASHTIRMANG:\n" +
   "• patient_name — bemorning ismi va familiyasi. Har so'z BOSH HARF bilan: " +
   "\"qurbonov shohista\" -> \"Qurbonov Shohista\".\n" +
+  "• patient_phone — raqam so'z bilan aytilsa ham AYNAN eshitilganidek " +
+  "yozing (\"to'qson to'rt uch yuz o'n ikki o'ttiz to'rt ellik olti\"); " +
+  "formatlashga urinmang, buni tizim o'zi qiladi.\n" +
   "• admission_type: rejali (oldindan belgilangan), shoshilinch (zudlik bilan), " +
   "tez_yordam (tez yordam mashinasida keltirilgan).\n" +
   "• transport_type — bemor QANDAY HARAKATLANADI: own (o'zi yura oladi), " +
@@ -84,14 +91,6 @@ const PROMPT =
   "\nQAT'IY QOIDA: diktantda aytilmagan narsani O'YLAB TOPMANG. Ma'lumot bo'lmasa " +
   "matn maydonini bo'sh satr (\"\"), son maydonini null qoldiring. Bu tibbiy " +
   "hujjat — to'qilgan ma'lumot bemorga zarar keltiradi." + NUMBER_RULE;
-
-/** "yuz yetmish" kabi qolgan matnni songa aylantirishga urinmaymiz —
- *  noto'g'ri son bo'sh maydondan xavfliroq. Faqat haqiqiy sonni olamiz. */
-function num(v) {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(String(v).replace(',', '.').replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) ? n : null;
-}
 
 /** Ism-familiyani bosh harflar bilan: "qurbonov shohista" -> "Qurbonov Shohista".
  *  Qo'shimcha bo'shliqlar tozalanadi, apostroflar saqlanadi (O'ktam, G'ulom). */
@@ -226,9 +225,16 @@ export async function handler(input) {
       referral_diagnosis: str('referral_diagnosis'),
       transport_type:     pickEnum(result.transport_type,
                             ['own', 'wheelchair', 'stretcher']),
-      height_cm:              num(result.height_cm),
-      weight_kg:              num(result.weight_kg),
-      temperature_on_admission: num(result.temperature_on_admission),
+      // DETERMINISTIK TEKSHIRUV — promptga ishonmaymiz.
+      // Tibbiy chegaradan tashqaridagi qiymat NULL bo'ladi: bo'sh maydon
+      // shifokorga ko'rinadi, noto'g'ri qiymat esa to'g'ridek ko'rinib
+      // tekshirilmay hujjatga tushadi. (medical-values.js dagi izohga q.)
+      height_cm:                sanitizeHeight(result.height_cm),
+      weight_kg:                sanitizeWeight(result.weight_kg),
+      temperature_on_admission: sanitizeTemperature(result.temperature_on_admission),
+      // Diktantda telefon so'z bilan aytilishi mumkin
+      // ("to'qson to'rt, uch yuz o'n ikki...") -> +998943123456
+      patient_phone:            sanitizePhone(result.patient_phone ?? '') || '',
       diet_number:        dietFinal,
       treatment_plan:     str('treatment_plan'),
       notes,
