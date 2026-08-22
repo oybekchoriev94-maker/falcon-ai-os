@@ -447,6 +447,17 @@ function VisitDialog({
   const [admissionReason, setAdmissionReason] = useState("");
   const [admissionDepartment, setAdmissionDepartment] = useState("");
 
+  /* ── Yo'nalishga xos maydonlar ──
+     Shifokor yo'nalishiga qarab shablon maydonlari (reproduktologda
+     sikl/tuxumdon/gormonlar, urologda buyrak/prostata) diktantdan
+     keyin dinamik chiziladi. Sxema serverdan keladi — shablonlar
+     yagona manbada (ai/protocols/medical-skills.js). */
+  type SpecField = { key: string; label: string; icon?: string; type?: string };
+  const [specialtySchema, setSpecialtySchema] = useState<SpecField[]>([]);
+  const [specialtyValues, setSpecialtyValues] = useState<Record<string, string>>({});
+  const [specialtyKey, setSpecialtyKey] = useState<string | null>(null);
+  const [specialtyLabel, setSpecialtyLabel] = useState<string | null>(null);
+
   /* ── Ovozli ko'rik ── */
   const [recording, setRecording] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -471,6 +482,11 @@ function VisitDialog({
       releaseMic();
       setRecording(false);
       setTranscript("");
+      // Yo'nalish maydonlari keyingi bemorga o'tib qolmasin
+      setSpecialtySchema([]);
+      setSpecialtyValues({});
+      setSpecialtyKey(null);
+      setSpecialtyLabel(null);
     }
   }, [item]);
 
@@ -549,6 +565,10 @@ function VisitDialog({
       const res = await api.upload<{
         transcription: string;
         fields?: Record<string, string>;
+        specialty_fields?: Record<string, unknown>;
+        specialty_schema?: SpecField[];
+        specialty_label?: string | null;
+        specialty?: string | null;
         next_step?: "home" | "labs" | "admission" | "referral" | null;
         structured?: boolean;
         note?: string | null;
@@ -568,6 +588,31 @@ function VisitDialog({
       if (extra) setNotes((cur) => (cur ? `${cur}\n${extra}` : extra));
       // "referral" alohida dialog orqali bo'ladi — bu yerda tanlanmaydi
       if (res.next_step && res.next_step !== "referral") setNextStep(res.next_step);
+
+      // Yo'nalishga xos maydonlar. Sxema serverdan keladi (shablonlar
+      // yagona manbada), qiymatlar diktantdan.
+      const schema = res.specialty_schema || [];
+      if (schema.length) {
+        setSpecialtySchema(schema);
+        setSpecialtyLabel(res.specialty_label || null);
+        setSpecialtyKey(res.specialty || null);
+        const sv = res.specialty_fields || {};
+        setSpecialtyValues((cur) => {
+          const next = { ...cur };
+          for (const fld of schema) {
+            const v = sv[fld.key];
+            if (v === undefined || v === null || v === '') continue;
+            if (String(next[fld.key] ?? '').trim()) continue;   // qo'lda yozilgan
+            // Obyekt tipidagi maydon (masalan tuxumdonlar: {right, left})
+            // o'qilishi uchun "kalit: qiymat" satrlariga yoyiladi.
+            next[fld.key] = typeof v === 'object'
+              ? Object.entries(v as Record<string, unknown>)
+                  .map(([k, val]) => `${k}: ${val}`).join('\n')
+              : String(v);
+          }
+          return next;
+        });
+      }
 
       if (res.note) toast.warning(res.note);
       else if (res.structured) toast.success("Diktant maydonlarga ajratildi — tekshirib tasdiqlang");
@@ -597,6 +642,14 @@ function VisitDialog({
         diagnosis, procedure, medicines, notes,
         next_step: nextStep,
       };
+      // Yo'nalishga xos maydonlar (bo'sh bo'lmaganlari) — data_json ga
+      const specData = Object.fromEntries(
+        Object.entries(specialtyValues).filter(([, v]) => String(v ?? '').trim())
+      );
+      if (Object.keys(specData).length) {
+        body.specialty_data = specData;
+        if (specialtyKey) body.specialty = specialtyKey;
+      }
       if (nextStep === "labs" && labTypes.length) body.lab_types = labTypes;
       if (nextStep === "admission") {
         body.admission_reason = admissionReason || diagnosis;
@@ -620,6 +673,7 @@ function VisitDialog({
       toast.success(msg);
       setDiagnosis(""); setProcedure(""); setMedicines(""); setNotes("");
       setNextStep("home"); setLabTypes([]); setAdmissionReason(""); setAdmissionDepartment("");
+      setSpecialtySchema([]); setSpecialtyValues({}); setSpecialtyKey(null);
       onCompleted();
       onClose();
     },
@@ -784,6 +838,45 @@ function VisitDialog({
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Rejim, kuzatuv, keyingi tashrif" />
               </div>
             </div>
+
+            {/* ── YO'NALISHGA XOS MAYDONLAR ──
+                Shifokor yo'nalishiga qarab diktantdan keyin paydo bo'ladi:
+                reproduktologda sikl/tuxumdon/gormonlar, urologda
+                buyrak/prostata. Sxema serverdan keladi, ya'ni shablonlar
+                yagona manbada (ai/protocols/medical-skills.js) turadi va
+                bu yerda takrorlanmaydi. */}
+            {specialtySchema.length > 0 && (
+              <div className="space-y-3 rounded-lg border border-primary/25 bg-primary/[0.03] p-3">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="size-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    {specialtyLabel || "Yo'nalish maydonlari"}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {specialtySchema.length}
+                  </Badge>
+                </div>
+                <div className="grid gap-3">
+                  {specialtySchema.map((f) => (
+                    <div key={f.key} className="space-y-1.5">
+                      <Label className="text-xs">
+                        {f.icon ? `${f.icon} ` : ""}{f.label}
+                      </Label>
+                      <Textarea
+                        rows={f.type === "object" || f.type === "table" ? 3 : 2}
+                        value={specialtyValues[f.key] ?? ""}
+                        onChange={(e) =>
+                          setSpecialtyValues((cur) => ({ ...cur, [f.key]: e.target.value }))}
+                        placeholder={f.label}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Bu maydonlar bemor kartasiga yo&apos;nalish bo&apos;yicha alohida saqlanadi.
+                </p>
+              </div>
+            )}
 
             {/* Keyingi qadam — bemor keyin qayoqqa boradi */}
             <div className="space-y-2 rounded-lg border border-border/60 p-3">

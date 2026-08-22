@@ -51,18 +51,37 @@ export const schema = z.object({
   patient_name: z.string().max(200).nullable().optional(),
 });
 
+// Qabul kartasining umumiy maydonlari — yo'nalishdan qat'i nazar kerak
+const COMMON_KEYS = ['complaints', 'anamnesis', 'objective', 'diagnosis',
+                     'procedure', 'medicines', 'recommendations'];
+
 export async function handler(input) {
   const spec = resolveSpecialization(input.specialty);
-  // Yo'nalish shabloni bo'lsa — uni QO'SHAMIZ, almashtirmaymiz: shablon
-  // yo'nalishga xos maydonlarni beradi, bizga esa qabul kartasining
-  // umumiy maydonlari ham kerak.
-  const specHint = spec && MEDICAL_SKILLS[spec]
-    ? `\n\nShifokor yo'nalishi: ${MEDICAL_SKILLS[spec].label}. ` +
-      "Shu yo'nalishga xos atamalarni to'g'ri yozing."
-    : '';
+  const skill = spec ? MEDICAL_SKILLS[spec] : null;
+
+  // Yo'nalish shabloni bo'lsa — uning TO'LIQ promptidan foydalanamiz.
+  //
+  // Ilgari bu yerda faqat shablon NOMI ("👶 Reproduktolog") ko'rsatma
+  // sifatida qo'shilardi. Natijada yo'nalishga xos o'lchovlar
+  // (follikulometriya, endometriy, AMH/FSH, sikl kuni) alohida
+  // ajratilmay, hammasi umumiy "Tashxis/Izoh" ga tushib ketardi —
+  // ya'ni shablonlar mavjud bo'lsa-da, ovozli ko'rikda ishlatilmasdi.
+  //
+  // BITTA chaqiruv: shablon prompti + umumiy kalitlar talabi. Ikkinchi
+  // chaqiruv qo'shilsa javob vaqti ikki barobar oshardi.
+  const prompt = skill
+    ? skill.systemPrompt +
+      "\n\nQO'SHIMCHA: yuqoridagi kalitlar bilan BIRGA quyidagilarni ham " +
+      "qaytaring (yo'q bo'lsa bo'sh satr): " + COMMON_KEYS.join(', ') + ", next_step. " +
+      "next_step qiymati: home | labs | admission | referral.\n" +
+      "Diktant o'zbek yoki rus tilida bo'lishi mumkin — JSON kalitlarini " +
+      "O'ZGARTIRMANG.\n" +
+      "QAT'IY QOIDA: diktantda aytilmagan narsani O'YLAB TOPMANG — bo'sh " +
+      "qoldiring. Bu tibbiy hujjat."
+    : BASE_PROMPT;
 
   const result = await llmJson(
-    BASE_PROMPT + specHint + NUMBER_RULE,
+    prompt + NUMBER_RULE,
     input.patient_name ? `Bemor: ${input.patient_name}\n\nDiktant:\n${input.text}` : input.text,
     { timeoutMs: 25000 }
   );
@@ -81,19 +100,34 @@ export async function handler(input) {
     ? result.next_step
     : null;
 
+  const fields = {};
+  for (const k of COMMON_KEYS) fields[k] = pick(k);
+
+  // Yo'nalishga xos maydonlar alohida qaytadi — interfeys ularni
+  // shablon tartibida chizadi. Obyekt tipidagilar (masalan urologda
+  // `kidneys`, reproduktologda `hormones`) matnga aylantirilmaydi:
+  // ular tuzilgan holida saqlanadi.
+  const specialty_fields = {};
+  if (skill?.fields?.length) {
+    for (const f of skill.fields) {
+      const v = result[f.key];
+      if (v === undefined || v === null || v === '') continue;
+      // Umumiy maydon shablonda ham bo'lsa (masalan `diagnosis`) —
+      // ikki marta ko'rsatmaymiz, u yuqorida allaqachon bor.
+      if (COMMON_KEYS.includes(f.key)) continue;
+      specialty_fields[f.key] = typeof v === 'object' ? v : String(v).trim();
+    }
+  }
+
   return {
-    fields: {
-      complaints:      pick('complaints'),
-      anamnesis:       pick('anamnesis'),
-      objective:       pick('objective'),
-      diagnosis:       pick('diagnosis'),
-      procedure:       pick('procedure'),
-      medicines:       pick('medicines'),
-      recommendations: pick('recommendations'),
-    },
+    fields,
+    specialty_fields,
+    // Interfeys maydonlarni shablon tartibi va yorliqlari bilan chizishi uchun
+    specialty_schema: skill?.fields?.filter((f) => !COMMON_KEYS.includes(f.key)) || [],
     next_step: nextStep,
     raw_text: input.text,
     structured: true,
     specialty: spec || null,
+    specialty_label: skill?.label || null,
   };
 }

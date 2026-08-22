@@ -237,6 +237,13 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
         success: true,
         transcription: text,
         fields: run.data.fields,
+        // Yo'nalishga xos maydonlar + ularni chizish uchun sxema.
+        // Interfeys shifokor yo'nalishiga qarab dinamik maydonlar
+        // ko'rsatadi (reproduktologda sikl/gormonlar, urologda buyrak...).
+        specialty_fields: run.data.specialty_fields || {},
+        specialty_schema: run.data.specialty_schema || [],
+        specialty_label: run.data.specialty_label || null,
+        specialty: run.data.specialty || null,
         next_step: run.data.next_step,
         structured: run.data.structured,
         note: run.data.note || null,
@@ -258,6 +265,11 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
     medicines: z.string().max(2000).optional(),
     notes: z.string().max(2000).optional(),
     raw_text: z.string().max(10000).optional(),
+    // Yo'nalishga xos maydonlar (reproduktologda sikl/gormonlar, urologda
+    // buyrak/prostata...). Ular shifokor yo'nalishiga qarab o'zgaradi,
+    // shuning uchun qat'iy sxema emas — data_json ichida saqlanadi.
+    specialty_data: z.record(z.string(), z.any()).optional(),
+    specialty: z.string().max(50).optional(),
     next_step: z.enum(['home', 'labs', 'admission', 'referral']).optional(),
     // labs uchun: tanlangan tekshiruv turlari (lab_orders da test_type)
     lab_types: z.array(z.string().max(50)).max(15).optional(),
@@ -298,6 +310,13 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
         medicines: b.medicines || '',
         notes: b.notes || '',
       };
+      // Yo'nalishga xos maydonlar alohida kalitda — umumiylari bilan
+      // aralashib ketmasin (istoriyani ko'rsatuvchi sahifalar
+      // diagnosis/procedure/medicines/notes ni kutadi).
+      if (b.specialty_data && Object.keys(b.specialty_data).length) {
+        dataJson.specialty = b.specialty || null;
+        dataJson.specialty_data = b.specialty_data;
+      }
       const nextStep = b.next_step || 'home';
       const nextStepData = {
         lab_types: b.lab_types || [],
