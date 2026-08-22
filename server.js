@@ -12,7 +12,7 @@ import cron from 'node-cron';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
 import compression from 'compression';
 import { z } from 'zod';
@@ -141,9 +141,18 @@ if (IS_PROD) {
   });
 }
 
+// Umumiy so'rov cheklovi — qo'pol suiiste'mol to'sig'i.
+//
+// 300 -> 3000. Sabab: klinika xodimlari bitta internet ulanishi orqali
+// ishlaydi, ya'ni bu limit AMALDA butun klinikaga birgalikda tegishli.
+// Interfeys esa muntazam so'rov yuboradi: shifokor sahifasi navbatni
+// 20s, statistikani 60s, yo'llanmalarni 30s da yangilaydi — bu BITTA
+// shifokor uchun 15 daqiqada ~90 so'rov. Uch shifokor, registratura,
+// kassa va kiosk bilan 300 chegarasi oddiy ish kunida oshib ketardi
+// va tizim sababsiz "Juda ko'p so'rov" deb rad qilardi.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 3000,
   message: { error: 'Juda ko\'p so\'rov, keyin urinib ko\'ring' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -151,7 +160,36 @@ const limiter = rateLimit({
 });
 app.use([`/api`, API_PREFIX], limiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
+/**
+ * Login cheklovi — LOGIN NOMI bo'yicha, IP bo'yicha EMAS.
+ *
+ * NEGA: klinikaning barcha xodimlari bitta internet ulanishi orqali
+ * ishlaydi, ya'ni tashqi IP hammada BIR XIL. IP bo'yicha cheklansa,
+ * bitta xodim parolni bir necha marta xato tersa — registratura,
+ * shifokorlar va kassa BIRDANIGA 15 daqiqaga tizimdan chiqib qoladi.
+ * Aynan shu production'da sodir bo'ldi: hech kim kira olmay qoldi.
+ *
+ * Login nomi bo'yicha cheklash to'g'riroq: hujum aniq hisobga qaratiladi
+ * va boshqa xodimlarga tegmaydi. Bemor kartasi darajasidagi himoya
+ * bazada ham bor (doctors.failed_attempts / locked_until).
+ *
+ * skipSuccessfulRequests — muvaffaqiyatli kirish limitni yemaydi.
+ * Aks holda kun davomida qayta-qayta kirgan xodim o'zini bloklardi.
+ */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => {
+    const uname = String(req.body?.username || '').toLowerCase().trim();
+    // Login nomi yo'q so'rovlar (refresh, logout) — IP bo'yicha.
+    // ipKeyGenerator IPv6 manzillarni to'g'ri guruhlaydi.
+    return uname ? `user:${uname}` : `ip:${ipKeyGenerator(req.ip)}`;
+  },
+  skipSuccessfulRequests: true,
+  message: { error: 'Bu hisob uchun urinishlar soni oshib ketdi. 15 daqiqa kuting.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
 const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
 
