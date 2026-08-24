@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { withTenantTransaction } from '../backend/db.js';
+import { createTenantAwarePool, withTenantTransaction } from '../backend/db.js';
+import { runWithTenantDbContext } from '../backend/request-tenant-context.js';
 
 const { Pool } = pg;
 const RLS_ROLE = 'falcon_rls_test';
@@ -108,6 +109,33 @@ describe('PostgreSQL tenant RLS', () => {
     }, ownerPool);
 
     expect(rows).toEqual([{ id: patientA, tenant_id: tenantA }]);
+  });
+
+  it('applies request context automatically through the tenant-aware pool', async () => {
+    const rolePool = {
+      async connect() {
+        const client = await ownerPool.connect();
+        return {
+          async query(...args) {
+            const result = await client.query(...args);
+            const sql = typeof args[0] === 'string' ? args[0] : args[0]?.text;
+            if (/^\s*BEGIN\b/i.test(sql || '')) {
+              await client.query(`SET LOCAL ROLE ${RLS_ROLE}`);
+            }
+            return result;
+          },
+          release: () => client.release(),
+        };
+      },
+    };
+    const tenantPool = createTenantAwarePool(rolePool);
+
+    const result = await runWithTenantDbContext(tenantA, () => tenantPool.query(
+      'SELECT id, tenant_id FROM patients WHERE id = ANY($1::uuid[]) ORDER BY tenant_id',
+      [[patientA, patientB]]
+    ));
+
+    expect(result.rows).toEqual([{ id: patientA, tenant_id: tenantA }]);
   });
 
   it('hides cross-tenant updates and deletes', async () => {
