@@ -29,3 +29,13 @@ Hozirgi checkpoint policy va transaction helperni qo'shadi, ammo application
 connectionni hali non-owner role'ga almashtirmaydi. Bu mavjud endpointlarni
 birdan fail-closed holatga tushirib, production xizmatini uzib qo'ymaslik uchun
 ataylab bosqichlangan.
+
+## Request context checkpoint
+
+`request-tenant-context.js` autentifikatsiyadan keyingi tenantni
+`AsyncLocalStorage` orqali shu requestning barcha async DB operatsiyalariga
+bog'laydi. Tenant-aware pool oddiy query uchun qisqa transaction ochadi,
+`app.tenant_id` ni `SET LOCAL` semantikasi bilan o'rnatadi va connectionni faqat
+commit/rollbackdan keyin poolga qaytaradi. Mavjud `pool.query('BEGIN')` oqimlari
+ham request doirasida bitta clientga pin qilinadi; tugallanmagan transaction
+response yakunida avtomatik rollback qilinadi.

@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { bindTenantDbContext } from './request-tenant-context.js';
 
 export const JWT_EXPIRES = '2h';
 
@@ -46,7 +47,7 @@ export async function authMiddleware(req, res, next) {
     req.user = decoded;
     req.tenant_id = decoded.tenant_id;
     res.setHeader('x-tenant-id', decoded.tenant_id);
-    next();
+    return bindTenantDbContext(decoded.tenant_id, res, next);
   } catch (e) {
     if (e.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token muddati tugagan, qayta kiring', code: 'TOKEN_EXPIRED' });
@@ -140,7 +141,7 @@ export function verifyTelegramAuth(req, res, next) {
           tenant_id: staff.tenant_id,
         };
         req.tenant_id = staff.tenant_id;
-        return next();
+        return bindTenantDbContext(staff.tenant_id, res, next);
       } catch (e) {
         console.error('[TELEGRAM AUTH ERROR]', e.message);
         return res.status(403).json({ success: false, error: 'Avtorizatsiya xatosi' });
@@ -227,7 +228,7 @@ export function agentBypassOrAuth(...allowedRoles) {
       if (!tenantId) return res.status(400).json({ error: 'Internal so\'rov uchun x-tenant-id talab qilinadi' });
       req.tenant_id = String(tenantId);
       req.user = { role: 'admin', id: 'internal-agent', tenant_id: req.tenant_id };
-      return next();
+      return bindTenantDbContext(req.tenant_id, res, next);
     }
     authMiddleware(req, res, () => checkRole(...allowedRoles)(req, res, next));
   };

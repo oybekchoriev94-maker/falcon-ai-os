@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 import { verifyTelegramInitData } from '../shared.js';
+import { bindTenantDbContext } from '../request-tenant-context.js';
 
 export default function tmaRoutes(pool) {
   const router = Router();
@@ -35,7 +36,7 @@ export default function tmaRoutes(pool) {
 
       req.tenant_id = tenant.id;
       res.setHeader('x-tenant-id', tenant.id);
-      next();
+      return bindTenantDbContext(tenant.id, res, next);
     } catch (e) { safeError(res, e); }
   });
 
