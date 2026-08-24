@@ -4,7 +4,7 @@ import { safeError } from '../services/safe-error.js';
 import { verifyTelegramInitData } from '../shared.js';
 import { bindTenantDbContext } from '../request-tenant-context.js';
 
-export default function tmaRoutes(pool) {
+export default function tmaRoutes(pool, platformPool = pool) {
   const router = Router();
   const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
 
@@ -25,7 +25,7 @@ export default function tmaRoutes(pool) {
         return res.status(400).json({ success: false, error: 'Klinika kodi talab qilinadi' });
       }
 
-      const result = await pool.query(
+      const result = await platformPool.query(
         `SELECT id, code FROM tenants
          WHERE status = 'active' AND (LOWER(code) = LOWER($1) OR id = $1)
          LIMIT 1`,

@@ -16,7 +16,7 @@ PostgreSQL jadval egasi odatda RLS'ni chetlab o'tadi. Shu sabab production
 application connection migratsiyalarni bajargan owner roldan alohida,
 `BYPASSRLS` huquqiga ega bo'lmagan DB role bilan ishlashi shart.
 
-To'liq production activation keyingi rollout checkpointida bajariladi:
+Production activation quyidagi tartibda ishlaydi:
 
 - owner connection faqat migration va boshqariladigan platform operatsiyalari uchun;
 - application connection oddiy non-owner role uchun;
@@ -24,11 +24,6 @@ To'liq production activation keyingi rollout checkpointida bajariladi:
   `withTenantTransaction(tenantId, callback)` orqali transaction-local contextda;
 - login, superadmin va background joblar uchun alohida, audit qilinadigan yo'l;
 - application role'ga o'tishdan oldin barcha API integration testlari shu role bilan.
-
-Hozirgi checkpoint policy va transaction helperni qo'shadi, ammo application
-connectionni hali non-owner role'ga almashtirmaydi. Bu mavjud endpointlarni
-birdan fail-closed holatga tushirib, production xizmatini uzib qo'ymaslik uchun
-ataylab bosqichlangan.
 
 ## Request context checkpoint
 
@@ -39,3 +34,18 @@ bog'laydi. Tenant-aware pool oddiy query uchun qisqa transaction ochadi,
 commit/rollbackdan keyin poolga qaytaradi. Mavjud `pool.query('BEGIN')` oqimlari
 ham request doirasida bitta clientga pin qilinadi; tugallanmagan transaction
 response yakunida avtomatik rollback qilinadi.
+
+## Non-owner application role
+
+Productionda uchta ulanish vazifasi ajratiladi:
+
+- `DATABASE_URL`: `falcon_app` non-owner runtime role; RLS majburiy;
+- `PLATFORM_DATABASE_URL`: login, webhook lookup, superadmin, cron va backup;
+- `MIGRATION_DATABASE_URL`: faqat schema migrationlari uchun owner ulanishi.
+
+`node scripts/provision-app-role.js` migratsiyalardan keyin `falcon_app` rolini
+yaratadi yoki yangilaydi va faqat runtime jadvallariga kerakli grantlarni beradi.
+`RLS_ENFORCE_APP_ROLE=true` bo'lsa, ilova superuser, `BYPASSRLS` yoki RLS jadval
+egasi bilan ishga tushishga urinsa startup fail-closed to'xtaydi. Platform
+ulanishi ham cross-tenant operatsiyalar uchun yetarli huquqqa ega bo'lmasa
+startup rad etiladi.

@@ -21,8 +21,6 @@ async function migrate() {
     } else {
       console.log(`[MIGRATE] Batch ${batch}: ${migrations.join(', ')}`);
     }
-    console.log('[MIGRATE] Running seeds...');
-    await db.seed.run();
     console.log('[MIGRATE] Done!');
   } catch (e) {
     console.error('[MIGRATE] Error:', e);

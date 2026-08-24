@@ -1,7 +1,12 @@
 import { randomUUID } from 'crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTenantAwarePool, withTenantTransaction } from '../backend/db.js';
+import {
+  assertApplicationRoleIsRlsSafe,
+  assertPlatformRoleCanBypassRls,
+  createTenantAwarePool,
+  withTenantTransaction,
+} from '../backend/db.js';
 import { runWithTenantDbContext } from '../backend/request-tenant-context.js';
 
 const { Pool } = pg;
@@ -29,7 +34,9 @@ async function asRlsRole(tenantId, callback) {
 }
 
 beforeAll(async () => {
-  ownerPool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+  ownerPool = new Pool({
+    connectionString: process.env.PLATFORM_DATABASE_URL || process.env.MIGRATION_DATABASE_URL || process.env.TEST_DATABASE_URL,
+  });
   const suffix = randomUUID().slice(0, 8);
   tenantA = `rls-a-${suffix}`;
   tenantB = `rls-b-${suffix}`;
@@ -47,6 +54,7 @@ beforeAll(async () => {
   `);
   await ownerPool.query(`GRANT USAGE ON SCHEMA public TO ${RLS_ROLE}`);
   await ownerPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON patients TO ${RLS_ROLE}`);
+  await ownerPool.query(`GRANT SELECT ON tenants TO ${RLS_ROLE}`);
 
   await ownerPool.query(
     'INSERT INTO tenants (id, name) VALUES ($1, $2), ($3, $4)',
@@ -89,6 +97,41 @@ describe('PostgreSQL tenant RLS', () => {
     expect(result.rows.every((row) => row.rls_enabled && row.policy_exists)).toBe(true);
   });
 
+  it('enables tenant-id RLS on the tenants table itself', async () => {
+    const result = await ownerPool.query(`
+      SELECT c.relrowsecurity AS rls_enabled,
+             EXISTS (
+               SELECT 1 FROM pg_policy p
+               WHERE p.polrelid = c.oid AND p.polname = 'falcon_tenant_isolation'
+             ) AS policy_exists
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = 'tenants'
+    `);
+
+    expect(result.rows[0]).toEqual({ rls_enabled: true, policy_exists: true });
+  });
+
+  it('uses a non-owner application role when configured', async () => {
+    if (!process.env.RLS_ENFORCE_APP_ROLE) return;
+    const applicationPool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+    try {
+      const role = await assertApplicationRoleIsRlsSafe(applicationPool);
+      expect(role.role_name).toBe('falcon_app');
+      expect(role.is_superuser).toBe(false);
+      expect(role.bypasses_rls).toBe(false);
+      expect(role.owns_rls_tables).toBe(false);
+    } finally {
+      await applicationPool.end();
+    }
+  });
+
+  it('uses an explicitly privileged platform role when enforcement is enabled', async () => {
+    if (!process.env.RLS_ENFORCE_APP_ROLE) return;
+    const role = await assertPlatformRoleCanBypassRls(ownerPool);
+    expect(role.role_name).not.toBe('falcon_app');
+  });
+
   it('fails closed when no tenant context is set', async () => {
     const rows = await asRlsRole(undefined, async (client) => (
       await client.query('SELECT id FROM patients WHERE id = ANY($1::uuid[])', [[patientA, patientB]])
@@ -109,6 +152,17 @@ describe('PostgreSQL tenant RLS', () => {
     }, ownerPool);
 
     expect(rows).toEqual([{ id: patientA, tenant_id: tenantA }]);
+  });
+
+  it('only exposes the active tenant row from the tenants table', async () => {
+    const rows = await asRlsRole(tenantA, async (client) => (
+      await client.query(
+        'SELECT id FROM tenants WHERE id = ANY($1::text[]) ORDER BY id',
+        [[tenantA, tenantB]]
+      )
+    ).rows);
+
+    expect(rows).toEqual([{ id: tenantA }]);
   });
 
   it('applies request context automatically through the tenant-aware pool', async () => {

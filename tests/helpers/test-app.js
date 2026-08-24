@@ -39,7 +39,7 @@ async function initializeTestApp() {
   }
 
   dbModule = await import('../../backend/db.js');
-  await dbModule.connectPg(databaseUrl);
+  await dbModule.connectPg(databaseUrl, process.env.PLATFORM_DATABASE_URL);
 
   const server = await import('../../server.js');
   await server.mountApiRoutes(server.app, dbModule.getPool());
