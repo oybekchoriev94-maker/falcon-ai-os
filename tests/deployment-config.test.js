@@ -25,6 +25,11 @@ describe('production deployment contract', () => {
     expect(workflow).toContain('export FRONTEND_IMAGE=');
     expect(workflow).toContain('export STT_IMAGE=');
     expect(workflow).toContain('--no-build');
+    expect(workflow).toContain('IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}');
+    expect(workflow).toContain('packages: write');
+    expect(workflow).toContain('password: ${{ secrets.GITHUB_TOKEN }}');
+    expect(workflow).not.toContain('DOCKER_PASSWORD');
+    expect(workflow).not.toContain('DOCKER_USERNAME');
   });
 
   it('waits for real service health before completing deploy', () => {

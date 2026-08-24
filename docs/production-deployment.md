@@ -8,8 +8,11 @@ orqali `80/443` portlariga kiradi.
 
 Repository Actions uchun quyidagilar sozlanadi:
 
-- `DOCKER_USERNAME`, `DOCKER_PASSWORD`;
 - `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`.
+
+Container image'lar GitHub Container Registry (`ghcr.io`) ga Actions tomonidan
+beriladigan qisqa muddatli `GITHUB_TOKEN` orqali push va pull qilinadi. Alohida
+DockerHub credentiali yoki uzoq muddatli registry tokeni saqlanmaydi.
 
 CI testlardan keyin backend, frontend va STT uchun bir xil Git commit SHA bilan
 immutable image yaratadi. VPS deploy aynan shu SHA teglarini eksport qiladi,
@@ -54,13 +57,13 @@ cd /opt/falcon-ai-os
 
 ## Rollback
 
-DockerHub'da oldingi Git SHA teglari saqlanadi. Zarurat bo'lsa oldingi SHA bilan
+GHCR'da oldingi Git SHA teglari saqlanadi. Zarurat bo'lsa oldingi SHA bilan
 uch image qiymatini eksport qilib Compose'ni qayta ishga tushirish mumkin:
 
 ```bash
-export BACKEND_IMAGE="USER/falcon-ai-os:PREVIOUS_SHA"
-export FRONTEND_IMAGE="USER/falcon-ai-os-frontend:PREVIOUS_SHA"
-export STT_IMAGE="USER/falcon-ai-os-stt:PREVIOUS_SHA"
+export BACKEND_IMAGE="ghcr.io/OWNER/falcon-ai-os:PREVIOUS_SHA"
+export FRONTEND_IMAGE="ghcr.io/OWNER/falcon-ai-os-frontend:PREVIOUS_SHA"
+export STT_IMAGE="ghcr.io/OWNER/falcon-ai-os-stt:PREVIOUS_SHA"
 docker compose pull app frontend stt
 docker compose up -d --no-build --force-recreate --wait --wait-timeout 900
 ```
