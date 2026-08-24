@@ -49,6 +49,11 @@ export function validateProductionEnvironment(env = process.env) {
     errors.push('RLS_ENFORCE_APP_ROLE production muhitida true bo\'lishi kerak');
   }
 
+  const refreshWindowDays = Number(env.JWT_REFRESH_WINDOW_DAYS || 7);
+  if (!Number.isInteger(refreshWindowDays) || refreshWindowDays < 1 || refreshWindowDays > 30) {
+    errors.push('JWT_REFRESH_WINDOW_DAYS 1 dan 30 gacha butun son bo\'lishi kerak');
+  }
+
   try {
     const publicUrl = new URL(String(env.PUBLIC_URL || ''));
     if (publicUrl.protocol !== 'https:') errors.push('PUBLIC_URL production muhitida HTTPS bo\'lishi kerak');

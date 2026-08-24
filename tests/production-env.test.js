@@ -7,6 +7,7 @@ function productionEnv(overrides = {}) {
     DATABASE_URL: 'postgresql://falcon_app:application-password@db:5432/falcon',
     PLATFORM_DATABASE_URL: 'postgresql://falcon_owner:platform-password@db:5432/falcon',
     RLS_ENFORCE_APP_ROLE: 'true',
+    JWT_REFRESH_WINDOW_DAYS: '7',
     PUBLIC_URL: 'https://falconmedai.uz',
     JWT_SECRET: 'jwt-secret-with-at-least-32-characters',
     INTERNAL_SECRET: 'internal-secret-with-at-least-32-chars',
@@ -39,5 +40,11 @@ describe('production environment validation', () => {
 
   it('does not enforce production requirements in development and tests', () => {
     expect(validateProductionEnvironment({ NODE_ENV: 'test' })).toBe(true);
+  });
+
+  it('rejects an excessive JWT refresh window', () => {
+    expect(() => validateProductionEnvironment(productionEnv({
+      JWT_REFRESH_WINDOW_DAYS: '31',
+    }))).toThrow('JWT_REFRESH_WINDOW_DAYS');
   });
 });

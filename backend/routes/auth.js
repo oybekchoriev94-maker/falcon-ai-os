@@ -5,6 +5,27 @@ import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 import { unsafeQuery } from '../db.js';
 import { runWithTenantDbContext } from '../request-tenant-context.js';
+import { JWT_VERIFY_OPTIONS } from '../shared.js';
+
+const DEFAULT_REFRESH_WINDOW_DAYS = 7;
+
+export function refreshWindowSeconds(env = process.env) {
+  const configuredDays = Number(env.JWT_REFRESH_WINDOW_DAYS || DEFAULT_REFRESH_WINDOW_DAYS);
+  if (!Number.isInteger(configuredDays) || configuredDays < 1 || configuredDays > 30) {
+    throw new Error('JWT_REFRESH_WINDOW_DAYS 1 dan 30 gacha butun son bo\'lishi kerak');
+  }
+  return configuredDays * 24 * 60 * 60;
+}
+
+export function validateRefreshClaims(decoded, nowSeconds = Math.floor(Date.now() / 1000), windowSeconds = refreshWindowSeconds()) {
+  if (!decoded?.jti || !decoded?.id || !decoded?.tenant_id || !Number.isInteger(decoded?.iat)) {
+    throw new Error('Token majburiy session ma\'lumotlariga ega emas');
+  }
+  if (decoded.iat > nowSeconds + 60 || nowSeconds - decoded.iat > windowSeconds) {
+    throw new Error('Tokenni yangilash muddati tugagan');
+  }
+  return decoded.iat + windowSeconds;
+}
 
 const seedUsers = [
   { username: 'ceo',          passwordEnv: 'SEED_CEO_PASSWORD',       role: 'ceo',          name: 'Bosh direktor' },
@@ -62,12 +83,17 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     return pool.query(sql, params);
   }
 
-  router.post('/login', async (req, res) => {
+  router.post('/login', validate(schemas.login), async (req, res) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) return res.status(400).json({ error: 'username va password talab qilinadi' });
-      const user = await unsafeQuery.qGet("SELECT * FROM users WHERE username = $1", [username]);
-      if (!user) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+      const user = await unsafeQuery.qGet(
+        `SELECT u.*, t.status AS tenant_status
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.username = $1`,
+        [username]
+      );
+      if (!user || user.tenant_status !== 'active') return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
       const token = signToken(user);
@@ -75,11 +101,18 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     } catch (e) { safeError(res, e); }
   });
 
-  router.post('/doctor-login', async (req, res) => {
+  router.post('/doctor-login', validate(schemas.login), async (req, res) => {
     try {
       const { username, password } = req.body;
-      const doctor = await unsafeQuery.qGet("SELECT * FROM doctors WHERE username = $1", [username]);
-      if (!doctor) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+      const doctor = await unsafeQuery.qGet(
+        `SELECT d.*, t.status AS tenant_status
+         FROM doctors d JOIN tenants t ON t.id = d.tenant_id
+         WHERE d.username = $1`,
+        [username]
+      );
+      if (!doctor || doctor.status !== 'Faol' || doctor.tenant_status !== 'active') {
+        return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+      }
       if (!doctor.password_hash) return res.status(401).json({ error: 'Doctor paroli sozlanmagan' });
       const MAX_ATTEMPTS = 5;
       const LOCKOUT_MINUTES = 15;
@@ -130,25 +163,78 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
       if (!oldToken) return res.status(400).json({ success: false, error: 'Token talab qilinadi' });
       let decoded;
       try {
-        decoded = jwt.verify(oldToken, process.env.JWT_SECRET, { ignoreExpiration: true });
+        decoded = jwt.verify(oldToken, process.env.JWT_SECRET, {
+          ...JWT_VERIFY_OPTIONS,
+          ignoreExpiration: true,
+        });
       } catch (e) {
         return res.status(401).json({ success: false, error: 'Token yaroqsiz' });
       }
-      const blacklisted = await qGet("SELECT id FROM token_blacklist WHERE jti = $1", [decoded.jti]);
-      if (blacklisted) return res.status(401).json({ success: false, error: 'Token bekor qilingan' });
-      const newToken = signToken(decoded);
-      const freshUser = await unsafeQuery.qGet(
-        "SELECT id, username, role, name FROM users WHERE id = $1 AND tenant_id = $2",
+      let refreshExpiresAt;
+      try {
+        refreshExpiresAt = validateRefreshClaims(decoded);
+      } catch (e) {
+        return res.status(401).json({ success: false, error: e.message });
+      }
+
+      let freshUser = await unsafeQuery.qGet(
+        `SELECT u.id, u.tenant_id, u.username, u.role, u.name
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.id = $1 AND u.tenant_id = $2 AND t.status = 'active'`,
         [decoded.id, decoded.tenant_id]
       );
-      res.json({ success: true, token: newToken, user: freshUser || null, message: 'Token yangilandi' });
+      if (!freshUser) {
+        const doctor = await unsafeQuery.qGet(
+          `SELECT d.id, d.tenant_id, d.username, d.first_name, d.last_name,
+                  d.specialization, d.specialty
+           FROM doctors d JOIN tenants t ON t.id = d.tenant_id
+           WHERE d.id = $1 AND d.tenant_id = $2
+             AND d.status = 'Faol' AND t.status = 'active'`,
+          [decoded.id, decoded.tenant_id]
+        );
+        if (doctor) {
+          freshUser = {
+            ...doctor,
+            role: 'doctor',
+            doctor_id: doctor.id,
+            name: `${doctor.first_name} ${doctor.last_name || ''}`.trim(),
+          };
+        }
+      }
+      if (!freshUser) {
+        return res.status(401).json({ success: false, error: 'Foydalanuvchi faol emas yoki topilmadi' });
+      }
+
+      // Refresh token rotation: faqat birinchi parallel/replay so'rov eski JTI'ni
+      // atomik ravishda egallaydi. Qolganlari ON CONFLICT sabab rad etiladi.
+      const claimed = await unsafeQuery.qGet(
+        `INSERT INTO token_blacklist (jti, expires_at)
+         VALUES ($1, to_timestamp($2))
+         ON CONFLICT (jti) DO NOTHING
+         RETURNING id`,
+        [decoded.jti, refreshExpiresAt]
+      );
+      if (!claimed) return res.status(401).json({ success: false, error: 'Token allaqachon yangilangan yoki bekor qilingan' });
+
+      const newToken = signToken(freshUser);
+      res.json({
+        success: true,
+        token: newToken,
+        user: { id: freshUser.id, username: freshUser.username, role: freshUser.role, name: freshUser.name },
+        message: 'Token yangilandi',
+      });
     } catch (e) { safeError(res, e); }
   });
 
   router.post('/logout', authMiddleware, async (req, res) => {
     try {
-      await q("INSERT INTO token_blacklist (jti, expires_at) VALUES ($1, NOW() + INTERVAL '24 hours') ON CONFLICT (jti) DO NOTHING",
-        [req.user.jti]);
+      const refreshExpiresAt = validateRefreshClaims(req.user);
+      await q(
+        `INSERT INTO token_blacklist (jti, expires_at)
+         VALUES ($1, to_timestamp($2))
+         ON CONFLICT (jti) DO NOTHING`,
+        [req.user.jti, refreshExpiresAt]
+      );
       res.json({ success: true, message: 'Chiqish bajarildi' });
     } catch (e) { safeError(res, e); }
   });
