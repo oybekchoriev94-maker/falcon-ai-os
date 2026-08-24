@@ -250,7 +250,10 @@ export function agentBypassOrAuth(...allowedRoles) {
 export const schemas = {
   login: z.object({
     username: z.string().min(3).max(100),
-    password: z.string().min(8).max(128)
+    // Login kuchsiz parolni oshkor qilmaydi; mavjud, noto'g'ri credential
+    // bcrypt tekshiruvidan keyin bir xil 401 javobini oladi. Parol kuchi
+    // registration/change oqimlarida alohida majburiy qilinadi.
+    password: z.string().min(1).max(128)
   }),
   inventoryAdd: z.object({
     name: z.string().min(2).max(255),
