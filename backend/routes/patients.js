@@ -44,7 +44,7 @@ export default function patientsRoutes(pool, authMiddleware) {
     next();
   };
 
-  const tenantOf = (req) => req.user?.tenant_id || req.tenant_id || 'default';
+  const tenantOf = (req) => req.user.tenant_id;
 
   // GET / — bemorlarni qidirish/ro'yxatlash
   router.get('/', authMiddleware, async (req, res) => {
@@ -78,7 +78,10 @@ export default function patientsRoutes(pool, authMiddleware) {
          b.region || '', b.district || '', b.address || '', b.passport_number || '', b.gender || '',
          b.benefit_category || '', b.department || '', b.order_number || '', b.medical_record_number || '', b.notes || '']
       );
-      const patient = await qGet(`SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1`, [id]);
+      const patient = await qGet(
+        `SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
       res.status(201).json({ success: true, patient });
     } catch (e) { safeError(res, e); }
   });
@@ -99,7 +102,10 @@ export default function patientsRoutes(pool, authMiddleware) {
          b.district || '', b.address || '', b.passport_number || '', b.gender || '', b.benefit_category || '',
          b.department || '', b.order_number || '', b.medical_record_number || '', b.notes || '', id, tenantId]
       );
-      const patient = await qGet(`SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1`, [id]);
+      const patient = await qGet(
+        `SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
       res.json({ success: true, patient });
     } catch (e) { safeError(res, e); }
   });

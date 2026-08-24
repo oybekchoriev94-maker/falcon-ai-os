@@ -1,24 +1,9 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   calcPlatformFee, calcCommission,
   deductDoctorBalance, accruePatientCashback,
   redeemPatientCashback, topupDoctorBalance
 } from '../backend/services/finance-engine.js';
-
-const mockDb = { doctors: {}, patients: {} };
-mockDb.doctors.d1 = { id: 'd1', balance: 50000 };
-mockDb.patients.p1 = { id: 'p1', cashback_balance: 30000 };
-
-const q = (sql, params = []) => {
-  if (sql.includes('SELECT')) return [];
-  if (sql.includes('balance')) return { changes: 1 };
-  return { changes: 1 };
-};
-const qGet = (sql, params = []) => {
-  if (sql.includes('doctors')) return mockDb.doctors[params[0]] || null;
-  if (sql.includes('patients')) return mockDb.patients[params[0]] || null;
-  return null;
-};
 
 describe('calcPlatformFee', () => {
   it('3% of amount', () => expect(calcPlatformFee(100000)).toBe(3000));
@@ -33,28 +18,38 @@ describe('calcCommission', () => {
 });
 
 describe('deductDoctorBalance', () => {
-  it('deducts when sufficient', () => {
-    expect(deductDoctorBalance(mockDb, qGet, 'd1', 10000)).toBe(true);
+  it('deducts when sufficient inside the tenant', async () => {
+    const q = vi.fn().mockResolvedValue({ rowCount: 1 });
+    await expect(deductDoctorBalance(q, 'tenant-a', 'd1', 10000)).resolves.toBe(true);
+    expect(q.mock.calls[0][0]).toContain('tenant_id = $2');
+    expect(q.mock.calls[0][1]).toEqual([10000, 'tenant-a', 'd1', 10000]);
   });
-  it('false when insufficient', () => {
-    expect(deductDoctorBalance(mockDb, qGet, 'd1', 999999)).toBe(false);
+  it('returns false when insufficient', async () => {
+    const q = vi.fn().mockResolvedValue({ rowCount: 0 });
+    await expect(deductDoctorBalance(q, 'tenant-a', 'd1', 999999)).resolves.toBe(false);
   });
 });
 
 describe('accruePatientCashback', () => {
-  it('increments cashback', () => {
-    expect(accruePatientCashback(mockDb, qGet, 'p1', 5000)).toBe(true);
+  it('increments cashback inside the tenant', async () => {
+    const q = vi.fn().mockResolvedValue({ rowCount: 1 });
+    await accruePatientCashback(q, 'tenant-a', 'p1', 5000);
+    expect(q.mock.calls[0][1]).toEqual([5000, 'tenant-a', 'p1']);
   });
 });
 
 describe('redeemPatientCashback', () => {
-  it('deducts when sufficient', () => {
-    expect(redeemPatientCashback(mockDb, qGet, 'p1', 10000)).toBe(true);
+  it('deducts when sufficient inside the tenant', async () => {
+    const q = vi.fn().mockResolvedValue({ rows: [{ id: 'p1' }] });
+    await expect(redeemPatientCashback(q, 'tenant-a', 'p1', 10000)).resolves.toBe(true);
+    expect(q.mock.calls[0][1]).toEqual([10000, 'tenant-a', 'p1', 10000]);
   });
 });
 
 describe('topupDoctorBalance', () => {
-  it('increments balance', () => {
-    expect(topupDoctorBalance(mockDb, q, 'd1', 20000)).toBe(true);
+  it('increments balance inside the tenant', async () => {
+    const q = vi.fn().mockResolvedValue({ rowCount: 1 });
+    await topupDoctorBalance(q, 'tenant-a', 'd1', 20000);
+    expect(q.mock.calls[0][1]).toEqual([20000, 'tenant-a', 'd1']);
   });
 });

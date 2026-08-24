@@ -23,7 +23,7 @@ import { connectPg, disconnectPg, q, qGet, qExec, getPool, withTransaction, unsa
 import { generateReportPdf } from './backend/services/pdfGenerator.js';
 import { safeError } from './backend/services/safe-error.js';
 import { MEDICAL_SKILLS } from './ai/protocols/medical-skills.js';
-import { authMiddleware, checkRole, validate, schemas, signToken, telegramOrJwtAuth, agentBypassOrAuth, validateNonce } from './backend/shared.js';
+import { authMiddleware, checkRole, validate, schemas, signToken, telegramOrJwtAuth, agentBypassOrAuth, isValidInternalSecret, validateNonce } from './backend/shared.js';
 import { swaggerSpec } from './backend/swagger.js';
 import { tenantContext } from './backend/tenant-context.js';
 import { auditLog } from './backend/audit.js';
@@ -37,7 +37,7 @@ import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } 
 import * as orchestrator from './ai/orchestrator.js';
 import { llm, transcribe, speak, isLLMReady } from './ai/orchestrator.js';
 
-import authRoutes from './backend/routes/auth.js';
+import authRoutes, { seedDefaultUsers } from './backend/routes/auth.js';
 import paymentRoutes from './backend/routes/payments.js';
 import inventoryRoutes from './backend/routes/inventory.js';
 import aiRoutes from './backend/routes/ai.js';
@@ -53,7 +53,6 @@ import subscriptionRoutes from './backend/routes/subscription.js';
 import tenantRoutes from './backend/routes/tenants.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
-import webhookRoutes from './backend/routes/webhooks.js';
 import scribeRoutes from './backend/routes/scribe.js';
 import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
@@ -72,6 +71,7 @@ Sentry.init({
 const PORT = parseInt(process.env.PORT || '3000');
 const MAX_PORT = PORT + 10;
 const IS_PROD = process.env.NODE_ENV === 'production';
+const IS_TEST = process.env.NODE_ENV === 'test';
 const API_PREFIX = '/api/v1';
 
 function serverError(res, err, status = 500) {
@@ -133,13 +133,14 @@ const limiter = rateLimit({
   message: { error: 'Juda ko\'p so\'rov, keyin urinib ko\'ring' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => IS_TEST,
   validate: { trustProxy: false },
 });
 app.use([`/api`, API_PREFIX], limiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
-const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
-const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: IS_PROD ? 10 : 1000, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
+const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
+const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-256-bit-hex-secret-here' || process.env.JWT_SECRET.length < 16) {
   console.error('JWT_SECRET .env da xavfsiz qiymat bilan sozlanishi kerak!');
@@ -147,7 +148,11 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-256-bit-hex-secr
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || crypto.randomBytes(32).toString('hex');
+if (IS_PROD && (!process.env.INTERNAL_SECRET || process.env.INTERNAL_SECRET.length < 32)) {
+  console.error('INTERNAL_SECRET production muhitida kamida 32 belgidan iborat bo\'lishi kerak!');
+  process.exit(1);
+}
+process.env.INTERNAL_SECRET ||= crypto.randomBytes(32).toString('hex');
 
 // ============================================================
 // SWAGGER
@@ -192,9 +197,19 @@ function initBots() {
       patientBot = new Telegraf(tokenP);
       patientBot.start(async (ctx) => {
         const userId = ctx.from?.id;
-        const staff = userId ? await qGet("SELECT id, full_name, role FROM staff_members WHERE telegram_id = $1 AND is_active = true", [userId]) : null;
+        const staff = userId ? await unsafeQuery.qGet(
+          `SELECT sm.id, sm.tenant_id, sm.full_name, sm.role, t.code AS tenant_code
+           FROM staff_members sm
+           JOIN tenants t ON t.id = sm.tenant_id
+           WHERE sm.telegram_id = $1 AND sm.is_active = true`,
+          [userId]
+        ) : null;
+        const clinicCode = String(ctx.startPayload || staff?.tenant_code || process.env.DEFAULT_TENANT_CODE || 'DEFAULT')
+          .replace(/^clinic[_:-]/i, '');
         const adminUrl = baseUrl ? baseUrl.replace(/\/+$/, '') + '/admin-tma.html' : null;
-        const patientUrl = baseUrl ? baseUrl.replace(/\/+$/, '') + '/tma.html' : null;
+        const patientUrl = baseUrl
+          ? baseUrl.replace(/\/+$/, '') + '/tma.html?clinic=' + encodeURIComponent(clinicCode)
+          : null;
         if (staff && adminUrl) {
           const roleLabels = { CEO: 'CEO', DOCTOR: 'Shifokor', WAREHOUSEMAN: 'Omborchi' };
           ctx.reply(`Assalomu alaykum, ${roleLabels[staff.role] || 'Xodim'} ${staff.full_name}!`,
@@ -266,6 +281,70 @@ app.get('/metrics', authMiddleware, checkRole('superadmin'), metricsEndpoint);
 // ============================================================
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+const mountedApps = new WeakSet();
+const finalizedApps = new WeakSet();
+
+/**
+ * API route'larini DB ulanishidan alohida ulaydi. Production startup ham,
+ * integration testlar ham aynan shu funksiyadan foydalanadi.
+ */
+export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {}) {
+  if (mountedApps.has(targetApp)) return targetApp;
+
+  targetApp.locals.pool = pool;
+  if (seedUsers) await seedDefaultUsers(pool);
+
+  targetApp.use(`${API_PREFIX}/auth`, authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
+  targetApp.use('/api/auth', authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
+  targetApp.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
+  targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes());
+  targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
+
+  // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
+  targetApp.use('/api/scribe', authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
+    scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger));
+  targetApp.use('/api/doctor', doctorViewRoutes(pool, authMiddleware, checkRole, serverError));
+  targetApp.use('/api/b2b', b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError));
+  targetApp.use('/api/tma', tmaRoutes(pool));
+
+  function mountRoutes(prefix) {
+    const p = prefix || '';
+    targetApp.use(`${p}/patient`, patientRoutes(pool, authMiddleware));
+    targetApp.use(`${p}/patients`, tenantRateLimit('api'), patientsRoutes(pool, authMiddleware));
+    targetApp.use(`${p}`, paymentRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/referral`, referralAgentRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/referrals`, referralPassRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}`, tenantRateLimit('api'), inventoryRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, agentBypassOrAuth, upload));
+    targetApp.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), aiRoutes(pool, authMiddleware, checkRole, validate, schemas, orchestrator));
+    targetApp.use(`${p}`, doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
+    targetApp.use(`${p}`, inpatientRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/appointments`, appointmentRoutes(pool, authMiddleware));
+    targetApp.use(`${p}/billing`, authMiddleware, billingRoutes(pool, authMiddleware, validate, schemas));
+  }
+
+  mountRoutes('/api');
+  mountRoutes(API_PREFIX);
+  mountedApps.add(targetApp);
+  return targetApp;
+}
+
+/** Error middleware route'lardan keyin o'rnatilishi shart. */
+export function finalizeApp(targetApp) {
+  if (finalizedApps.has(targetApp)) return targetApp;
+
+  Sentry.setupExpressErrorHandler(targetApp);
+  targetApp.use((err, req, res, next) => {
+    logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
+    if (res.headersSent) return next(err);
+    res.status(err.status || 500).json({
+      success: false,
+      error: IS_PROD ? 'Server xatosi yuz berdi' : err.message
+    });
+  });
+  finalizedApps.add(targetApp);
+  return targetApp;
+}
+
 
 
 
@@ -290,9 +369,12 @@ app.get('/:page', (req, res, next) => {
 // ============================================================
 // VERIFY REPORT ENDPOINT
 // ============================================================
-app.get('/api/verify-report/:id', async (req, res) => {
+app.get('/api/verify-report/:id', authMiddleware, async (req, res) => {
   try {
-    const r = await qGet("SELECT * FROM medical_reports WHERE id = $1", [req.params.id]);
+    const r = await qGet(
+      "SELECT * FROM medical_reports WHERE id = $1 AND tenant_id = $2",
+      [req.params.id, req.user.tenant_id]
+    );
     if (!r) return res.status(404).json({ success: false, error: 'Hisobot topilmadi' });
     const e = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     let data = {};
@@ -325,7 +407,7 @@ app.post('/api/internal/send-telegram', async (req, res) => {
     const { chat_id, text, parse_mode } = req.body;
     if (!chat_id || !text) return res.status(400).json({ success: false, error: 'chat_id va text talab qilinadi' });
     const secret = req.headers['x-internal-secret'];
-    if (secret !== INTERNAL_SECRET) return res.status(403).json({ success: false, error: 'Noto\'g\'ri ichki kalit' });
+    if (!isValidInternalSecret(secret)) return res.status(403).json({ success: false, error: 'Noto\'g\'ri ichki kalit' });
     if (!patientBot) return res.status(503).json({ success: false, error: 'Bot mavjud emas' });
     await patientBot.telegram.sendMessage(chat_id, text, { parse_mode: parse_mode || 'Markdown' });
     res.json({ success: true });
@@ -386,38 +468,9 @@ async function main() {
     await initCache();
     await initEmail();
 
-    // Mount all routes after DB is initialized
-    app.use(`${API_PREFIX}/auth`, authLimiter, authRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
-    app.use('/api/auth', authLimiter, authRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
-    app.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
-    app.use(`/webhooks`, webhookRoutes());
-    app.use(`${API_PREFIX}/tenants`, tenantRoutes());
-    app.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
-    // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
-    // authMiddleware oldin turadi: tenant JWT dan olinsin (x-tenant-id header orqali soxtalashtirib bo'lmasin).
-    app.use(`/api/scribe`, authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
-      scribeRoutes(getPool(), authMiddleware, checkRole, upload, serverError, logger));
-    app.use(`/api/doctor`, doctorViewRoutes(getPool(), authMiddleware, checkRole, serverError));
-    app.use(`/api/b2b`, b2bRoutes(getPool(), authMiddleware, checkRole, validate, schemas, serverError));
-    function mountRoutes(prefix) {
-      const p = prefix || '';
-      app.use(`${p}/patient`, patientRoutes(getPool()));
-      app.use(`${p}/patients`, tenantRateLimit('api'), patientsRoutes(getPool(), authMiddleware));
-      app.use(`${p}`, paymentRoutes(getPool(), authMiddleware, checkRole));
-      app.use(`${p}/referral`, referralAgentRoutes(getPool(), authMiddleware, checkRole));
-      app.use(`${p}/referrals`, referralPassRoutes(getPool(), authMiddleware, checkRole));
-      app.use(`${p}`, tenantRateLimit('api'), inventoryRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, agentBypassOrAuth, upload));
-      // Obuna/AI limiti ai.js ichida qimmat endpointlarga qo'yiladi (auth'dan keyin,
-      // tenant JWT dan olinsin uchun). /status va /agents ochiq qoladi.
-      app.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), aiRoutes(getPool(), authMiddleware, checkRole, validate, schemas, orchestrator));
-      app.use(`${p}`, doctorRoutes(getPool(), authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
-      app.use(`${p}`, inpatientRoutes(getPool(), authMiddleware, checkRole));
-      app.use(`/api/tma`, tmaRoutes(getPool()));
-      app.use(`${p}/appointments`, appointmentRoutes(getPool(), authMiddleware));
-      app.use(`${p}/billing`, authMiddleware, billingRoutes(getPool(), authMiddleware, validate, schemas));
-    }
-    mountRoutes('/api');
-    mountRoutes(API_PREFIX);
+    await mountApiRoutes(app, getPool());
+    finalizeApp(app);
+    console.log('[AUTH] Users seeded — 4 roles ready');
 
     if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 8) {
       console.error('[INIT] ADMIN_PASSWORD .env da kamida 8 belgi qilib sozlanishi kerak!');
@@ -439,6 +492,8 @@ async function main() {
     await ensureCert();
     startServer(PORT);
     initBots();
+    startBackgroundJobs();
+    installShutdownHandlers();
   } catch (e) {
     console.error('[INIT] Xatolik:', e.message);
     process.exit(1);
@@ -452,6 +507,7 @@ if (process.env.NODE_ENV !== 'test') {
 // ============================================================
 // CRON: Medication reminders
 // ============================================================
+export function startBackgroundJobs() {
 cron.schedule('* * * * *', async () => {
   try {
     const now = new Date();
@@ -472,14 +528,14 @@ cron.schedule('* * * * *', async () => {
 // ============================================================
 cron.schedule('0 6 * * *', async () => {
   try {
-    const expired = await q(`
+    const expired = await unsafeQuery.q(`
       SELECT s.id, s.tenant_id, t.name as tenant_name, t.email
       FROM subscriptions s
       JOIN tenants t ON t.id = s.tenant_id
       WHERE s.status = 'trialing' AND s.trial_ends_at < NOW()
     `);
     for (const sub of expired) {
-      await q("UPDATE subscriptions SET status = 'active', plan_id = 'plan_free' WHERE id = $1", [sub.id]);
+      await q("UPDATE subscriptions SET status = 'active', plan_id = 'plan_free' WHERE id = $1 AND tenant_id = $2", [sub.id, sub.tenant_id]);
       await q("UPDATE tenants SET plan = 'free' WHERE id = $1", [sub.tenant_id]);
       logger.info({ tenant_id: sub.tenant_id, tenant_name: sub.tenant_name }, '[TRIAL] Sinov muddati tugadi, free ga o\'tkazildi');
     }
@@ -514,10 +570,11 @@ cron.schedule('0 3 * * *', async () => {
 // ============================================================
 cron.schedule('0 4 * * 0', async () => {
   try {
-    await q("DELETE FROM usage_metering WHERE date < CURRENT_DATE - INTERVAL '90 days'");
+    await unsafeQuery.q("DELETE FROM usage_metering WHERE date < CURRENT_DATE - INTERVAL '90 days'");
     console.log('[METERING] 90 kundan eski ma\'lumotlar tozalandi');
   } catch (e) { logger.warn({ err: e }, '[METERING] Xatolik'); }
 });
+}
 
 // ============================================================
 // GRACEFUL SHUTDOWN
@@ -530,19 +587,10 @@ function shutdown(signal) {
     if (server) server.close(() => process.exit(0));
   });
 }
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-Sentry.setupExpressErrorHandler(app);
-
-app.use((err, req, res, next) => {
-  logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
-  if (res.headersSent) return;
-  res.status(err.status || 500).json({
-    success: false,
-    error: IS_PROD ? 'Server xatosi yuz berdi' : err.message
-  });
-});
+export function installShutdownHandlers() {
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+}
 
 export { app, q as getDb };
 app.locals.q = q;

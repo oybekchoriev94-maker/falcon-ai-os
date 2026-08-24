@@ -50,13 +50,14 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   router.post('/generate', authMiddleware, checkRole('admin', 'ceo'), validate(generateSchema), async (req, res) => {
     try {
       const { partner_name, partner_phone, notes } = req.body;
+      const tenantId = req.user.tenant_id;
       const id = uuidv4();
       const referralCode = 'PRT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
       const qrToken = 'QR-' + uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
 
       await q(
-        'INSERT INTO referral_partners (id, name, phone, referral_code, qr_code_base64, balance, notes) VALUES ($1, $2, $3, $4, $5, 0, $6)',
-        [id, partner_name, partner_phone || '', referralCode, qrToken, notes || '']
+        'INSERT INTO referral_partners (id, tenant_id, name, phone, referral_code, qr_code_base64, balance, notes) VALUES ($1, $2, $3, $4, $5, $6, 0, $7)',
+        [id, tenantId, partner_name, partner_phone || '', referralCode, qrToken, notes || '']
       );
 
       const qrData = JSON.stringify({
@@ -77,10 +78,11 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   router.post('/convert', authMiddleware, checkRole('admin', 'receptionist'), validate(convertSchema), async (req, res) => {
     try {
       const { referral_code, patient_id, total_amount, idempotency_key } = req.body;
+      const tenantId = req.user.tenant_id;
 
       // Idempotency key tekshirish
       if (idempotency_key) {
-        const existing = await qGet("SELECT response FROM idempotency_keys WHERE key = $1", [idempotency_key]);
+        const existing = await qGet("SELECT response FROM idempotency_keys WHERE tenant_id = $1 AND key = $2", [tenantId, idempotency_key]);
         if (existing) {
           return res.json({ ...JSON.parse(existing.response), idempotent: true });
         }
@@ -88,11 +90,11 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
       let partner = null;
 
       if (referral_code) {
-        partner = await qGet('SELECT * FROM referral_partners WHERE referral_code = $1', [referral_code]);
+        partner = await qGet('SELECT * FROM referral_partners WHERE tenant_id = $1 AND referral_code = $2', [tenantId, referral_code]);
         if (!partner) return res.status(404).json({ success: false, error: 'Referral kod topilmadi' });
       }
 
-      const patient = await qGet('SELECT id, first_name, last_name, phone FROM patients WHERE id = $1', [patient_id]);
+      const patient = await qGet('SELECT id, first_name, last_name, phone FROM patients WHERE tenant_id = $1 AND id = $2', [tenantId, patient_id]);
       if (!patient) return res.status(404).json({ success: false, error: 'Bemor topilmadi' });
 
       const refId = 'REF-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -105,21 +107,21 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
       const patientName = `${patient.first_name} ${patient.last_name || ''}`.trim();
 
       await q(
-        'INSERT INTO referrals (id, referral_id, sender_clinic_id, patient_name, service_required, status, qr_code_token, referring_doctor, notes, partner_id, patient_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-        [id, refId, null, patientName, 'Face ID orqali', 'completed', qrToken, partner ? partner.name : null, null, partner ? partner.id : null, patient_id]
+        'INSERT INTO referrals (id, tenant_id, referral_id, sender_clinic_id, patient_name, service_required, status, qr_code_token, referring_doctor, notes, partner_id, patient_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+        [id, tenantId, refId, null, patientName, 'Referral orqali', 'completed', qrToken, partner ? partner.name : null, null, partner ? partner.id : null, patient_id]
       );
 
       const txId = uuidv4();
       await q(
-        'INSERT INTO financial_transactions (id, referral_id, total_amount, partner_commission, doctor_share, platform_fee, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [txId, id, total, partnerCommission, doctorShare, platformFee, 'paid']
+        'INSERT INTO financial_transactions (id, tenant_id, referral_id, total_amount, partner_commission, doctor_share, platform_fee, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [txId, tenantId, id, total, partnerCommission, doctorShare, platformFee, 'paid']
       );
 
       if (partner) {
-        await q('UPDATE referral_partners SET balance = balance + $1 WHERE id = $2', [partnerCommission, partner.id]);
+        await q('UPDATE referral_partners SET balance = balance + $1 WHERE tenant_id = $2 AND id = $3', [partnerCommission, tenantId, partner.id]);
         await q(
-          'INSERT INTO partner_transactions (partner_id, type, amount, note) VALUES ($1, $2, $3, $4)',
-          [partner.id, 'referral_commission', partnerCommission, `Referal: ${patientName}`]
+          'INSERT INTO partner_transactions (tenant_id, partner_id, type, amount, note) VALUES ($1, $2, $3, $4, $5)',
+          [tenantId, partner.id, 'referral_commission', partnerCommission, `Referal: ${patientName}`]
         );
       }
 
@@ -132,8 +134,8 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
 
       if (idempotency_key) {
         await q(
-          "INSERT INTO idempotency_keys (key, response, created_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO NOTHING",
-          [idempotency_key, JSON.stringify(responsePayload)]);
+          "INSERT INTO idempotency_keys (tenant_id, key, response, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (tenant_id, key) DO NOTHING",
+          [tenantId, idempotency_key, JSON.stringify(responsePayload)]);
       }
 
       res.json(responsePayload);
@@ -144,7 +146,8 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   router.post('/adjust-balance', authMiddleware, checkRole('admin', 'ceo'), validate(adjustSchema), async (req, res) => {
     try {
       const { partner_id, type, amount, note } = req.body;
-      const partner = await qGet('SELECT * FROM referral_partners WHERE id = $1', [partner_id]);
+      const tenantId = req.user.tenant_id;
+      const partner = await qGet('SELECT * FROM referral_partners WHERE tenant_id = $1 AND id = $2', [tenantId, partner_id]);
       if (!partner) return res.status(404).json({ success: false, error: 'Hamkor topilmadi' });
 
       const adjAmount = Math.abs(amount);
@@ -155,13 +158,13 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
       }
 
       const delta = type === 'topup' ? adjAmount : -adjAmount;
-      await q('UPDATE referral_partners SET balance = balance + $1 WHERE id = $2', [delta, partner_id]);
+      await q('UPDATE referral_partners SET balance = balance + $1 WHERE tenant_id = $2 AND id = $3', [delta, tenantId, partner_id]);
       await q(
-        'INSERT INTO partner_transactions (partner_id, type, amount, note) VALUES ($1, $2, $3, $4)',
-        [partner_id, type, adjAmount, note]
+        'INSERT INTO partner_transactions (tenant_id, partner_id, type, amount, note) VALUES ($1, $2, $3, $4, $5)',
+        [tenantId, partner_id, type, adjAmount, note]
       );
 
-      const updated = await qGet('SELECT * FROM referral_partners WHERE id = $1', [partner_id]);
+      const updated = await qGet('SELECT * FROM referral_partners WHERE tenant_id = $1 AND id = $2', [tenantId, partner_id]);
       res.json({
         success: true, partner_id, type, amount: adjAmount, note,
         previous_balance: partner.balance,
@@ -173,7 +176,10 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referral/partners — hamkorlar ro'yxati
   router.get('/partners', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
-      const partners = await q('SELECT id, name, phone, referral_code, qr_code_base64, balance, notes, created_at FROM referral_partners ORDER BY balance DESC');
+      const partners = await q(
+        'SELECT id, name, phone, referral_code, qr_code_base64, balance, notes, created_at FROM referral_partners WHERE tenant_id = $1 ORDER BY balance DESC',
+        [req.user.tenant_id]
+      );
       res.json({ success: true, total: partners.length, partners });
     } catch (e) { safeError(res, e); }
   });
@@ -181,12 +187,13 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referral/stats — statistika
   router.get('/stats', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
-      const partnerStats = await q('SELECT COUNT(*) as total, COALESCE(SUM(balance), 0) as total_balance FROM referral_partners');
-      const referralStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL");
-      const completedStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL AND status = 'completed'");
-      const pendingStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE partner_id IS NOT NULL AND status = 'pending'");
-      const patientCount = await qGet("SELECT COUNT(*) as total FROM patients");
-      const todayCheckins = await qGet("SELECT COUNT(*) as total FROM face_logs WHERE DATE(created_at) = CURRENT_DATE AND action IN ('checked_in','patient_register')");
+      const tenantId = req.user.tenant_id;
+      const partnerStats = await q('SELECT COUNT(*) as total, COALESCE(SUM(balance), 0) as total_balance FROM referral_partners WHERE tenant_id = $1', [tenantId]);
+      const referralStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE tenant_id = $1 AND partner_id IS NOT NULL", [tenantId]);
+      const completedStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE tenant_id = $1 AND partner_id IS NOT NULL AND status = 'completed'", [tenantId]);
+      const pendingStats = await qGet("SELECT COUNT(*) as total FROM referrals WHERE tenant_id = $1 AND partner_id IS NOT NULL AND status = 'pending'", [tenantId]);
+      const patientCount = await qGet("SELECT COUNT(*) as total FROM patients WHERE tenant_id = $1", [tenantId]);
+      const todayCheckins = await qGet("SELECT COUNT(*) as total FROM face_logs WHERE tenant_id = $1 AND DATE(created_at) = CURRENT_DATE AND action IN ('checked_in','patient_register')", [tenantId]);
       res.json({
         success: true,
         total_partners: partnerStats[0]?.total || 0,
@@ -203,10 +210,11 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referral/partner/:id — hamkor detallari
   router.get('/partner/:id', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
-      const partner = await qGet('SELECT * FROM referral_partners WHERE id = $1', [req.params.id]);
+      const tenantId = req.user.tenant_id;
+      const partner = await qGet('SELECT * FROM referral_partners WHERE tenant_id = $1 AND id = $2', [tenantId, req.params.id]);
       if (!partner) return res.status(404).json({ success: false, error: 'Hamkor topilmadi' });
-      const txs = await q('SELECT * FROM partner_transactions WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 50', [partner.id]);
-      const refs = await q("SELECT id, referral_id, patient_name, service_required, status, created_at FROM referrals WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 50", [partner.id]);
+      const txs = await q('SELECT * FROM partner_transactions WHERE tenant_id = $1 AND partner_id = $2 ORDER BY created_at DESC LIMIT 50', [tenantId, partner.id]);
+      const refs = await q("SELECT id, referral_id, patient_name, service_required, status, created_at FROM referrals WHERE tenant_id = $1 AND partner_id = $2 ORDER BY created_at DESC LIMIT 50", [tenantId, partner.id]);
       res.json({ success: true, partner, transactions: txs, referrals: refs });
     } catch (e) { safeError(res, e); }
   });
@@ -214,7 +222,7 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referral/qr/:token — QR token orqali hamkor ma'lumoti
   router.get('/qr/:token', async (req, res) => {
     try {
-      const partner = await qGet('SELECT id, name, phone, referral_code FROM referral_partners WHERE qr_code_base64 = $1', [req.params.token]);
+      const partner = await qGet('SELECT id, name, referral_code FROM referral_partners WHERE qr_code_base64 = $1', [req.params.token]);
       if (!partner) return res.status(404).json({ success: false, error: 'QR kod topilmadi' });
       res.json({ success: true, partner });
     } catch (e) { safeError(res, e); }

@@ -19,14 +19,26 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U falcon -d falcon_test"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     strategy:
       matrix:
         node-version: [20, 22]
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+      TEST_DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+      JWT_SECRET: ci-jwt-secret-32-chars-test-only-123456
+      INTERNAL_SECRET: ci-internal-secret-32-chars-test-123456
+      ADMIN_PASSWORD: TestAdmin123
+      SEED_ADMIN_PASSWORD: TestAdmin123
+      SEED_CEO_PASSWORD: ceo-change-me-now
+      SEED_RECEPTION_PASSWORD: reception-test-only
+      SEED_DOCTOR_PASSWORD: doctor-test-only
 
     steps:
       - uses: actions/checkout@v4
@@ -35,22 +47,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: npm
 
       - run: npm ci
 
       - name: Run migrations
-        run: node scripts/migrate.js
-        env:
-          DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+        run: npx knex migrate:latest --env test
 
       - run: npm test
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
-          JWT_SECRET: ci-jwt-secret-32-chars-test-only-123456
-          INTERNAL_SECRET: ci-internal-secret-32-chars-test-123456
-          ADMIN_PASSWORD: TestAdmin123
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -66,7 +70,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: ./frontend

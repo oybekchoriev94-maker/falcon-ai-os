@@ -15,6 +15,7 @@ const inventoryLimiter = rateLimit({
   message: { error: 'Juda ko\'p inventar so\'rovi, 1 daqiqa kuting' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   validate: { trustProxy: false },
 });
 
@@ -48,6 +49,12 @@ export default function inventoryRoutes(
   // ─── DB helpers ─────────────────────────────────────────
   const q = async (sql, params = []) => { const r = await pool.query(sql, params); return r.rows; };
   const qGet = async (sql, params = []) => { const r = await pool.query(sql, params); return r.rows[0] || null; };
+  const getTenantId = (req) => {
+    const tenantId = req.user?.tenant_id || req.tenant_id;
+    if (!tenantId) throw new Error('Tenant konteksti talab qilinadi');
+    return tenantId;
+  };
+  const routeError = (status, message) => Object.assign(new Error(message), { status });
 
   // Transaction helper: wraps async work in BEGIN/COMMIT/ROLLBACK
   async function withTransaction(fn) {
@@ -69,11 +76,14 @@ export default function inventoryRoutes(
   // GET /inventory/status — all items with batch count & low-stock
   router.get('/inventory/status', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const items = await q(
         `SELECT i.*,
-                (SELECT COUNT(*) FROM inventory_batches b WHERE b.item_id = i.id) as batch_count
+                (SELECT COUNT(*)::int FROM inventory_batches b WHERE b.tenant_id = $1 AND b.item_id = i.id) as batch_count
          FROM inventory_items i
-         ORDER BY i.category, i.name`
+         WHERE i.tenant_id = $1
+         ORDER BY i.category, i.name`,
+        [tenantId]
       );
       const lowStock = items.filter(i => i.min_stock && i.current_stock <= i.min_stock);
       const totalValue = items.reduce((s, i) => s + (i.current_stock || 0) * (i.cost_price || 0), 0);
@@ -83,10 +93,10 @@ export default function inventoryRoutes(
         const nearExpiry = await qGet(
           `SELECT b.id, b.batch_number, b.expiration_date, b.quantity
            FROM inventory_batches b
-           WHERE b.item_id = $1 AND b.quantity > 0
+           WHERE b.tenant_id = $1 AND b.item_id = $2 AND b.quantity > 0
            ORDER BY b.expiration_date ASC
            LIMIT 1`,
-          [item.id]
+          [tenantId, item.id]
         );
         itemsWithBatches.push({ ...item, nearest_batch: nearExpiry || null });
       }
@@ -111,26 +121,33 @@ export default function inventoryRoutes(
     async (req, res) => {
       try {
         const { name, sku, category, quantity, unit, cost_price, min_stock, batch_number, expiration_date } = req.body;
+        const tenantId = getTenantId(req);
         const qty = quantity;
         const userId = req.user?.id || req.user?.username || 'admin';
         const batchNo = batch_number || ('BATCH-' + Date.now().toString(36).toUpperCase());
         const expDate = expiration_date || null;
 
         const result = await withTransaction(async () => {
-          const existing = await qGet("SELECT id, current_stock FROM inventory_items WHERE sku = $1", [sku]);
+          const existing = await qGet(
+            "SELECT id, current_stock FROM inventory_items WHERE tenant_id = $1 AND sku = $2",
+            [tenantId, sku]
+          );
           if (existing) {
             const before = existing.current_stock || 0;
             const after = before + qty;
-            await q("UPDATE inventory_items SET current_stock = current_stock + $1, updated_at = NOW() WHERE sku = $2", [qty, sku]);
+            await q(
+              "UPDATE inventory_items SET current_stock = current_stock + $1, updated_at = NOW() WHERE tenant_id = $2 AND sku = $3",
+              [qty, tenantId, sku]
+            );
             const batchRows = await q(
-              "INSERT INTO inventory_batches (item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4) RETURNING id",
-              [existing.id, batchNo, qty, expDate]
+              "INSERT INTO inventory_batches (tenant_id, item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+              [tenantId, existing.id, batchNo, qty, expDate]
             );
             const batchId = batchRows[0].id;
             await q(
-              `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
-               VALUES ($1, 'IN', $2, $3, $4, $5, $6, $7, $8)`,
-              [existing.id, qty, userId, before, after, `Kirim: ${name} (partiya: ${batchNo})`, batchId, batchNo]
+              `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
+               VALUES ($1, $2, 'IN', $3, $4, $5, $6, $7, $8, $9)`,
+              [tenantId, existing.id, qty, userId, before, after, `Kirim: ${name} (partiya: ${batchNo})`, batchId, batchNo]
             );
             return {
               success: true,
@@ -142,19 +159,19 @@ export default function inventoryRoutes(
             };
           } else {
             const newItemRows = await q(
-              "INSERT INTO inventory_items (name, sku, category, current_stock, unit, cost_price, min_stock) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-              [name, sku, category || null, qty, unit || 'dona', cost_price || null, min_stock || null]
+              "INSERT INTO inventory_items (tenant_id, name, sku, category, current_stock, unit, cost_price, min_stock) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+              [tenantId, name, sku, category || null, qty, unit || 'dona', cost_price || null, min_stock || null]
             );
             const newItem = newItemRows[0];
             const batchRows = await q(
-              "INSERT INTO inventory_batches (item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4) RETURNING id",
-              [newItem.id, batchNo, qty, expDate]
+              "INSERT INTO inventory_batches (tenant_id, item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+              [tenantId, newItem.id, batchNo, qty, expDate]
             );
             const batchId = batchRows[0].id;
             await q(
-              `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
-               VALUES ($1, 'IN', $2, $3, 0, $4, $5, $6, $7)`,
-              [newItem.id, qty, userId, qty, `Yangi: ${name} (partiya: ${batchNo})`, batchId, batchNo]
+              `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
+               VALUES ($1, $2, 'IN', $3, $4, 0, $5, $6, $7, $8)`,
+              [tenantId, newItem.id, qty, userId, qty, `Yangi: ${name} (partiya: ${batchNo})`, batchId, batchNo]
             );
             return {
               success: true,
@@ -180,48 +197,61 @@ export default function inventoryRoutes(
     async (req, res) => {
       try {
         const { procedure_name, doctor_id, performed_by, item_id, requested_quantity, user_id } = req.body;
+        const tenantId = getTenantId(req);
         const userId = user_id ?? performed_by ?? req.user?.id ?? req.user?.username ?? 'unknown';
 
         // Direct item consumption (agent mode)
         if (item_id && requested_quantity) {
           const result = await withTransaction(async () => {
-            const item = await qGet("SELECT id, name, current_stock FROM inventory_items WHERE id = $1", [item_id]);
-            if (!item) throw new Error('Material topilmadi');
+            const item = await qGet(
+              "SELECT id, name, current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+              [tenantId, item_id]
+            );
+            if (!item) throw routeError(404, 'Material topilmadi');
             if (item.current_stock < requested_quantity) {
-              throw new Error(`Omborda yetarli material yo'q (qoldiq: ${item.current_stock}, kerak: ${requested_quantity})`);
+              throw routeError(400, `Omborda yetarli material yo'q (qoldiq: ${item.current_stock}, kerak: ${requested_quantity})`);
             }
 
             // Overuse calculation
             const std = await qGet(
-              "SELECT standard_quantity FROM procedure_material_standards WHERE procedure_name = $1 AND item_id = $2",
-              [procedure_name || '', item_id]
+              "SELECT standard_quantity FROM procedure_material_standards WHERE tenant_id = $1 AND procedure_name = $2 AND item_id = $3",
+              [tenantId, procedure_name || '', item_id]
             );
             const standardQty = std ? std.standard_quantity : requested_quantity;
             const overuseQty = Math.max(0, requested_quantity - standardQty);
 
             let need = requested_quantity;
             const batches = await q(
-              "SELECT * FROM inventory_batches WHERE item_id = $1 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
-              [item_id]
+              "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
+              [tenantId, item_id]
             );
-            if (batches.length === 0) throw new Error(`${item.name} uchun yaroqli partiya topilmadi`);
+            if (batches.length === 0) throw routeError(400, `${item.name} uchun yaroqli partiya topilmadi`);
             const batchConsumptions = [];
             for (const batch of batches) {
               if (need <= 0) break;
               const take = Math.min(batch.quantity, need);
-              await q("UPDATE inventory_batches SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $3", [take, batch.id, take]);
+              await q(
+                "UPDATE inventory_batches SET quantity = quantity - $1 WHERE tenant_id = $2 AND id = $3 AND quantity >= $4",
+                [take, tenantId, batch.id, take]
+              );
               need -= take;
               batchConsumptions.push({ batch_id: batch.id, batch_number: batch.batch_number, qty: take });
             }
-            if (need > 0) throw new Error(`${item.name} uchun partiyalardagi qoldiq yetarli emas`);
-            const totalRow = await qGet("SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1", [item_id]);
+            if (need > 0) throw routeError(400, `${item.name} uchun partiyalardagi qoldiq yetarli emas`);
+            const totalRow = await qGet(
+              "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
+              [tenantId, item_id]
+            );
             const totalLeft = totalRow.total;
-            await q("UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE id = $2", [totalLeft, item_id]);
+            await q(
+              "UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3",
+              [totalLeft, tenantId, item_id]
+            );
             for (const bc of batchConsumptions) {
               await q(
-                `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number, standard_quantity, overuse_quantity)
-                 VALUES ($1, 'CONSUMPTION', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-                [item_id, bc.qty, userId, item.current_stock, totalLeft,
+                `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number, standard_quantity, overuse_quantity)
+                 VALUES ($1, $2, 'CONSUMPTION', $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [tenantId, item_id, bc.qty, userId, item.current_stock, totalLeft,
                  `Agent FEFO: ${procedure_name || 'to\'g\'ridan-to\'g\'ri'} (partiya: ${bc.batch_number})`,
                  bc.batch_id, bc.batch_number, standardQty, overuseQty]
               );
@@ -248,9 +278,9 @@ export default function inventoryRoutes(
         const norms = await q(
           `SELECT pn.*, inv.name as item_name, inv.current_stock, inv.sku
            FROM procedure_material_norms pn
-           JOIN inventory_items inv ON inv.id = pn.item_id
-           WHERE pn.procedure_name LIKE $1`,
-          [`%${procedure_name}%`]
+           JOIN inventory_items inv ON inv.tenant_id = pn.tenant_id AND inv.id = pn.item_id
+           WHERE pn.tenant_id = $1 AND pn.procedure_name LIKE $2`,
+          [tenantId, `%${procedure_name}%`]
         );
         if (norms.length === 0) {
           return res.status(404).json({ success: false, error: `"${procedure_name}" uchun me'yor topilmadi` });
@@ -259,10 +289,13 @@ export default function inventoryRoutes(
         // ACID transaction — FEFO batch consumption + overuse tracking
         const details = await withTransaction(async () => {
           for (const n of norms) {
-            const freshItem = await qGet("SELECT current_stock FROM inventory_items WHERE id = $1", [n.item_id]);
+            const freshItem = await qGet(
+              "SELECT current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+              [tenantId, n.item_id]
+            );
             if (!freshItem || freshItem.current_stock < n.standard_quantity) {
               const shortage = n.standard_quantity - (freshItem ? freshItem.current_stock : 0);
-              throw new Error(
+              throw routeError(400,
                 `"${n.item_name}" uchun omborda yetarli zaxira yo'q. Kerak: ${n.standard_quantity}, bor: ${freshItem ? freshItem.current_stock : 0}`
               );
             }
@@ -272,26 +305,32 @@ export default function inventoryRoutes(
             let need = n.standard_quantity;
 
             const matStd = await qGet(
-              "SELECT standard_quantity FROM procedure_material_standards WHERE procedure_name = $1 AND item_id = $2",
-              [procedure_name, n.item_id]
+              "SELECT standard_quantity FROM procedure_material_standards WHERE tenant_id = $1 AND procedure_name = $2 AND item_id = $3",
+              [tenantId, procedure_name, n.item_id]
             );
             const standardQty = matStd ? matStd.standard_quantity : n.standard_quantity;
             const overuseQty = Math.max(0, n.standard_quantity - standardQty);
 
             const batches = await q(
-              "SELECT * FROM inventory_batches WHERE item_id = $1 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
-              [n.item_id]
+              "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
+              [tenantId, n.item_id]
             );
-            if (batches.length === 0) throw new Error(`${n.item_name} uchun yaroqli partiya topilmadi`);
+            if (batches.length === 0) throw routeError(400, `${n.item_name} uchun yaroqli partiya topilmadi`);
 
-            const beforeRow = await qGet("SELECT current_stock FROM inventory_items WHERE id = $1", [n.item_id]);
+            const beforeRow = await qGet(
+              "SELECT current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+              [tenantId, n.item_id]
+            );
             const before = beforeRow ? beforeRow.current_stock : 0;
             const batchConsumptions = [];
 
             for (const batch of batches) {
               if (need <= 0) break;
               const take = Math.min(batch.quantity, need);
-              await q("UPDATE inventory_batches SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $3", [take, batch.id, take]);
+              await q(
+                "UPDATE inventory_batches SET quantity = quantity - $1 WHERE tenant_id = $2 AND id = $3 AND quantity >= $4",
+                [take, tenantId, batch.id, take]
+              );
               need -= take;
               batchConsumptions.push({
                 batch_id: batch.id,
@@ -302,21 +341,27 @@ export default function inventoryRoutes(
             }
 
             if (need > 0) {
-              throw new Error(
+              throw routeError(400,
                 `${n.item_name} uchun barcha partiyalardagi jami qoldiq so'ralgan miqdordan kam. Kam qismi: ${need}`
               );
             }
 
-            const totalRow = await qGet("SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1", [n.item_id]);
+            const totalRow = await qGet(
+              "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
+              [tenantId, n.item_id]
+            );
             const totalLeft = totalRow.total;
-            await q("UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE id = $2", [totalLeft, n.item_id]);
+            await q(
+              "UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3",
+              [totalLeft, tenantId, n.item_id]
+            );
             const after = totalLeft;
 
             for (const bc of batchConsumptions) {
               await q(
-                `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number, standard_quantity, overuse_quantity)
-                 VALUES ($1, 'CONSUMPTION', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-                [n.item_id, bc.qty, userId, before, after,
+                `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number, standard_quantity, overuse_quantity)
+                 VALUES ($1, $2, 'CONSUMPTION', $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [tenantId, n.item_id, bc.qty, userId, before, after,
                  `FEFO: ${procedure_name} (partiya: ${bc.batch_number})`,
                  bc.batch_id, bc.batch_number, standardQty, overuseQty]
               );
@@ -344,11 +389,11 @@ export default function inventoryRoutes(
           if (doctor_id) {
             const period = new Date().toISOString().slice(0, 10);
             await q(
-              `INSERT INTO doctor_analytics (doctor_id, doctor_name, total_procedures, period_start, period_end)
-               VALUES ($1, $2, 1, $3, $4)
-               ON CONFLICT (doctor_id, period_start)
+              `INSERT INTO doctor_analytics (tenant_id, doctor_id, doctor_name, total_procedures, period_start, period_end)
+               VALUES ($1, $2, $3, 1, $4, $5)
+               ON CONFLICT (tenant_id, doctor_id, period_start)
                DO UPDATE SET total_procedures = total_procedures + 1`,
-              [doctor_id, doctor_id, period, period]
+              [tenantId, doctor_id, doctor_id, period, period]
             );
           }
           return detailsArr;
@@ -362,18 +407,19 @@ export default function inventoryRoutes(
           details,
           is_overused: anyOverused
         });
-      } catch (e) { safeError(res, e); }
+      } catch (e) { safeError(res, e, e.status || 500); }
     }
   );
 
   // GET /inventory/search — search items by name or SKU
   router.get('/inventory/search', authMiddleware, async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const qry = req.query.q || '';
       if (qry.length < 1) return res.json({ success: true, items: [] });
       const items = await q(
-        "SELECT * FROM inventory_items WHERE name LIKE $1 OR sku LIKE $2 LIMIT 15",
-        [`%${qry}%`, `%${qry}%`]
+        "SELECT * FROM inventory_items WHERE tenant_id = $1 AND (name ILIKE $2 OR sku ILIKE $3) LIMIT 15",
+        [tenantId, `%${qry}%`, `%${qry}%`]
       );
       res.json({ success: true, items });
     } catch (e) { safeError(res, e); }
@@ -423,7 +469,7 @@ export default function inventoryRoutes(
         const batchNo = safeBatch || ('BATCH-AUTO-' + now.toISOString().slice(0, 10).replace(/-/g, ''));
         const expDate = result.expiration_date || new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString().slice(0, 10);
         const userId = req.user?.id || req.user?.username || 'admin';
-        const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+        const tenantId = getTenantId(req);
 
         // ACID transaction
         await withTransaction(async () => {
@@ -450,11 +496,20 @@ export default function inventoryRoutes(
             [tenantId, itemId, batchNo, qty, expDate]
           );
 
-          const totalRow = await qGet("SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1", [itemId]);
+          const totalRow = await qGet(
+            "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
+            [tenantId, itemId]
+          );
           const after = totalRow.total;
-          await q("UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE id = $2", [after, itemId]);
+          await q(
+            "UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3",
+            [after, tenantId, itemId]
+          );
 
-          const batchRow = await qGet("SELECT id FROM inventory_batches WHERE item_id = $1 AND batch_number = $2", [itemId, batchNo]);
+          const batchRow = await qGet(
+            "SELECT id FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND batch_number = $3",
+            [tenantId, itemId, batchNo]
+          );
           await q(
             `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
              VALUES ($1, $2, 'VOICE_RECEIPT', $3, $4, $5, $6, $7, $8, $9)`,
@@ -476,14 +531,16 @@ export default function inventoryRoutes(
   // GET /inventory/transactions — recent transactions
   router.get('/inventory/transactions', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const limit = parseInt(req.query.limit) || 50;
       const txns = await q(
         `SELECT t.*, i.name as item_name, i.sku as item_sku
          FROM inventory_transactions t
-         LEFT JOIN inventory_items i ON i.id = t.item_id
+         LEFT JOIN inventory_items i ON i.tenant_id = t.tenant_id AND i.id = t.item_id
+         WHERE t.tenant_id = $1
          ORDER BY t.created_at DESC
-         LIMIT $1`,
-        [limit]
+         LIMIT $2`,
+        [tenantId, limit]
       );
       res.json({ success: true, total: txns.length, transactions: txns });
     } catch (e) { safeError(res, e); }
@@ -496,11 +553,15 @@ export default function inventoryRoutes(
   // GET /inventory/batches/:item_id — list batches for an item
   router.get('/inventory/batches/:item_id', authMiddleware, async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const batches = await q(
-        "SELECT * FROM inventory_batches WHERE item_id = $1 ORDER BY expiration_date ASC NULLS LAST, id ASC",
-        [req.params.item_id]
+        "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 ORDER BY expiration_date ASC NULLS LAST, id ASC",
+        [tenantId, req.params.item_id]
       );
-      const item = await qGet("SELECT id, name, sku, current_stock FROM inventory_items WHERE id = $1", [req.params.item_id]);
+      const item = await qGet(
+        "SELECT id, name, sku, current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+        [tenantId, req.params.item_id]
+      );
       res.json({ success: true, item, batches });
     } catch (e) { safeError(res, e); }
   });
@@ -510,22 +571,31 @@ export default function inventoryRoutes(
     try {
       const { id } = req.params;
       const { batch_number, expiration_date } = req.body;
+      const tenantId = getTenantId(req);
       const existing = await qGet(
-        "SELECT b.*, i.name as item_name FROM inventory_batches b JOIN inventory_items i ON i.id = b.item_id WHERE b.id = $1",
-        [id]
+        `SELECT b.*, i.name as item_name
+         FROM inventory_batches b
+         JOIN inventory_items i ON i.tenant_id = b.tenant_id AND i.id = b.item_id
+         WHERE b.tenant_id = $1 AND b.id = $2`,
+        [tenantId, id]
       );
       if (!existing) return res.status(404).json({ success: false, error: 'Partiya topilmadi' });
 
       await withTransaction(async () => {
         if (batch_number !== undefined) {
-          await q("UPDATE inventory_batches SET batch_number = $1 WHERE id = $2", [batch_number, id]);
+          await q("UPDATE inventory_batches SET batch_number = $1 WHERE tenant_id = $2 AND id = $3", [batch_number, tenantId, id]);
         }
         if (expiration_date !== undefined) {
-          await q("UPDATE inventory_batches SET expiration_date = $1 WHERE id = $2", [expiration_date || null, id]);
+          await q("UPDATE inventory_batches SET expiration_date = $1 WHERE tenant_id = $2 AND id = $3", [expiration_date || null, tenantId, id]);
         }
       });
 
-      const updated = await qGet("SELECT * FROM inventory_batches WHERE id = $1", [id]);
+      const updated = await qGet(
+        `SELECT id, tenant_id, item_id, batch_number, quantity,
+                TO_CHAR(expiration_date, 'YYYY-MM-DD') AS expiration_date, created_at
+         FROM inventory_batches WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, id]
+      );
       res.json({ success: true, batch: updated });
     } catch (e) {
       if (e.code === '23505') {
@@ -539,24 +609,31 @@ export default function inventoryRoutes(
   router.delete('/inventory/batches/:id', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
+      const tenantId = getTenantId(req);
       const existing = await qGet(
-        "SELECT b.*, i.name as item_name FROM inventory_batches b JOIN inventory_items i ON i.id = b.item_id WHERE b.id = $1",
-        [id]
+        `SELECT b.*, i.name as item_name
+         FROM inventory_batches b
+         JOIN inventory_items i ON i.tenant_id = b.tenant_id AND i.id = b.item_id
+         WHERE b.tenant_id = $1 AND b.id = $2`,
+        [tenantId, id]
       );
       if (!existing) return res.status(404).json({ success: false, error: 'Partiya topilmadi' });
 
       await withTransaction(async () => {
-        await q("DELETE FROM inventory_batches WHERE id = $1", [id]);
+        await q("DELETE FROM inventory_batches WHERE tenant_id = $1 AND id = $2", [tenantId, id]);
         const totalRow = await qGet(
-          "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1",
-          [existing.item_id]
+          "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
+          [tenantId, existing.item_id]
         );
         const totalLeft = totalRow.total;
-        await q("UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE id = $2", [totalLeft, existing.item_id]);
         await q(
-          `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
-           VALUES ($1, 'ADJUST', $2, $3, $4, $5, $6, $7, $8)`,
-          [existing.item_id, -existing.quantity, req.user?.id || req.user?.username || 'admin',
+          "UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3",
+          [totalLeft, tenantId, existing.item_id]
+        );
+        await q(
+          `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
+           VALUES ($1, $2, 'ADJUST', $3, $4, $5, $6, $7, $8, $9)`,
+          [tenantId, existing.item_id, -existing.quantity, req.user?.id || req.user?.username || 'admin',
            totalLeft + existing.quantity, totalLeft,
            `Partiya o'chirildi: ${existing.batch_number}`, id, existing.batch_number]
         );
@@ -574,10 +651,14 @@ export default function inventoryRoutes(
   router.post('/internal/inventory/consume', agentBypassOrAuth('admin', 'doctor'), async (req, res) => {
     try {
       const { item_id, quantity, reason, procedure_name } = req.body;
+      const tenantId = getTenantId(req);
       if (!item_id || !quantity || quantity <= 0) {
         return res.status(400).json({ success: false, error: 'item_id va quantity (musbat) talab qilinadi' });
       }
-      const item = await qGet("SELECT id, name, current_stock FROM inventory_items WHERE id = $1", [item_id]);
+      const item = await qGet(
+        "SELECT id, name, current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+        [tenantId, item_id]
+      );
       if (!item) return res.status(404).json({ success: false, error: 'Material topilmadi' });
       if (item.current_stock < quantity) {
         return res.status(400).json({
@@ -590,27 +671,36 @@ export default function inventoryRoutes(
       const result = await withTransaction(async () => {
         let need = quantity;
         const batches = await q(
-          "SELECT * FROM inventory_batches WHERE item_id = $1 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
-          [item_id]
+          "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
+          [tenantId, item_id]
         );
-        if (batches.length === 0) throw new Error(`${item.name} uchun yaroqli partiya topilmadi`);
+        if (batches.length === 0) throw routeError(400, `${item.name} uchun yaroqli partiya topilmadi`);
         const batchConsumptions = [];
         for (const batch of batches) {
           if (need <= 0) break;
           const take = Math.min(batch.quantity, need);
-          await q("UPDATE inventory_batches SET quantity = quantity - $1 WHERE id = $2 AND quantity >= $3", [take, batch.id, take]);
+          await q(
+            "UPDATE inventory_batches SET quantity = quantity - $1 WHERE tenant_id = $2 AND id = $3 AND quantity >= $4",
+            [take, tenantId, batch.id, take]
+          );
           need -= take;
           batchConsumptions.push({ batch_id: batch.id, batch_number: batch.batch_number, qty: take });
         }
-        if (need > 0) throw new Error(`${item.name} uchun partiyalardagi qoldiq yetarli emas`);
-        const totalRow = await qGet("SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE item_id = $1", [item_id]);
+        if (need > 0) throw routeError(400, `${item.name} uchun partiyalardagi qoldiq yetarli emas`);
+        const totalRow = await qGet(
+          "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
+          [tenantId, item_id]
+        );
         const totalLeft = totalRow.total;
-        await q("UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE id = $2", [totalLeft, item_id]);
+        await q(
+          "UPDATE inventory_items SET current_stock = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3",
+          [totalLeft, tenantId, item_id]
+        );
         for (const bc of batchConsumptions) {
           await q(
-            `INSERT INTO inventory_transactions (item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
-             VALUES ($1, 'CONSUMPTION', $2, 'internal-agent', $3, $4, $5, $6, $7)`,
-            [item_id, bc.qty, item.current_stock, totalLeft,
+            `INSERT INTO inventory_transactions (tenant_id, item_id, type, quantity, performed_by, balance_before, balance_after, reason, batch_id, batch_number)
+             VALUES ($1, $2, 'CONSUMPTION', $3, 'internal-agent', $4, $5, $6, $7, $8)`,
+            [tenantId, item_id, bc.qty, item.current_stock, totalLeft,
              reason || `Agent: ${procedure_name || 'noaniq'} (partiya: ${bc.batch_number})`,
              bc.batch_id, bc.batch_number]
           );
@@ -619,7 +709,7 @@ export default function inventoryRoutes(
       });
 
       res.json({ success: true, item: item.name, quantity, ...result });
-    } catch (e) { safeError(res, e); }
+    } catch (e) { safeError(res, e, e.status || 500); }
   });
 
   // ============================================================
@@ -629,14 +719,15 @@ export default function inventoryRoutes(
   // GET /reports/inventory-waste — overuse/waste analytics (CEO/admin)
   router.get('/reports/inventory-waste', telegramOrJwtAuth('ceo', 'admin'), async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const totalWaste = await qGet(`
         SELECT COALESCE(SUM(t.overuse_quantity * i.cost_price), 0) as total_waste_sum,
                COALESCE(SUM(t.overuse_quantity), 0) as total_waste_qty,
                COUNT(*) as waste_transactions
         FROM inventory_transactions t
-        JOIN inventory_items i ON i.id = t.item_id
-        WHERE t.overuse_quantity > 0
-      `);
+        JOIN inventory_items i ON i.tenant_id = t.tenant_id AND i.id = t.item_id
+        WHERE t.tenant_id = $1 AND t.overuse_quantity > 0
+      `, [tenantId]);
 
       const topOverused = await q(`
         SELECT i.name, i.sku, i.unit,
@@ -644,28 +735,29 @@ export default function inventoryRoutes(
                SUM(t.overuse_quantity * i.cost_price) as total_waste_cost,
                COUNT(*) as usage_count
         FROM inventory_transactions t
-        JOIN inventory_items i ON i.id = t.item_id
-        WHERE t.overuse_quantity > 0
-        GROUP BY t.item_id
+        JOIN inventory_items i ON i.tenant_id = t.tenant_id AND i.id = t.item_id
+        WHERE t.tenant_id = $1 AND t.overuse_quantity > 0
+        GROUP BY t.item_id, i.name, i.sku, i.unit
         ORDER BY total_waste_cost DESC
         LIMIT 5
-      `);
+      `, [tenantId]);
 
       const doctorWaste = await q(`
-        SELECT COALESCE(s.full_name, t.performed_by, 'noma\'lum') as doctor_name,
+        SELECT COALESCE(s.full_name, t.performed_by, 'noma''lum') as doctor_name,
                SUM(t.overuse_quantity) as total_overuse_qty,
                SUM(t.overuse_quantity * i.cost_price) as total_waste_cost,
                COUNT(*) as overuse_events
         FROM inventory_transactions t
-        JOIN inventory_items i ON i.id = t.item_id
-        LEFT JOIN staff_members s ON CAST(s.telegram_id AS TEXT) = t.performed_by
-        WHERE t.overuse_quantity > 0
-        GROUP BY t.performed_by
+        JOIN inventory_items i ON i.tenant_id = t.tenant_id AND i.id = t.item_id
+        LEFT JOIN staff_members s ON s.tenant_id = t.tenant_id AND CAST(s.telegram_id AS TEXT) = t.performed_by
+        WHERE t.tenant_id = $1 AND t.overuse_quantity > 0
+        GROUP BY t.performed_by, s.full_name
         ORDER BY total_waste_cost DESC
-      `);
+      `, [tenantId]);
 
       const cleanCount = await qGet(
-        "SELECT COUNT(*) as c FROM inventory_transactions WHERE overuse_quantity IS NULL OR overuse_quantity = 0"
+        "SELECT COUNT(*) as c FROM inventory_transactions WHERE tenant_id = $1 AND (overuse_quantity IS NULL OR overuse_quantity = 0)",
+        [tenantId]
       );
 
       res.json({
@@ -684,6 +776,7 @@ export default function inventoryRoutes(
   // GET /reports/limits — doctor monthly limit report
   router.get('/reports/limits', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const monthlyLimit = 200;
       const doctors = await q(
         `SELECT s.full_name as doctor_name,
@@ -691,13 +784,14 @@ export default function inventoryRoutes(
                 $1 as monthly_limit
          FROM staff_members s
          LEFT JOIN appointments a
-           ON a.doctor_name = s.full_name
+           ON a.tenant_id = s.tenant_id
+           AND a.doctor_name = s.full_name
            AND a.status = 'completed'
            AND a.created_at >= date_trunc('month', CURRENT_DATE)
-         WHERE s.role = 'DOCTOR'
+         WHERE s.tenant_id = $2 AND s.role = 'DOCTOR'
          GROUP BY s.id
          ORDER BY s.full_name`,
-        [monthlyLimit]
+        [monthlyLimit, tenantId]
       );
       res.json({ success: true, data: doctors });
     } catch (e) { safeError(res, e); }
@@ -710,11 +804,14 @@ export default function inventoryRoutes(
   // GET /inventory/norms — list all norms
   router.get('/inventory/norms', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
     try {
+      const tenantId = getTenantId(req);
       const norms = await q(
         `SELECT pn.*, inv.name as item_name, inv.sku, inv.current_stock
          FROM procedure_material_norms pn
-         LEFT JOIN inventory_items inv ON inv.id = pn.item_id
-         ORDER BY pn.procedure_name`
+         LEFT JOIN inventory_items inv ON inv.tenant_id = pn.tenant_id AND inv.id = pn.item_id
+         WHERE pn.tenant_id = $1
+         ORDER BY pn.procedure_name`,
+        [tenantId]
       );
       res.json({ success: true, norms });
     } catch (e) { safeError(res, e); }
@@ -729,16 +826,19 @@ export default function inventoryRoutes(
     async (req, res) => {
       try {
         const { procedure_name, item_id, standard_quantity } = req.body;
+        const tenantId = getTenantId(req);
+        const item = await qGet("SELECT id FROM inventory_items WHERE tenant_id = $1 AND id = $2", [tenantId, item_id]);
+        if (!item) return res.status(404).json({ success: false, error: 'Material topilmadi' });
         const r = await q(
-          "INSERT INTO procedure_material_norms (procedure_name, item_id, standard_quantity) VALUES ($1, $2, $3) RETURNING id",
-          [procedure_name, item_id, standard_quantity]
+          "INSERT INTO procedure_material_norms (tenant_id, procedure_name, item_id, standard_quantity) VALUES ($1, $2, $3, $4) RETURNING id",
+          [tenantId, procedure_name, item_id, standard_quantity]
         );
         const norm = await qGet(
           `SELECT pn.*, inv.name as item_name
            FROM procedure_material_norms pn
-           LEFT JOIN inventory_items inv ON inv.id = pn.item_id
-           WHERE pn.id = $1`,
-          [r[0].id]
+           LEFT JOIN inventory_items inv ON inv.tenant_id = pn.tenant_id AND inv.id = pn.item_id
+           WHERE pn.tenant_id = $1 AND pn.id = $2`,
+          [tenantId, r[0].id]
         );
         res.json({ success: true, norm });
       } catch (e) { safeError(res, e); }
@@ -754,8 +854,20 @@ export default function inventoryRoutes(
     async (req, res) => {
       try {
         const { id } = req.params;
-        const existing = await qGet("SELECT id FROM procedure_material_norms WHERE id = $1", [id]);
+        const tenantId = getTenantId(req);
+        const existing = await qGet(
+          "SELECT id FROM procedure_material_norms WHERE tenant_id = $1 AND id = $2",
+          [tenantId, id]
+        );
         if (!existing) return res.status(404).json({ success: false, error: 'Me\'yor topilmadi' });
+
+        if (req.body.item_id !== undefined) {
+          const item = await qGet(
+            "SELECT id FROM inventory_items WHERE tenant_id = $1 AND id = $2",
+            [tenantId, req.body.item_id]
+          );
+          if (!item) return res.status(404).json({ success: false, error: 'Material topilmadi' });
+        }
 
         const fields = [];
         const values = [];
@@ -769,15 +881,18 @@ export default function inventoryRoutes(
         if (fields.length === 0) {
           return res.status(400).json({ success: false, error: 'Yangilanadigan maydon yo\'q' });
         }
-        values.push(id);
-        await q(`UPDATE procedure_material_norms SET ${fields.join(', ')} WHERE id = $${paramIndex}`, values);
+        values.push(id, tenantId);
+        await q(
+          `UPDATE procedure_material_norms SET ${fields.join(', ')} WHERE id = $${paramIndex} AND tenant_id = $${paramIndex + 1}`,
+          values
+        );
 
         const norm = await qGet(
           `SELECT pn.*, inv.name as item_name
            FROM procedure_material_norms pn
-           LEFT JOIN inventory_items inv ON inv.id = pn.item_id
-           WHERE pn.id = $1`,
-          [id]
+           LEFT JOIN inventory_items inv ON inv.tenant_id = pn.tenant_id AND inv.id = pn.item_id
+           WHERE pn.tenant_id = $1 AND pn.id = $2`,
+          [tenantId, id]
         );
         res.json({ success: true, norm });
       } catch (e) { safeError(res, e); }
@@ -788,9 +903,13 @@ export default function inventoryRoutes(
   router.delete('/inventory/norms/:id', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
       const { id } = req.params;
-      const existing = await qGet("SELECT id FROM procedure_material_norms WHERE id = $1", [id]);
+      const tenantId = getTenantId(req);
+      const existing = await qGet(
+        "SELECT id FROM procedure_material_norms WHERE tenant_id = $1 AND id = $2",
+        [tenantId, id]
+      );
       if (!existing) return res.status(404).json({ success: false, error: 'Me\'yor topilmadi' });
-      await q("DELETE FROM procedure_material_norms WHERE id = $1", [id]);
+      await q("DELETE FROM procedure_material_norms WHERE tenant_id = $1 AND id = $2", [tenantId, id]);
       res.json({ success: true, message: 'Me\'yor o\'chirildi' });
     } catch (e) { safeError(res, e); }
   });

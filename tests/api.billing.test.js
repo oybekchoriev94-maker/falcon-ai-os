@@ -1,18 +1,14 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { randomBytes } from 'crypto';
+import { closeTestApp, getTestApp } from './helpers/test-app.js';
 
 let app;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = 'test';
-  process.env.JWT_SECRET = randomBytes(32).toString('hex');
-  process.env.INTERNAL_SECRET = randomBytes(32).toString('hex');
-  process.env.ADMIN_PASSWORD = 'TestAdmin123';
-  
-  const server = await import('../server.js?t=' + Date.now());
-  app = server.app;
+  app = await getTestApp();
 });
+
+afterAll(closeTestApp);
 
 describe('POST /api/billing/redeem', () => {
   let token;
@@ -20,7 +16,7 @@ describe('POST /api/billing/redeem', () => {
   beforeAll(async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: 'TestAdmin123' });
+      .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD });
     token = res.body.token;
   });
 
@@ -55,7 +51,7 @@ describe('POST /api/doctors/toggle-status — Zod', () => {
   beforeAll(async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD || 'admin123' });
+      .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD });
     token = res.body.token;
   });
 
@@ -82,7 +78,7 @@ describe('POST /api/campaign/settings — Zod', () => {
   beforeAll(async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD || 'admin123' });
+      .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD });
     token = res.body.token;
   });
 

@@ -14,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: falcon_ai_os
       POSTGRES_USER: falcon
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-falcon-secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -53,17 +53,17 @@ services:
       NODE_ENV: production
       PORT: 3000
       STT_LOCAL: "true"
-      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:-falcon-secret}@db:5432/falcon_ai_os
+      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET required}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       TELEGRAM_TOKEN_PATIENT: ${TELEGRAM_TOKEN_PATIENT:-}
       TELEGRAM_TOKEN_REFERRAL: ${TELEGRAM_TOKEN_REFERRAL:-}
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
-      SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:-ceo-change-me-now}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin-change-me-now}
-      SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:-reception-change-me-now}
-      SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:-doctor-change-me-now}
+      SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:?SEED_CEO_PASSWORD required}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD required}
+      SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:?SEED_RECEPTION_PASSWORD required}
+      SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:?SEED_DOCTOR_PASSWORD required}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
       # ─── To'lov provayderlari (bo'sh bo'lsa offline rejim) ───

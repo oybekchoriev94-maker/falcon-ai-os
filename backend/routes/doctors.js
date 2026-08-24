@@ -12,6 +12,7 @@ import { llm, transcribe } from '../../ai/orchestrator.js';
 
 export default function doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload) {
   const router = Router();
+  router.use(authMiddleware);
 
   async function q(sql, params = []) {
     const result = await pool.query(sql, params);
@@ -30,7 +31,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/doctors — klinikaning shifokorlar ro'yxati (public, tenant bo'yicha)
   router.get('/doctors', async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const offset = (page - 1) * limit;
@@ -43,7 +44,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/auth/register-doctor — admin yangi shifokor qo'shishi
   router.post('/auth/register-doctor', authMiddleware, checkRole('admin'), validate(schemas.registerDoctor), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const { name, username, password, specialization } = req.body;
       const existing = await qGet("SELECT id FROM doctors WHERE username = $1", [username]);
       if (existing) return res.status(409).json({ success: false, error: 'Bu username allaqachon mavjud' });
@@ -69,7 +70,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/doctors/manage — admin uchun shifokorlar ro'yxati (login ma'lumotlari bilan)
   router.get('/doctors/manage', authMiddleware, checkRole('admin'), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const docs = await q("SELECT id, first_name, last_name, specialty, username, specialization, status, balance, referrer_bonus_percent, created_at FROM doctors WHERE tenant_id = $1 ORDER BY created_at DESC", [tenantId]);
       res.json({ success: true, total: docs.length, doctors: docs });
     } catch (e) { safeError(res, e); }
@@ -78,7 +79,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/doctors/toggle-status — admin shifokor faolligini o'zgartirishi
   router.post('/doctors/toggle-status', authMiddleware, checkRole('admin'), validate(schemas.doctorToggleStatus), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const { doctor_id } = req.body;
       const doc = await qGet("SELECT id, status FROM doctors WHERE id = $1 AND tenant_id = $2", [doctor_id, tenantId]);
       if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
@@ -91,7 +92,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/doctors/update-bonus-percent — admin shifokorning referral bonus foizini o'zgartirishi
   router.post('/doctors/update-bonus-percent', authMiddleware, checkRole('admin'), validate(schemas.doctorUpdateBonusPercent), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const { doctor_id, referrer_bonus_percent } = req.body;
       const percent = Math.max(0, Math.min(100, parseFloat(referrer_bonus_percent)));
       const doc = await qGet("SELECT id, first_name, last_name, referrer_bonus_percent FROM doctors WHERE id = $1 AND tenant_id = $2", [doctor_id, tenantId]);
@@ -105,7 +106,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/doctors/topup-balance — admin shifokor balansini to'ldirishi
   router.post('/doctors/topup-balance', authMiddleware, checkRole('admin'), validate(schemas.doctorTopupBalance), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const { doctor_id, amount } = req.body;
       const amt = Math.round(parseFloat(amount) * 100) / 100;
       const doc = await qGet("SELECT id, first_name, last_name, balance FROM doctors WHERE id = $1 AND tenant_id = $2", [doctor_id, tenantId]);
@@ -113,8 +114,8 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
       const oldBalance = doc.balance || 0;
       const newBalance = oldBalance + amt;
       await q("UPDATE doctors SET balance = $1 WHERE id = $2 AND tenant_id = $3", [newBalance, doctor_id, tenantId]);
-      await q(`INSERT INTO platform_ledger (doctor_id, total_amount, platform_fee_percent, platform_amount, referrer_bonus_percent, referrer_amount, clinic_amount, remaining_balance, status) VALUES ($1, $2, 0, 0, 0, 0, $3, $4, 'topup')`,
-        [doctor_id, amt, amt, newBalance]);
+      await q(`INSERT INTO platform_ledger (tenant_id, doctor_id, total_amount, platform_fee_percent, platform_amount, referrer_bonus_percent, referrer_amount, clinic_amount, remaining_balance, status) VALUES ($1, $2, $3, 0, 0, 0, 0, $4, $5, 'topup')`,
+        [tenantId, doctor_id, amt, amt, newBalance]);
       res.json({ success: true, doctor_id, doctor_name: `${doc.first_name} ${doc.last_name || ''}`.trim(), previous_balance: oldBalance, new_balance: newBalance, topped_up: amt });
     } catch (e) { safeError(res, e); }
   });
@@ -122,7 +123,10 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/doctors/balance — joriy shifokorning balansini qaytarish (dashboard/doctor uchun)
   router.get('/doctors/balance', authMiddleware, async (req, res) => {
     try {
-      const doc = await qGet("SELECT id, first_name, last_name, balance FROM doctors WHERE id = $1", [req.user.id]);
+      const doc = await qGet(
+        "SELECT id, first_name, last_name, balance FROM doctors WHERE tenant_id = $1 AND id = $2",
+        [req.user.tenant_id, req.user.id]
+      );
       if (!doc) return res.json({ success: true, balance: 0, message: 'Doctor topilmadi, 0 qaytarildi' });
       res.json({ success: true, doctor_id: doc.id, doctor_name: `${doc.first_name} ${doc.last_name || ''}`.trim(), balance: doc.balance || 0 });
     } catch (e) { safeError(res, e); }
@@ -135,8 +139,9 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/doctor/my-patients — shifokorning o'z patientlari va qabullari
   router.get('/doctor/my-patients', authMiddleware, checkRole('doctor'), async (req, res) => {
     try {
-      const patients = await q("SELECT * FROM patient_consultations WHERE doctor_id = $1 ORDER BY created_at DESC LIMIT 50", [req.user.id]);
-      const appointments = await q("SELECT * FROM appointments WHERE doctor_name = $1 ORDER BY created_at DESC LIMIT 20", [req.user.name]);
+      const tenantId = req.user.tenant_id;
+      const patients = await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY created_at DESC LIMIT 50", [tenantId, req.user.id]);
+      const appointments = await q("SELECT * FROM appointments WHERE tenant_id = $1 AND doctor_name = $2 ORDER BY created_at DESC LIMIT 20", [tenantId, req.user.name]);
       res.json({ success: true, patients: patients.length, consultations: patients, appointments });
     } catch (e) { safeError(res, e); }
   });
@@ -144,8 +149,9 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/doctor/my-stats — shifokorning statistikasi
   router.get('/doctor/my-stats', authMiddleware, checkRole('doctor'), async (req, res) => {
     try {
-      const stats = await q("SELECT * FROM doctor_analytics WHERE doctor_id = $1 ORDER BY period_start DESC LIMIT 1", [req.user.id]);
-      const recent = await qGet("SELECT COUNT(*) as c FROM patient_consultations WHERE doctor_id = $1 AND DATE(created_at) = CURRENT_DATE", [req.user.id]);
+      const tenantId = req.user.tenant_id;
+      const stats = await q("SELECT * FROM doctor_analytics WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY period_start DESC LIMIT 1", [tenantId, req.user.id]);
+      const recent = await qGet("SELECT COUNT(*) as c FROM patient_consultations WHERE tenant_id = $1 AND doctor_id = $2 AND DATE(created_at) = CURRENT_DATE", [tenantId, req.user.id]);
       res.json({ success: true, stats: stats || { patients_count: 0, total_revenue: 0 }, today_patients: recent ? recent.c : 0 });
     } catch (e) { safeError(res, e); }
   });
@@ -157,7 +163,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // GET /api/campaign/settings — joriy kampaniya sozlamalarini olish (tenant bo'yicha)
   router.get('/campaign/settings', async (req, res) => {
     try {
-      const tenantId = req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const mode = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_campaign_mode'", [tenantId]);
       const pct = await qGet("SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_referral_percent'", [tenantId]);
       res.json({
@@ -172,7 +178,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/campaign/settings — kampaniya rejimini o'zgartirish (faqat admin/ceo)
   router.post('/campaign/settings', authMiddleware, checkRole('admin', 'ceo'), validate(schemas.campaignSettings), async (req, res) => {
     try {
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       const { campaign_mode } = req.body;
       await q(
         "INSERT INTO clinic_settings (tenant_id, key, value, updated_at) VALUES ($1, 'patient_campaign_mode', $2, NOW()) ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
@@ -236,7 +242,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   router.post('/reception/confirm', authMiddleware, checkRole('receptionist', 'admin', 'doctor', 'ceo'), validate(schemas.receptionConfirm), async (req, res) => {
     try {
       const { patient_name, phone, doctor_name, department, notes, appointment_time, status } = req.body;
-      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
       // Agar status berilgan bo'lsa, queue statusini yangilash
       if (status && req.body.id) {
         await q(
@@ -300,7 +306,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
              WHEN 'cancelled' THEN 3
              ELSE 4
            END, created_at ASC`,
-        [req.tenant_id]
+        [req.user.tenant_id]
       );
       res.json({ success: true, queues });
     } catch (e) { safeError(res, e); }

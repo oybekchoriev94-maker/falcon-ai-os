@@ -14,6 +14,7 @@ const aiLimiter = rateLimit({
   message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   validate: { trustProxy: false },
 });
 
