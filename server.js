@@ -71,6 +71,7 @@ Sentry.init({
 const PORT = parseInt(process.env.PORT || '3000');
 const MAX_PORT = PORT + 10;
 const IS_PROD = process.env.NODE_ENV === 'production';
+const IS_TEST = process.env.NODE_ENV === 'test';
 const API_PREFIX = '/api/v1';
 
 function serverError(res, err, status = 500) {
@@ -132,13 +133,14 @@ const limiter = rateLimit({
   message: { error: 'Juda ko\'p so\'rov, keyin urinib ko\'ring' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => IS_TEST,
   validate: { trustProxy: false },
 });
 app.use([`/api`, API_PREFIX], limiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: IS_PROD ? 10 : 1000, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
-const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
-const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: IS_PROD ? 10 : 1000, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
+const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
+const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-256-bit-hex-secret-here' || process.env.JWT_SECRET.length < 16) {
   console.error('JWT_SECRET .env da xavfsiz qiymat bilan sozlanishi kerak!');
