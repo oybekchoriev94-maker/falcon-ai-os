@@ -333,20 +333,23 @@ button:disabled{opacity:0.6;cursor:not-allowed}
 </div>
 
 <script>
-const API='';let tg=null,telegramId='',userName='',registered=false,patientData=null;
+const API='';let tg=null,telegramId='',userName='',registered=false,patientData=null,clinicCode='';
 function hideSplash(){document.getElementById('splash').classList.add('hidden')}
 function showScreen(id){document.getElementById('screen-'+id).className=''}
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast toast-'+type;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
 try{tg=window.Telegram?.WebApp;if(tg){tg.expand();tg.ready()}}catch(e){}
 const initDataRaw=tg?.initData||'',initData=tg?.initDataUnsafe||{};
 telegramId=initData?.user?.id?.toString()||'';userName=initData?.user?.first_name||'Bemor';
-if(!telegramId){const p=new URLSearchParams(window.location.search);telegramId=p.get('telegram_id')||''}
+const urlParams=new URLSearchParams(window.location.search);
+clinicCode=(initData?.start_param||urlParams.get('clinic')||'').replace(/^clinic[_:-]/i,'');
+if(!telegramId)telegramId=urlParams.get('telegram_id')||'';
 if(!telegramId)telegramId='demo_user';
 
 async function api(method,path,body){
   const opts={method,headers:{}};
   if(initDataRaw)opts.headers['x-telegram-init-data']=initDataRaw;
   opts.headers['x-telegram-id']=telegramId;
+  if(clinicCode)opts.headers['x-clinic-code']=clinicCode;
   if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
   const r=await fetch(API+path,opts);return r.json()
 }

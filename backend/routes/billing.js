@@ -15,9 +15,13 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
   router.post('/redeem', authMiddleware, validate(schemas.billingRedeem), async (req, res) => {
     try {
       const { patient_id, booking_id, base_cost, points_to_redeem, idempotency_key } = req.body;
+      const tenantId = req.user.tenant_id;
 
       if (idempotency_key) {
-        const existing = await qGet('SELECT response FROM idempotency_keys WHERE key = $1', [idempotency_key]);
+        const existing = await qGet(
+          'SELECT response FROM idempotency_keys WHERE tenant_id = $1 AND key = $2',
+          [tenantId, idempotency_key]
+        );
         if (existing) {
           return res.json({ ...JSON.parse(existing.response), idempotent: true });
         }
@@ -36,8 +40,8 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
         const tqGet = async (sql, params = []) => { const r = await client.query(sql, params); return r.rows[0] || null; };
 
         const patient = await tqGet(
-          'SELECT id, first_name, last_name, cashback_balance FROM patients WHERE id = $1',
-          [patient_id]
+          'SELECT id, first_name, last_name, cashback_balance FROM patients WHERE tenant_id = $1 AND id = $2',
+          [tenantId, patient_id]
         );
         if (!patient) throw new Error('Bemor topilmadi');
 
@@ -53,16 +57,16 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
         const netCashPaid = Math.round((cost - redeemPoints) * 100) / 100;
         const invoiceId = uuidv4();
 
-        const ok = await redeemPatientCashback(tq, patient_id, redeemPoints);
+        const ok = await redeemPatientCashback(tq, tenantId, patient_id, redeemPoints);
         if (!ok) {
           throw new Error('Ballarni yechishda xatolik. Balans o\'zgargan bo\'lishi mumkin.');
         }
 
         await tq(
-          `INSERT INTO invoices (id, booking_id, patient_id, patient_name, base_cost, loyalty_points_redeemed, net_cash_paid, platform_fee_percent, platform_fee_amount, status, completed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'paid', NOW())`,
+          `INSERT INTO invoices (id, tenant_id, booking_id, patient_id, patient_name, base_cost, loyalty_points_redeemed, net_cash_paid, platform_fee_percent, platform_fee_amount, status, completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'paid', NOW())`,
           [
-            invoiceId, booking_id, patient_id,
+            invoiceId, tenantId, booking_id, patient_id,
             (patient.first_name || '') + ' ' + (patient.last_name || ''),
             cost, redeemPoints, netCashPaid,
             PLATFORM_FEE_PERCENT, platformFeeAmount
@@ -71,10 +75,10 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
 
         const newBalance = currentBalance - redeemPoints;
         await tq(
-          `INSERT INTO loyalty_ledger (patient_id, patient_name, booking_id, invoice_id, type, amount, balance_before, balance_after, description)
-           VALUES ($1, $2, $3, $4, 'redeemed', $5, $6, $7, $8)`,
+          `INSERT INTO loyalty_ledger (tenant_id, patient_id, patient_name, booking_id, invoice_id, type, amount, balance_before, balance_after, description)
+           VALUES ($1, $2, $3, $4, $5, 'redeemed', $6, $7, $8, $9)`,
           [
-            patient_id,
+            tenantId, patient_id,
             (patient.first_name || '') + ' ' + (patient.last_name || ''),
             booking_id, invoiceId,
             redeemPoints, currentBalance, newBalance,
@@ -96,8 +100,8 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
 
       if (idempotency_key) {
         await q(
-          "INSERT INTO idempotency_keys (key, response, created_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO NOTHING",
-          [idempotency_key, JSON.stringify(result)]
+          "INSERT INTO idempotency_keys (tenant_id, key, response, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (tenant_id, key) DO NOTHING",
+          [tenantId, idempotency_key, JSON.stringify(result)]
         );
       }
 
@@ -113,8 +117,8 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
         return res.status(403).json({ error: 'Siz faqat o\'z ballar tarixingizni ko\'rishingiz mumkin' });
       }
       const entries = await q(
-        'SELECT * FROM loyalty_ledger WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 100',
-        [req.params.patient_id]
+        'SELECT * FROM loyalty_ledger WHERE tenant_id = $1 AND patient_id = $2 ORDER BY created_at DESC LIMIT 100',
+        [req.user.tenant_id, req.params.patient_id]
       );
       res.json({ success: true, entries });
     } catch (e) {
@@ -128,8 +132,8 @@ export default function billingRoutes(pool, authMiddleware, validate, schemas) {
         return res.status(403).json({ error: 'Siz faqat o\'z hisob-fakturalaringizni ko\'rishingiz mumkin' });
       }
       const invoices = await q(
-        'SELECT * FROM invoices WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 50',
-        [req.params.patient_id]
+        'SELECT * FROM invoices WHERE tenant_id = $1 AND patient_id = $2 ORDER BY created_at DESC LIMIT 50',
+        [req.user.tenant_id, req.params.patient_id]
       );
       res.json({ success: true, invoices });
     } catch (e) {

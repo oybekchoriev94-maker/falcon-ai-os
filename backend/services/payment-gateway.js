@@ -370,6 +370,30 @@ function verifyClickSign(body) {
   return safeEqual(expected, body.sign_string);
 }
 
+/**
+ * Uzum callback autentifikatsiyasi. Merchant kabinetda callback uchun
+ * berilgan secret Bearer token yoki x-uzum-signature HMAC sifatida kelishi
+ * mumkin; ikkala holat ham timing-safe tekshiriladi va secret yo'q bo'lsa
+ * fail-closed ishlaydi.
+ */
+function verifyUzumAuth(req) {
+  if (!UZUM_SECRET) {
+    console.error('[UZUM] UZUM_SECRET sozlanmagan — webhook rad etildi (fail-closed)');
+    return false;
+  }
+
+  const authorization = req.headers?.authorization || '';
+  if (authorization.startsWith('Bearer ') && safeEqual(authorization.slice(7), UZUM_SECRET)) {
+    return true;
+  }
+
+  const signature = req.headers?.['x-uzum-signature'] || req.headers?.['x-signature'];
+  if (!signature) return false;
+  const payload = JSON.stringify(req.body || {});
+  const expected = crypto.createHmac('sha256', UZUM_SECRET).update(payload).digest('hex');
+  return safeEqual(signature, expected);
+}
+
 export {
   createPayment,
   createPaymePayment,
@@ -382,6 +406,7 @@ export {
   getCheapestPlatform,
   verifyPaymeAuth,
   verifyClickSign,
+  verifyUzumAuth,
   COMMISSIONS,
   DEFAULT_CLINIC_CARD
 };

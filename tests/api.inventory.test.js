@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { randomBytes } from 'crypto';
+import { closeTestApp, getTestApp } from './helpers/test-app.js';
 
 let app;
 let adminToken;
@@ -11,21 +11,18 @@ let testNormId;
 let createdItemIds = [];
 
 beforeAll(async () => {
-  process.env.NODE_ENV = 'test';
-  process.env.JWT_SECRET = randomBytes(32).toString('hex');
-  process.env.INTERNAL_SECRET = randomBytes(32).toString('hex');
+  app = await getTestApp();
   internalSecret = process.env.INTERNAL_SECRET;
-
-  const server = await import('../server.js?t=' + Date.now());
-  app = server.app;
 
   // Login as admin
   const loginRes = await request(app)
     .post('/api/auth/login')
-    .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD || 'admin123' });
+    .send({ username: 'admin', password: process.env.SEED_ADMIN_PASSWORD });
   expect(loginRes.status).toBe(200);
   adminToken = loginRes.body.token;
 });
+
+afterAll(closeTestApp);
 
 // ─── 1. POST /api/inventory/add ─────────────────────────────────
 describe('POST /api/inventory/add', () => {
@@ -54,8 +51,8 @@ describe('POST /api/inventory/add', () => {
     expect(res.body.item.current_stock).toBe(100);
     expect(res.body.batch_number).toBe('BATCH-TEST-001');
     testItemId = res.body.item.id;
-    createdItemIds.push(testItemId);
-  });
+  createdItemIds.push(testItemId);
+});
 
   it('replenishes existing SKU (update mode)', async () => {
     const res = await request(app)

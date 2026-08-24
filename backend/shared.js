@@ -6,6 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 export const JWT_EXPIRES = '2h';
 
 export function signToken(user) {
+  const tenantId = user.tenant_id || user.clinic_id;
+  if (!tenantId && user.role !== 'superadmin') {
+    throw new Error('Token yaratish uchun tenant_id talab qilinadi');
+  }
   const jti = uuidv4();
   return jwt.sign({
     jti,
@@ -13,7 +17,7 @@ export function signToken(user) {
     username: user.username,
     role: user.role || 'doctor',
     name: user.name || user.first_name + ' ' + (user.last_name || ''),
-    tenant_id: user.tenant_id || user.clinic_id || 'default',
+    tenant_id: tenantId || 'default',
     specialization: user.specialization || null,
     doctor_id: user.doctor_id || user.id,
     patient_id: user.patient_id || null
@@ -27,6 +31,9 @@ export async function authMiddleware(req, res, next) {
   }
   try {
     const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
+    if (!decoded.tenant_id) {
+      return res.status(403).json({ error: 'Token tenant kontekstiga ega emas' });
+    }
     const pool = req.app?.locals?.pool || (await import('./db.js')).getPool();
     if (pool) {
       try {
@@ -37,7 +44,8 @@ export async function authMiddleware(req, res, next) {
       } catch (_) {}
     }
     req.user = decoded;
-    req.tenant_id = decoded.tenant_id || 'default';
+    req.tenant_id = decoded.tenant_id;
+    res.setHeader('x-tenant-id', decoded.tenant_id);
     next();
   } catch (e) {
     if (e.name === 'TokenExpiredError') {
@@ -116,7 +124,7 @@ export function verifyTelegramAuth(req, res, next) {
       try {
         const pool = (await import('./db.js')).getPool();
         const result = await pool.query(
-          "SELECT id, telegram_id, full_name, role, is_active FROM staff_members WHERE telegram_id = $1 AND is_active = true",
+          "SELECT id, tenant_id, telegram_id, full_name, role, is_active FROM staff_members WHERE telegram_id = $1 AND is_active = true",
           [tgUser.id]
         );
         const staff = result.rows[0];
@@ -129,9 +137,9 @@ export function verifyTelegramAuth(req, res, next) {
           role: staff.role === 'CEO' ? 'ceo' : staff.role === 'DOCTOR' ? 'doctor' : 'admin',
           name: staff.full_name,
           staff_id: staff.id,
-          tenant_id: 'default',
+          tenant_id: staff.tenant_id,
         };
-        req.tenant_id = 'default';
+        req.tenant_id = staff.tenant_id;
         return next();
       } catch (e) {
         console.error('[TELEGRAM AUTH ERROR]', e.message);
@@ -186,6 +194,7 @@ export function verifyTelegramInitData(req, res, next) {
     const userStr = params.get('user');
     if (!userStr) return res.status(403).json({ success: false, error: 'Foydalanuvchi ma\'lumoti topilmadi' });
     req.telegramUser = JSON.parse(userStr);
+    req.telegramStartParam = params.get('start_param') || null;
     return next();
   } catch (e) {
     return res.status(403).json({ success: false, error: 'Avtorizatsiya xatosi' });
@@ -201,11 +210,23 @@ export function telegramOrJwtAuth(...allowedRoles) {
   };
 }
 
+export function isValidInternalSecret(receivedSecret) {
+  const configuredSecret = process.env.INTERNAL_SECRET;
+  if (!configuredSecret || !receivedSecret) return false;
+
+  const received = Buffer.from(String(receivedSecret));
+  const configured = Buffer.from(configuredSecret);
+  return received.length === configured.length && crypto.timingSafeEqual(received, configured);
+}
+
 export function agentBypassOrAuth(...allowedRoles) {
   return (req, res, next) => {
     const internalSecret = req.headers['x-internal-secret'];
-    if (internalSecret === process.env.INTERNAL_SECRET) {
-      req.user = { role: 'admin', id: 'internal-agent', tenant_id: req.tenant_id || 'default' };
+    if (isValidInternalSecret(internalSecret)) {
+      const tenantId = req.headers['x-tenant-id'];
+      if (!tenantId) return res.status(400).json({ error: 'Internal so\'rov uchun x-tenant-id talab qilinadi' });
+      req.tenant_id = String(tenantId);
+      req.user = { role: 'admin', id: 'internal-agent', tenant_id: req.tenant_id };
       return next();
     }
     authMiddleware(req, res, () => checkRole(...allowedRoles)(req, res, next));

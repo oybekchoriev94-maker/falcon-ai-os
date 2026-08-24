@@ -18,12 +18,12 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { sender_clinic, sender_doctor, receiver_clinic, patient_name, service, amount, idempotency_key } = req.body;
       if (idempotency_key) {
-        const existing = await qGet("SELECT response FROM idempotency_keys WHERE key = $1", [idempotency_key]);
+        const existing = await qGet("SELECT response FROM idempotency_keys WHERE tenant_id = $1 AND key = $2", [tenantId, idempotency_key]);
         if (existing) return res.json({ ...existing.response, idempotent: true });
       }
       const doctorId = req.user.doctor_id;
       if (!doctorId) return res.status(403).json({ success: false, error: 'Shifokor identifikatsiyasi topilmadi' });
-      const doc = await qGet("SELECT id, first_name, last_name, referrer_bonus_percent FROM doctors WHERE id = $1", [doctorId]);
+      const doc = await qGet("SELECT id, first_name, last_name, referrer_bonus_percent FROM doctors WHERE tenant_id = $1 AND id = $2", [tenantId, doctorId]);
       if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
       const refId = 'REF-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
       const qrToken = 'QR-' + uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase();
@@ -44,7 +44,7 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
         split: { total, platform_fee_percent: 3.0, platform_amount: platformAmount, referrer_bonus_percent: referrerBonusPercent, referrer_amount: referrerAmount, clinic_amount: clinicAmount }
       };
       if (idempotency_key) {
-        await q("INSERT INTO idempotency_keys (tenant_id, key, response) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING",
+        await q("INSERT INTO idempotency_keys (tenant_id, key, response) VALUES ($1, $2, $3) ON CONFLICT (tenant_id, key) DO NOTHING",
           [tenantId, idempotency_key, JSON.stringify(responsePayload)]);
       }
       res.json(responsePayload);
@@ -97,19 +97,19 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const { referral_id, receiver_clinic_id, idempotency_key } = req.body;
       if (idempotency_key) {
-        const existing = await qGet("SELECT response FROM idempotency_keys WHERE key = $1", [idempotency_key]);
+        const existing = await qGet("SELECT response FROM idempotency_keys WHERE tenant_id = $1 AND key = $2", [tenantId, idempotency_key]);
         if (existing) return res.json({ ...existing.response, idempotent: true });
       }
-      const ref = await qGet("SELECT * FROM referrals WHERE (referral_id = $1 OR qr_code_token = $1)", [referral_id]);
+      const ref = await qGet("SELECT * FROM referrals WHERE tenant_id = $1 AND (referral_id = $2 OR qr_code_token = $2)", [tenantId, referral_id]);
       if (!ref) return res.status(404).json({ success: false, error: 'Yo\'llanma topilmadi' });
       if (ref.status !== 'pending') return res.status(400).json({ success: false, error: `Yo\'llanma allaqachon ${ref.status}` });
-      await q("UPDATE referrals SET status = 'completed' WHERE id = $1", [ref.id]);
-      if (receiver_clinic_id) await q("UPDATE referrals SET receiver_clinic_id = $1 WHERE id = $2", [receiver_clinic_id, ref.id]);
-      const fin = await qGet("SELECT * FROM financial_transactions WHERE referral_id = $1", [ref.id]);
-      if (fin) await q("UPDATE financial_transactions SET status = 'paid' WHERE id = $1", [fin.id]);
+      await q("UPDATE referrals SET status = 'completed' WHERE tenant_id = $1 AND id = $2", [tenantId, ref.id]);
+      if (receiver_clinic_id) await q("UPDATE referrals SET receiver_clinic_id = $1 WHERE tenant_id = $2 AND id = $3", [receiver_clinic_id, tenantId, ref.id]);
+      const fin = await qGet("SELECT * FROM financial_transactions WHERE tenant_id = $1 AND referral_id = $2", [tenantId, ref.id]);
+      if (fin) await q("UPDATE financial_transactions SET status = 'paid' WHERE tenant_id = $1 AND id = $2", [tenantId, fin.id]);
       const responsePayload = { success: true, message: 'Yo\'llanma tasdiqlandi', referral: ref.referral_id, split: fin };
       if (idempotency_key) {
-        await q("INSERT INTO idempotency_keys (tenant_id, key, response) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING",
+        await q("INSERT INTO idempotency_keys (tenant_id, key, response) VALUES ($1, $2, $3) ON CONFLICT (tenant_id, key) DO NOTHING",
           [tenantId, idempotency_key, JSON.stringify(responsePayload)]);
       }
       res.json(responsePayload);

@@ -4,6 +4,45 @@ import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 
+const seedUsers = [
+  { username: 'ceo',          passwordEnv: 'SEED_CEO_PASSWORD',       role: 'ceo',          name: 'Bosh direktor' },
+  { username: 'admin',        passwordEnv: 'SEED_ADMIN_PASSWORD',     role: 'admin',        name: 'Admin' },
+  { username: 'receptionist', passwordEnv: 'SEED_RECEPTION_PASSWORD', role: 'receptionist', name: 'Reception xodimi' },
+  { username: 'doctor',       passwordEnv: 'SEED_DOCTOR_PASSWORD',    role: 'doctor',       name: 'Shifokor' },
+];
+
+/**
+ * Seed foydalanuvchilarini route yaratilishidan alohida ishga tushiramiz.
+ * Bu server startup va integration testlarida seed tugashini kutish imkonini
+ * beradi; avvalgi fire-and-forget chaqiruv login bilan poyga hosil qilardi.
+ */
+export async function seedDefaultUsers(pool) {
+  const tenantId = process.env.TENANT_ID || 'default';
+  const missingPasswordVars = seedUsers
+    .map(({ passwordEnv }) => passwordEnv)
+    .filter((passwordEnv) => !process.env[passwordEnv]);
+  if (missingPasswordVars.length) {
+    throw new Error(`Seed foydalanuvchilari uchun parollar sozlanmagan: ${missingPasswordVars.join(', ')}`);
+  }
+
+  for (const user of seedUsers) {
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE username = $1 AND tenant_id = $2',
+      [user.username, tenantId]
+    );
+    if (existing.rows[0]) continue;
+
+    const password = process.env[user.passwordEnv];
+    const hashed = await bcrypt.hash(password, 10);
+    await pool.query(
+      `INSERT INTO users (id, tenant_id, username, password, role, name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (username) DO NOTHING`,
+      [uuidv4(), tenantId, user.username, hashed, user.role, user.name]
+    );
+  }
+}
+
 export default function(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken) {
   const router = Router();
 
@@ -18,27 +57,6 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
   async function qExec(sql, params = []) {
     return pool.query(sql, params);
   }
-
-  const seedUsers = [
-    { username: 'ceo',        password: process.env.SEED_CEO_PASSWORD        || 'ceo-change-me-now',        role: 'ceo',          name: 'Bosh direktor' },
-    { username: 'admin',      password: process.env.SEED_ADMIN_PASSWORD      || 'admin-change-me-now',      role: 'admin',        name: 'Admin' },
-    { username: 'receptionist', password: process.env.SEED_RECEPTION_PASSWORD || 'reception-change-me-now', role: 'receptionist', name: 'Reception xodimi' },
-    { username: 'doctor',     password: process.env.SEED_DOCTOR_PASSWORD     || 'doctor-change-me-now',     role: 'doctor',       name: 'Shifokor' },
-  ];
-
-  async function initSeed() {
-    const tenantId = process.env.TENANT_ID || 'default';
-    for (const u of seedUsers) {
-      const existing = await qGet("SELECT id FROM users WHERE username = $1", [u.username]);
-      if (!existing) {
-        const hashed = bcrypt.hashSync(u.password, 10);
-        await q("INSERT INTO users (id, tenant_id, username, password, role, name) VALUES ($1, $2, $3, $4, $5, $6)",
-          [uuidv4(), tenantId, u.username, hashed, u.role, u.name]);
-      }
-    }
-    console.log('[AUTH] Users seeded — 4 roles ready');
-  }
-  initSeed().catch(e => console.error('[AUTH] Seed error:', e.message));
 
   router.post('/login', async (req, res) => {
     try {
@@ -101,7 +119,10 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
 
   router.post('/refresh', async (req, res) => {
     try {
-      const { token: oldToken } = req.body;
+      const bearer = req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.slice(7)
+        : null;
+      const oldToken = req.body?.token || bearer;
       if (!oldToken) return res.status(400).json({ success: false, error: 'Token talab qilinadi' });
       let decoded;
       try {
