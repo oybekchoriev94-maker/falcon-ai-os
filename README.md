@@ -358,24 +358,24 @@ Joriy test coverage:
 ### Docker
 
 ```bash
-docker compose up -d
+cp .env.example .env
+# .env ichidagi barcha majburiy secretlarni almashtiring
+./scripts/deploy.sh
 ```
 
-### PM2 (bare metal)
-
-```bash
-npm install -g pm2
-pm2 start ecosystem.config.js
-# yoki cluster mode:
-pm2 start ecosystem.config.cjs
-```
+Production uchun PM2/bare-metal yo'li qo'llab-quvvatlanmaydi. PostgreSQL
+migration, RLS role provisioning va health-gated startup kafolati uchun Docker
+Compose deploymentidan foydalaning.
 
 ### VPS
 
 ```bash
-# Caddy reverse proxy bilan
+# Eski nom ham xavfsiz Docker deploy scriptiga yo'naltiradi
 ./deploy-vps.sh
 ```
+
+Batafsil immutable image va rollback tartibi:
+[`docs/production-deployment.md`](docs/production-deployment.md).
 
 ### Public URL
 
