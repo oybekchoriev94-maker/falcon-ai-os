@@ -74,4 +74,38 @@ export async function withTransaction(callback) {
   }
 }
 
+/**
+ * Tenantga tegishli ishlarni bitta PostgreSQL tranzaksiyasida bajaradi va
+ * RLS uchun tenant kontekstini faqat shu tranzaksiya muddatiga o'rnatadi.
+ * `set_config(..., true)` pooled connection qayta ishlatilganda tenant
+ * kontekstining boshqa so'rovga sizib o'tishiga yo'l qo'ymaydi.
+ */
+export async function withTenantTransaction(tenantId, callback, databasePool = pool) {
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId) {
+    throw new Error('Tenant tranzaksiyasi uchun tenant_id talab qilinadi');
+  }
+  if (typeof callback !== 'function') {
+    throw new TypeError('Tenant tranzaksiyasi uchun callback funksiya talab qilinadi');
+  }
+  if (!databasePool) {
+    throw new Error('Database pool not initialized');
+  }
 
+  const client = await databasePool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      "SELECT set_config('app.tenant_id', $1, true)",
+      [normalizedTenantId]
+    );
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
