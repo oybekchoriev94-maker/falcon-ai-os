@@ -223,6 +223,7 @@ describe('POST /api/inventory/consume (direct via internal secret)', () => {
     const res = await request(app)
       .post('/api/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({
         item_id: testItemId,
         requested_quantity: 10,
@@ -241,6 +242,7 @@ describe('POST /api/inventory/consume (direct via internal secret)', () => {
     const res = await request(app)
       .post('/api/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({
         item_id: testItemId,
         requested_quantity: 999999
@@ -254,6 +256,7 @@ describe('POST /api/inventory/consume (direct via internal secret)', () => {
     const res = await request(app)
       .post('/api/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({ item_id: 'not-a-number' });
     expect(res.status).toBe(400);
   });
@@ -351,6 +354,7 @@ describe('POST /api/internal/inventory/consume (agent endpoint)', () => {
     const res = await request(app)
       .post('/api/internal/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({ item_id: testItemId, quantity: 5, reason: 'Internal agent test' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -363,6 +367,7 @@ describe('POST /api/internal/inventory/consume (agent endpoint)', () => {
     const res = await request(app)
       .post('/api/internal/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({ item_id: testItemId });
     expect(res.status).toBe(400);
   });
@@ -371,6 +376,7 @@ describe('POST /api/internal/inventory/consume (agent endpoint)', () => {
     const res = await request(app)
       .post('/api/internal/inventory/consume')
       .set('x-internal-secret', internalSecret)
+      .set('x-tenant-id', 'default')
       .send({ item_id: 99999, quantity: 1 });
     expect(res.status).toBe(404);
   });

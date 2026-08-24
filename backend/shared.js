@@ -251,7 +251,7 @@ export const schemas = {
   }),
   inventoryConsume: z.object({
     procedure_name: z.string().min(2).max(255).optional(),
-    item_id: z.number().int().positive().optional(),
+    item_id: z.coerce.number().int().positive().optional(),
     requested_quantity: z.number().positive().optional(),
     doctor_id: z.string().optional(),
     performed_by: z.string().optional(),
@@ -259,12 +259,12 @@ export const schemas = {
   }),
   normsCreate: z.object({
     procedure_name: z.string().min(2).max(255),
-    item_id: z.number().int().positive(),
+    item_id: z.coerce.number().int().positive(),
     standard_quantity: z.number().positive()
   }),
   normsUpdate: z.object({
     procedure_name: z.string().min(2).max(255).optional(),
-    item_id: z.number().int().positive().optional(),
+    item_id: z.coerce.number().int().positive().optional(),
     standard_quantity: z.number().positive().optional()
   }),
   receptionConfirm: z.object({

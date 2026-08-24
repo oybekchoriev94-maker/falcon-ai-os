@@ -159,13 +159,13 @@ describe('POST /api/ai/execute — with valid body', () => {
     token = res.body.token;
   });
 
-  it('returns 200 with error for unknown agent (orchestrator handles gracefully)', async () => {
+  it('returns 404 for an unknown agent', async () => {
     const res = await request(app)
       .post('/api/ai/execute')
       .set('Authorization', `Bearer ${token}`)
       .send({ agent: 'nonexistent_agent_xyz', input: { test: true } });
     // Route passes orchestrator result through — no 500 error
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toMatch(/topilmadi|not found/i);
   });
@@ -175,7 +175,7 @@ describe('POST /api/ai/execute — with valid body', () => {
       .post('/api/ai/execute')
       .set('Authorization', `Bearer ${token}`)
       .send({ agent: 'nonexistent_agent_xyz' });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
   });
 });

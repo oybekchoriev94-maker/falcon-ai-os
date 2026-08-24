@@ -54,6 +54,7 @@ export default function inventoryRoutes(
     if (!tenantId) throw new Error('Tenant konteksti talab qilinadi');
     return tenantId;
   };
+  const routeError = (status, message) => Object.assign(new Error(message), { status });
 
   // Transaction helper: wraps async work in BEGIN/COMMIT/ROLLBACK
   async function withTransaction(fn) {
@@ -78,7 +79,7 @@ export default function inventoryRoutes(
       const tenantId = getTenantId(req);
       const items = await q(
         `SELECT i.*,
-                (SELECT COUNT(*) FROM inventory_batches b WHERE b.tenant_id = $1 AND b.item_id = i.id) as batch_count
+                (SELECT COUNT(*)::int FROM inventory_batches b WHERE b.tenant_id = $1 AND b.item_id = i.id) as batch_count
          FROM inventory_items i
          WHERE i.tenant_id = $1
          ORDER BY i.category, i.name`,
@@ -206,9 +207,9 @@ export default function inventoryRoutes(
               "SELECT id, name, current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
               [tenantId, item_id]
             );
-            if (!item) throw new Error('Material topilmadi');
+            if (!item) throw routeError(404, 'Material topilmadi');
             if (item.current_stock < requested_quantity) {
-              throw new Error(`Omborda yetarli material yo'q (qoldiq: ${item.current_stock}, kerak: ${requested_quantity})`);
+              throw routeError(400, `Omborda yetarli material yo'q (qoldiq: ${item.current_stock}, kerak: ${requested_quantity})`);
             }
 
             // Overuse calculation
@@ -224,7 +225,7 @@ export default function inventoryRoutes(
               "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
               [tenantId, item_id]
             );
-            if (batches.length === 0) throw new Error(`${item.name} uchun yaroqli partiya topilmadi`);
+            if (batches.length === 0) throw routeError(400, `${item.name} uchun yaroqli partiya topilmadi`);
             const batchConsumptions = [];
             for (const batch of batches) {
               if (need <= 0) break;
@@ -236,7 +237,7 @@ export default function inventoryRoutes(
               need -= take;
               batchConsumptions.push({ batch_id: batch.id, batch_number: batch.batch_number, qty: take });
             }
-            if (need > 0) throw new Error(`${item.name} uchun partiyalardagi qoldiq yetarli emas`);
+            if (need > 0) throw routeError(400, `${item.name} uchun partiyalardagi qoldiq yetarli emas`);
             const totalRow = await qGet(
               "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
               [tenantId, item_id]
@@ -294,7 +295,7 @@ export default function inventoryRoutes(
             );
             if (!freshItem || freshItem.current_stock < n.standard_quantity) {
               const shortage = n.standard_quantity - (freshItem ? freshItem.current_stock : 0);
-              throw new Error(
+              throw routeError(400,
                 `"${n.item_name}" uchun omborda yetarli zaxira yo'q. Kerak: ${n.standard_quantity}, bor: ${freshItem ? freshItem.current_stock : 0}`
               );
             }
@@ -314,7 +315,7 @@ export default function inventoryRoutes(
               "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
               [tenantId, n.item_id]
             );
-            if (batches.length === 0) throw new Error(`${n.item_name} uchun yaroqli partiya topilmadi`);
+            if (batches.length === 0) throw routeError(400, `${n.item_name} uchun yaroqli partiya topilmadi`);
 
             const beforeRow = await qGet(
               "SELECT current_stock FROM inventory_items WHERE tenant_id = $1 AND id = $2",
@@ -340,7 +341,7 @@ export default function inventoryRoutes(
             }
 
             if (need > 0) {
-              throw new Error(
+              throw routeError(400,
                 `${n.item_name} uchun barcha partiyalardagi jami qoldiq so'ralgan miqdordan kam. Kam qismi: ${need}`
               );
             }
@@ -406,7 +407,7 @@ export default function inventoryRoutes(
           details,
           is_overused: anyOverused
         });
-      } catch (e) { safeError(res, e); }
+      } catch (e) { safeError(res, e, e.status || 500); }
     }
   );
 
@@ -589,7 +590,12 @@ export default function inventoryRoutes(
         }
       });
 
-      const updated = await qGet("SELECT * FROM inventory_batches WHERE tenant_id = $1 AND id = $2", [tenantId, id]);
+      const updated = await qGet(
+        `SELECT id, tenant_id, item_id, batch_number, quantity,
+                TO_CHAR(expiration_date, 'YYYY-MM-DD') AS expiration_date, created_at
+         FROM inventory_batches WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, id]
+      );
       res.json({ success: true, batch: updated });
     } catch (e) {
       if (e.code === '23505') {
@@ -668,7 +674,7 @@ export default function inventoryRoutes(
           "SELECT * FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2 AND quantity > 0 ORDER BY expiration_date ASC NULLS LAST, id ASC",
           [tenantId, item_id]
         );
-        if (batches.length === 0) throw new Error(`${item.name} uchun yaroqli partiya topilmadi`);
+        if (batches.length === 0) throw routeError(400, `${item.name} uchun yaroqli partiya topilmadi`);
         const batchConsumptions = [];
         for (const batch of batches) {
           if (need <= 0) break;
@@ -680,7 +686,7 @@ export default function inventoryRoutes(
           need -= take;
           batchConsumptions.push({ batch_id: batch.id, batch_number: batch.batch_number, qty: take });
         }
-        if (need > 0) throw new Error(`${item.name} uchun partiyalardagi qoldiq yetarli emas`);
+        if (need > 0) throw routeError(400, `${item.name} uchun partiyalardagi qoldiq yetarli emas`);
         const totalRow = await qGet(
           "SELECT COALESCE(SUM(quantity), 0) as total FROM inventory_batches WHERE tenant_id = $1 AND item_id = $2",
           [tenantId, item_id]
@@ -703,7 +709,7 @@ export default function inventoryRoutes(
       });
 
       res.json({ success: true, item: item.name, quantity, ...result });
-    } catch (e) { safeError(res, e); }
+    } catch (e) { safeError(res, e, e.status || 500); }
   });
 
   // ============================================================
@@ -737,7 +743,7 @@ export default function inventoryRoutes(
       `, [tenantId]);
 
       const doctorWaste = await q(`
-        SELECT COALESCE(s.full_name, t.performed_by, 'noma\'lum') as doctor_name,
+        SELECT COALESCE(s.full_name, t.performed_by, 'noma''lum') as doctor_name,
                SUM(t.overuse_quantity) as total_overuse_qty,
                SUM(t.overuse_quantity * i.cost_price) as total_waste_cost,
                COUNT(*) as overuse_events
