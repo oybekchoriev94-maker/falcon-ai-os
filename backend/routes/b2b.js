@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-export default function b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError) {
+export default function b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError, platformPool = pool) {
   const router = Router();
 
   async function q(sql, params = []) {
@@ -10,6 +10,10 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
   }
   async function qGet(sql, params = []) {
     const r = await pool.query(sql, params);
+    return r.rows[0] || null;
+  }
+  async function platformQGet(sql, params = []) {
+    const r = await platformPool.query(sql, params);
     return r.rows[0] || null;
   }
 
@@ -85,8 +89,13 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
 
   router.get('/qr/:token', async (req, res) => {
     try {
-      const tenantId = req.tenant_id;
-      const ref = await qGet("SELECT * FROM referrals WHERE qr_code_token = $1 OR referral_id = $1", [req.params.token]);
+      // Public QR token is the capability used to discover its tenant.
+      const ref = await platformQGet(
+        `SELECT referral_id, patient_name, service_required, sender_clinic_id, status, created_at
+         FROM referrals
+         WHERE qr_code_token = $1 OR referral_id = $1`,
+        [req.params.token]
+      );
       if (!ref) return res.status(404).json({ success: false, error: 'Yo\'llanma topilmadi' });
       res.json({ success: true, referral: { referral_id: ref.referral_id, patient_name: ref.patient_name, service_required: ref.service_required, sender_clinic_id: ref.sender_clinic_id, status: ref.status, created_at: ref.created_at } });
     } catch (e) { serverError(res, e); }

@@ -30,8 +30,12 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
-      TEST_DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+      DATABASE_URL: postgresql://falcon_app:falcon-app-test-password@localhost:5432/falcon_test
+      TEST_DATABASE_URL: postgresql://falcon_app:falcon-app-test-password@localhost:5432/falcon_test
+      PLATFORM_DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+      MIGRATION_DATABASE_URL: postgresql://falcon:falcon-test@localhost:5432/falcon_test
+      APP_DATABASE_PASSWORD: falcon-app-test-password
+      RLS_ENFORCE_APP_ROLE: "true"
       JWT_SECRET: ci-jwt-secret-32-chars-test-only-123456
       INTERNAL_SECRET: ci-internal-secret-32-chars-test-123456
       ADMIN_PASSWORD: TestAdmin123
@@ -53,6 +57,9 @@ jobs:
 
       - name: Run migrations
         run: npx knex migrate:latest --env test
+
+      - name: Provision non-owner application role
+        run: node scripts/provision-app-role.js
 
       - run: npm test
 

@@ -1,7 +1,7 @@
 import { q } from '../db.js';
 
-export async function afterRegistration(tenantId, userId, clinicName) {
-  await q(
+export async function afterRegistration(tenantId, userId, clinicName, execute = q) {
+  await execute(
     `INSERT INTO clinic_settings (tenant_id, key, value, updated_at) VALUES
      ($1, 'timezone', 'Asia/Tashkent', NOW()),
      ($1, 'language', 'uz', NOW()),

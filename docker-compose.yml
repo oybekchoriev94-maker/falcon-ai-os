@@ -44,6 +44,21 @@ services:
       retries: 3
       start_period: 120s
 
+  db-bootstrap:
+    <<: *common
+    build: .
+    restart: "no"
+    command: ["sh", "-c", "node scripts/migrate.js && node scripts/provision-app-role.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      MIGRATION_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      PLATFORM_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD required}
+    depends_on:
+      db:
+        condition: service_healthy
+
   app:
     <<: *common
     build: .
@@ -53,7 +68,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       STT_LOCAL: "true"
-      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      DATABASE_URL: postgresql://falcon_app:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD required}@db:5432/falcon_ai_os
+      PLATFORM_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      RLS_ENFORCE_APP_ROLE: "true"
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET required}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -91,8 +108,8 @@ services:
       - falcon-backup:/backup
       - falcon-logs:/app/logs
     depends_on:
-      db:
-        condition: service_healthy
+      db-bootstrap:
+        condition: service_completed_successfully
       stt:
         condition: service_healthy
 

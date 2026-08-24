@@ -18,8 +18,9 @@ import {
   verifyClickSign,
   verifyUzumAuth
 } from '../services/payment-gateway.js';
+import { runWithTenantDbContext } from '../request-tenant-context.js';
 
-export default function paymentRoutes(pool, authMiddleware, checkRole) {
+export default function paymentRoutes(pool, authMiddleware, checkRole, platformPool = pool) {
   const router = Router();
 
   // ─── DB helper ──────────────────────────────────────────
@@ -31,6 +32,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
     const r = await pool.query(sql, params);
     return r.rows[0] || null;
   };
+  const platformQGet = async (sql, params = []) => {
+    const r = await platformPool.query(sql, params);
+    return r.rows[0] || null;
+  };
 
   const sameAmount = (expected, received) => {
     if (received === null || received === undefined || received === '') return false;
@@ -38,98 +43,100 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   };
 
   async function finalizePaidTransaction(txn, result, provider, rawBody) {
-    if (!sameAmount(txn.amount, result.amount)) {
-      await pool.query(
-        `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
-         VALUES ($1, $2, $3, $4, 'amount_mismatch')`,
-        [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
-      );
-      return { applied: false, reason: 'amount_mismatch' };
-    }
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const updated = await client.query(
-        `UPDATE payment_transactions
-         SET status = 'paid', paid_at = NOW(), provider_transaction_id = $1, raw_response = $2
-         WHERE id = $3 AND tenant_id = $4 AND status = 'pending'
-         RETURNING id`,
-        [result.transactionId || null, JSON.stringify(result.raw || rawBody || {}), txn.id, txn.tenant_id]
-      );
-
-      // Provider callback'ni takror yuborsa moliyaviy ta'sir qayta ishlamaydi.
-      if (updated.rowCount === 0) {
-        await client.query('ROLLBACK');
-        return { applied: false, reason: 'duplicate' };
+    return runWithTenantDbContext(txn.tenant_id, async () => {
+      if (!sameAmount(txn.amount, result.amount)) {
+        await pool.query(
+          `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
+           VALUES ($1, $2, $3, $4, 'amount_mismatch')`,
+          [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
+        );
+        return { applied: false, reason: 'amount_mismatch' };
       }
 
-      if (txn.type === 'subscription_upgrade' || txn.type === 'subscription') {
-        const metadata = typeof txn.services_json === 'string'
-          ? JSON.parse(txn.services_json)
-          : (txn.services_json || {});
-        const cycle = metadata.billing_cycle === 'annual' ? 'annual' : 'monthly';
-        const plan = await client.query(
-          'SELECT id, code FROM subscription_plans WHERE id = $1 AND active = true',
-          [metadata.plan_id]
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updated = await client.query(
+          `UPDATE payment_transactions
+           SET status = 'paid', paid_at = NOW(), provider_transaction_id = $1, raw_response = $2
+           WHERE id = $3 AND tenant_id = $4 AND status = 'pending'
+           RETURNING id`,
+          [result.transactionId || null, JSON.stringify(result.raw || rawBody || {}), txn.id, txn.tenant_id]
         );
-        if (!plan.rows[0]) throw new Error('Subscription tarifi topilmadi');
 
-        await client.query(
-          `INSERT INTO subscriptions
-           (id, tenant_id, plan_id, billing_cycle, status, current_period_start, current_period_end, trial_ends_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'active', NOW(),
-             CASE WHEN $4 = 'annual' THEN NOW() + INTERVAL '1 year' ELSE NOW() + INTERVAL '1 month' END,
-             NULL, NOW())
-           ON CONFLICT (tenant_id) DO UPDATE SET
-             plan_id = EXCLUDED.plan_id,
-             billing_cycle = EXCLUDED.billing_cycle,
-             status = 'active',
-             current_period_start = NOW(),
-             current_period_end = EXCLUDED.current_period_end,
-             trial_ends_at = NULL,
-             updated_at = NOW()`,
-          [uuidv4(), txn.tenant_id, plan.rows[0].id, cycle]
-        );
-        await client.query('UPDATE tenants SET plan = $1 WHERE id = $2', [plan.rows[0].code, txn.tenant_id]);
-      } else if (txn.patient_id) {
-        const cashbackPercent = 3.0;
-        const cashback = Math.round(Number(txn.amount) * cashbackPercent / 100);
-        if (cashback > 0) {
-          const patient = await client.query(
-            `UPDATE patients
-             SET cashback_balance = COALESCE(cashback_balance, 0) + $1
-             WHERE tenant_id = $2 AND id = $3
-             RETURNING cashback_balance`,
-            [cashback, txn.tenant_id, txn.patient_id]
+        // Provider callback'ni takror yuborsa moliyaviy ta'sir qayta ishlamaydi.
+        if (updated.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return { applied: false, reason: 'duplicate' };
+        }
+
+        if (txn.type === 'subscription_upgrade' || txn.type === 'subscription') {
+          const metadata = typeof txn.services_json === 'string'
+            ? JSON.parse(txn.services_json)
+            : (txn.services_json || {});
+          const cycle = metadata.billing_cycle === 'annual' ? 'annual' : 'monthly';
+          const plan = await client.query(
+            'SELECT id, code FROM subscription_plans WHERE id = $1 AND active = true',
+            [metadata.plan_id]
           );
-          if (patient.rows[0]) {
-            const balanceAfter = Number(patient.rows[0].cashback_balance);
-            await client.query(
-              `INSERT INTO loyalty_ledger
-               (tenant_id, patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
-               VALUES ($1, $2, $3, 'earned', $4, $5, $6, $7, NOW())`,
-              [txn.tenant_id, txn.patient_id, txn.patient_name || 'Bemor', cashback,
-               balanceAfter - cashback, balanceAfter,
-               `Cashback ${cashbackPercent}%: ${txn.description || 'To\'lov'} #${txn.id.substring(0, 8)}`]
+          if (!plan.rows[0]) throw new Error('Subscription tarifi topilmadi');
+
+          await client.query(
+            `INSERT INTO subscriptions
+             (id, tenant_id, plan_id, billing_cycle, status, current_period_start, current_period_end, trial_ends_at, updated_at)
+             VALUES ($1, $2, $3, $4, 'active', NOW(),
+               CASE WHEN $4 = 'annual' THEN NOW() + INTERVAL '1 year' ELSE NOW() + INTERVAL '1 month' END,
+               NULL, NOW())
+             ON CONFLICT (tenant_id) DO UPDATE SET
+               plan_id = EXCLUDED.plan_id,
+               billing_cycle = EXCLUDED.billing_cycle,
+               status = 'active',
+               current_period_start = NOW(),
+               current_period_end = EXCLUDED.current_period_end,
+               trial_ends_at = NULL,
+               updated_at = NOW()`,
+            [uuidv4(), txn.tenant_id, plan.rows[0].id, cycle]
+          );
+          await client.query('UPDATE tenants SET plan = $1 WHERE id = $2', [plan.rows[0].code, txn.tenant_id]);
+        } else if (txn.patient_id) {
+          const cashbackPercent = 3.0;
+          const cashback = Math.round(Number(txn.amount) * cashbackPercent / 100);
+          if (cashback > 0) {
+            const patient = await client.query(
+              `UPDATE patients
+               SET cashback_balance = COALESCE(cashback_balance, 0) + $1
+               WHERE tenant_id = $2 AND id = $3
+               RETURNING cashback_balance`,
+              [cashback, txn.tenant_id, txn.patient_id]
             );
+            if (patient.rows[0]) {
+              const balanceAfter = Number(patient.rows[0].cashback_balance);
+              await client.query(
+                `INSERT INTO loyalty_ledger
+                 (tenant_id, patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
+                 VALUES ($1, $2, $3, 'earned', $4, $5, $6, $7, NOW())`,
+                [txn.tenant_id, txn.patient_id, txn.patient_name || 'Bemor', cashback,
+                 balanceAfter - cashback, balanceAfter,
+                 `Cashback ${cashbackPercent}%: ${txn.description || 'To\'lov'} #${txn.id.substring(0, 8)}`]
+              );
+            }
           }
         }
-      }
 
-      await client.query(
-        `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
-         VALUES ($1, $2, $3, $4, 'paid')`,
-        [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
-      );
-      await client.query('COMMIT');
-      return { applied: true };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+        await client.query(
+          `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
+           VALUES ($1, $2, $3, $4, 'paid')`,
+          [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
+        );
+        await client.query('COMMIT');
+        return { applied: true };
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    });
   }
 
   // ─── Rate Limits ────────────────────────────────────────
@@ -241,8 +248,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.get('/payments/pay/:orderId', async (req, res) => {
     try {
-      const txn = await qGet(
-        `SELECT pt.*, p.first_name, p.last_name
+      const txn = await platformQGet(
+        `SELECT pt.id, pt.amount, pt.status, pt.paid_at, pt.description,
+                pt.provider, pt.payment_url, pt.created_at,
+                p.first_name, p.last_name
          FROM payment_transactions pt
          LEFT JOIN patients p ON p.id = pt.patient_id AND p.tenant_id = pt.tenant_id
          WHERE pt.id = $1`,
@@ -341,7 +350,7 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
       // Transaction ni topamiz
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
       if (!txn) {
@@ -387,7 +396,7 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       }
 
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
       if (!txn) {
@@ -423,7 +432,7 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       if (!result) return res.json({ success: true });
 
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
       if (!txn) {
@@ -620,7 +629,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.get('/payments/qr/:orderId', async (req, res) => {
     try {
-      const txn = await qGet('SELECT * FROM payment_transactions WHERE id = $1', [req.params.orderId]);
+      const txn = await platformQGet(
+        'SELECT id, payment_url FROM payment_transactions WHERE id = $1',
+        [req.params.orderId]
+      );
       if (!txn) {
         return res.status(404).json({ success: false, error: 'To\'lov topilmadi' });
       }

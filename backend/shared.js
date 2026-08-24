@@ -123,12 +123,11 @@ export function verifyTelegramAuth(req, res, next) {
     req.telegramUser = tgUser;
     (async () => {
       try {
-        const pool = (await import('./db.js')).getPool();
-        const result = await pool.query(
+        const { unsafeQuery } = await import('./db.js');
+        const staff = await unsafeQuery.qGet(
           "SELECT id, tenant_id, telegram_id, full_name, role, is_active FROM staff_members WHERE telegram_id = $1 AND is_active = true",
           [tgUser.id]
         );
-        const staff = result.rows[0];
         if (!staff) {
           return res.status(403).json({ success: false, error: 'Siz tizimda ro\'yxatdan o\'tmagansiz. Iltimos, ma\'muriyat bilan bog\'laning.' });
         }

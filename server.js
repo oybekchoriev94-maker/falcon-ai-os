@@ -19,7 +19,7 @@ import { z } from 'zod';
 import swaggerUi from 'swagger-ui-express';
 import * as Sentry from '@sentry/node';
 
-import { connectPg, disconnectPg, q, qGet, qExec, getPool, withTransaction, unsafeQuery } from './backend/db.js';
+import { connectPg, disconnectPg, q, qGet, qExec, getPool, getPlatformPool, withTransaction, unsafeQuery } from './backend/db.js';
 import { generateReportPdf } from './backend/services/pdfGenerator.js';
 import { safeError } from './backend/services/safe-error.js';
 import { MEDICAL_SKILLS } from './ai/protocols/medical-skills.js';
@@ -30,6 +30,7 @@ import { auditLog } from './backend/audit.js';
 import { checkSubscription, requireFeature, checkAiLimit, checkDoctorLimit } from './backend/subscription-middleware.js';
 import { tenantRateLimit } from './backend/tenant-rate-limit.js';
 import { correlationIdMiddleware } from './middleware/correlation.js';
+import { runWithTenantDbContext } from './backend/request-tenant-context.js';
 import { initCache, disconnectCache } from './backend/cache.js';
 import { logger, pinoHttpMiddleware } from './backend/logger.js';
 import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } from './backend/metrics.js';
@@ -257,7 +258,7 @@ async function sendTelegram(chatId, text) {
 app.get('/api/health', async (req, res) => {
   try {
     await qGet('SELECT 1');
-    const tenantCount = await qGet('SELECT COUNT(*) as c FROM tenants WHERE status = $1', ['active']);
+    const tenantCount = await unsafeQuery.qGet('SELECT COUNT(*) as c FROM tenants WHERE status = $1', ['active']);
     setActiveTenants(parseInt(tenantCount?.c || 0));
     res.json({
       status: 'ok', service: 'Falcon AI OS', version: '2.0.0',
@@ -296,7 +297,7 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
 
   targetApp.use(`${API_PREFIX}/auth`, authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
   targetApp.use('/api/auth', authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
-  targetApp.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
+  targetApp.use(`${API_PREFIX}/subscription`, subscriptionRoutes());
   targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes());
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
 
@@ -304,16 +305,16 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use('/api/scribe', authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
     scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger));
   targetApp.use('/api/doctor', doctorViewRoutes(pool, authMiddleware, checkRole, serverError));
-  targetApp.use('/api/b2b', b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError));
-  targetApp.use('/api/tma', tmaRoutes(pool));
+  targetApp.use('/api/b2b', b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError, getPlatformPool()));
+  targetApp.use('/api/tma', tmaRoutes(pool, getPlatformPool()));
 
   function mountRoutes(prefix) {
     const p = prefix || '';
     targetApp.use(`${p}/patient`, patientRoutes(pool, authMiddleware));
     targetApp.use(`${p}/patients`, tenantRateLimit('api'), patientsRoutes(pool, authMiddleware));
-    targetApp.use(`${p}`, paymentRoutes(pool, authMiddleware, checkRole));
-    targetApp.use(`${p}/referral`, referralAgentRoutes(pool, authMiddleware, checkRole));
-    targetApp.use(`${p}/referrals`, referralPassRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}`, paymentRoutes(pool, authMiddleware, checkRole, getPlatformPool()));
+    targetApp.use(`${p}/referral`, referralAgentRoutes(pool, authMiddleware, checkRole, getPlatformPool()));
+    targetApp.use(`${p}/referrals`, referralPassRoutes(pool, authMiddleware, checkRole, getPlatformPool()));
     targetApp.use(`${p}`, tenantRateLimit('api'), inventoryRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, agentBypassOrAuth, upload));
     targetApp.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), aiRoutes(pool, authMiddleware, checkRole, validate, schemas, orchestrator));
     targetApp.use(`${p}`, doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
@@ -462,7 +463,7 @@ async function main() {
       console.error('DATABASE_URL .env da topilmadi! PostgreSQL ulanishi kerak.');
       process.exit(1);
     }
-    await connectPg(dbUrl);
+    await connectPg(dbUrl, process.env.PLATFORM_DATABASE_URL);
     console.log('[DB] PostgreSQL connected');
 
     await initCache();
@@ -482,7 +483,7 @@ async function main() {
     const existing = await unsafeQuery.qGet("SELECT id FROM users WHERE username = $1 AND role = 'superadmin'", [ADMIN_EMAIL]);
     if (!existing) {
       const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      await q(
+      await unsafeQuery.q(
         "INSERT INTO users (id, tenant_id, username, password, role, name) VALUES ($1, 'default', $2, $3, 'superadmin', $4) ON CONFLICT (username) DO NOTHING",
         [uuidv4(), ADMIN_EMAIL, hashed, 'Super Admin']
       );
@@ -535,8 +536,10 @@ cron.schedule('0 6 * * *', async () => {
       WHERE s.status = 'trialing' AND s.trial_ends_at < NOW()
     `);
     for (const sub of expired) {
-      await q("UPDATE subscriptions SET status = 'active', plan_id = 'plan_free' WHERE id = $1 AND tenant_id = $2", [sub.id, sub.tenant_id]);
-      await q("UPDATE tenants SET plan = 'free' WHERE id = $1", [sub.tenant_id]);
+      await runWithTenantDbContext(sub.tenant_id, async () => {
+        await q("UPDATE subscriptions SET status = 'active', plan_id = 'plan_free' WHERE id = $1 AND tenant_id = $2", [sub.id, sub.tenant_id]);
+        await q("UPDATE tenants SET plan = 'free' WHERE id = $1", [sub.tenant_id]);
+      });
       logger.info({ tenant_id: sub.tenant_id, tenant_name: sub.tenant_name }, '[TRIAL] Sinov muddati tugadi, free ga o\'tkazildi');
     }
     if (expired.length > 0) console.log(`[TRIAL] ${expired.length} ta tenant sinov muddati tugadi`);

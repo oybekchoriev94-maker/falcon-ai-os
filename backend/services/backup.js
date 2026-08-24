@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 
 const BACKUP_DIR = process.env.BACKUP_DIR || '/backup';
-const DB_URL = process.env.DATABASE_URL || '';
+const DB_URL = process.env.PLATFORM_DATABASE_URL || process.env.DATABASE_URL || '';
 
 export async function createBackup() {
   if (!DB_URL.startsWith('postgresql://')) {

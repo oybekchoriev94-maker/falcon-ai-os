@@ -5,6 +5,17 @@ import { getTenantDbContext, getTenantDbStore } from './request-tenant-context.j
 
 let pool = null;
 let tenantAwarePool = null;
+let platformPool = null;
+
+function poolConfig(connectionString, max) {
+  return {
+    connectionString,
+    max,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 10000,
+  };
+}
 
 function queryText(query) {
   return typeof query === 'string' ? query : query?.text || '';
@@ -137,18 +148,100 @@ export function createTenantAwarePool(rawPool) {
   });
 }
 
-export async function connectPg(databaseUrl) {
-  pool = new pg.Pool({
-    connectionString: databaseUrl,
-    max: 25,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    statement_timeout: 10000,
-  });
-  tenantAwarePool = createTenantAwarePool(pool);
-  const client = await pool.connect();
-  client.release();
-  return tenantAwarePool;
+async function inspectDatabaseRole(databasePool) {
+  if (!databasePool) throw new Error('Database pool not initialized');
+  const result = await databasePool.query(`
+    SELECT current_user AS role_name,
+           r.rolsuper AS is_superuser,
+           r.rolbypassrls AS bypasses_rls,
+           EXISTS (
+             SELECT 1
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public'
+               AND c.relkind = 'r'
+               AND c.relrowsecurity
+           ) AS has_rls_tables,
+           EXISTS (
+             SELECT 1
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public'
+               AND c.relkind = 'r'
+               AND c.relrowsecurity
+               AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+           ) AS owns_rls_tables,
+           NOT EXISTS (
+             SELECT 1
+             FROM pg_class c
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public'
+               AND c.relkind = 'r'
+               AND c.relrowsecurity
+               AND c.relowner <> (SELECT oid FROM pg_roles WHERE rolname = current_user)
+           ) AS owns_all_rls_tables
+    FROM pg_roles r
+    WHERE r.rolname = current_user
+  `);
+  return result.rows[0] || null;
+}
+
+export async function assertApplicationRoleIsRlsSafe(databasePool = pool) {
+  const role = await inspectDatabaseRole(databasePool);
+  if (!role || !role.has_rls_tables || role.is_superuser || role.bypasses_rls || role.owns_rls_tables) {
+    throw new Error(
+      `RLS application role xavfsiz emas: ${role?.role_name || 'unknown'} ` +
+      '(superuser, BYPASSRLS yoki RLS jadval egasi bo\'lishi mumkin emas)'
+    );
+  }
+  return role;
+}
+
+export async function assertPlatformRoleCanBypassRls(databasePool = platformPool) {
+  const role = await inspectDatabaseRole(databasePool);
+  if (!role || !role.has_rls_tables || !(role.is_superuser || role.bypasses_rls || role.owns_all_rls_tables)) {
+    throw new Error(
+      `Platform DB roli cross-tenant operatsiyalar uchun yetarli emas: ${role?.role_name || 'unknown'} ` +
+      '(superuser, BYPASSRLS yoki barcha RLS jadvallarining egasi bo\'lishi kerak)'
+    );
+  }
+  return role;
+}
+
+export async function connectPg(databaseUrl, platformDatabaseUrl = process.env.PLATFORM_DATABASE_URL) {
+  if (pool || platformPool) throw new Error('Database pool already initialized');
+  const applicationPool = new pg.Pool(poolConfig(databaseUrl, 25));
+  const privilegedPool = platformDatabaseUrl && platformDatabaseUrl !== databaseUrl
+    ? new pg.Pool(poolConfig(platformDatabaseUrl, 5))
+    : applicationPool;
+
+  try {
+    const client = await applicationPool.connect();
+    client.release();
+
+    if (privilegedPool !== applicationPool) {
+      const platformClient = await privilegedPool.connect();
+      platformClient.release();
+    }
+
+    if (process.env.RLS_ENFORCE_APP_ROLE === 'true') {
+      if (!platformDatabaseUrl || privilegedPool === applicationPool) {
+        throw new Error('RLS_ENFORCE_APP_ROLE=true uchun alohida PLATFORM_DATABASE_URL talab qilinadi');
+      }
+      await assertApplicationRoleIsRlsSafe(applicationPool);
+      await assertPlatformRoleCanBypassRls(privilegedPool);
+    }
+
+    pool = applicationPool;
+    tenantAwarePool = createTenantAwarePool(applicationPool);
+    platformPool = privilegedPool;
+    return tenantAwarePool;
+  } catch (error) {
+    const closings = [applicationPool.end()];
+    if (privilegedPool !== applicationPool) closings.push(privilegedPool.end());
+    await Promise.allSettled(closings);
+    throw error;
+  }
 }
 
 export function getPool() {
@@ -156,19 +249,28 @@ export function getPool() {
   return tenantAwarePool;
 }
 
-export function disconnectPg() {
-  if (pool) {
-    const closingPool = pool;
-    pool = null;
-    tenantAwarePool = null;
-    return closingPool.end();
-  }
+export function getPlatformPool() {
+  if (!platformPool) throw new Error('Platform database pool not initialized');
+  return platformPool;
+}
+
+export async function disconnectPg() {
+  const applicationPool = pool;
+  const privilegedPool = platformPool;
+  pool = null;
+  tenantAwarePool = null;
+  platformPool = null;
+
+  const closings = [];
+  if (applicationPool) closings.push(applicationPool.end());
+  if (privilegedPool && privilegedPool !== applicationPool) closings.push(privilegedPool.end());
+  await Promise.all(closings);
 }
 
 // allowUnscoped: qonuniy cross-tenant so'rovlar uchun (superadmin, login, tariflar)
 async function run(sql, params, allowUnscoped) {
   assertTenantScoped(sql, allowUnscoped);
-  if (allowUnscoped) return pool.query(sql, params);
+  if (allowUnscoped) return getPlatformPool().query(sql, params);
   return tenantAwarePool.query(sql, params);
 }
 
@@ -207,6 +309,24 @@ export async function withTransaction(callback) {
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function withPlatformTransaction(callback) {
+  if (typeof callback !== 'function') {
+    throw new TypeError('Platform tranzaksiyasi uchun callback funksiya talab qilinadi');
+  }
+  const client = await getPlatformPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

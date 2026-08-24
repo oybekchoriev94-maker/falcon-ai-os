@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
+import { unsafeQuery } from '../db.js';
+import { runWithTenantDbContext } from '../request-tenant-context.js';
 
 const seedUsers = [
   { username: 'ceo',          passwordEnv: 'SEED_CEO_PASSWORD',       role: 'ceo',          name: 'Bosh direktor' },
@@ -25,22 +27,24 @@ export async function seedDefaultUsers(pool) {
     throw new Error(`Seed foydalanuvchilari uchun parollar sozlanmagan: ${missingPasswordVars.join(', ')}`);
   }
 
-  for (const user of seedUsers) {
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE username = $1 AND tenant_id = $2',
-      [user.username, tenantId]
-    );
-    if (existing.rows[0]) continue;
+  await runWithTenantDbContext(tenantId, async () => {
+    for (const user of seedUsers) {
+      const existing = await pool.query(
+        'SELECT id FROM users WHERE username = $1 AND tenant_id = $2',
+        [user.username, tenantId]
+      );
+      if (existing.rows[0]) continue;
 
-    const password = process.env[user.passwordEnv];
-    const hashed = await bcrypt.hash(password, 10);
-    await pool.query(
-      `INSERT INTO users (id, tenant_id, username, password, role, name)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (username) DO NOTHING`,
-      [uuidv4(), tenantId, user.username, hashed, user.role, user.name]
-    );
-  }
+      const password = process.env[user.passwordEnv];
+      const hashed = await bcrypt.hash(password, 10);
+      await pool.query(
+        `INSERT INTO users (id, tenant_id, username, password, role, name)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (username) DO NOTHING`,
+        [uuidv4(), tenantId, user.username, hashed, user.role, user.name]
+      );
+    }
+  });
 }
 
 export default function(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken) {
@@ -62,7 +66,7 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     try {
       const { username, password } = req.body;
       if (!username || !password) return res.status(400).json({ error: 'username va password talab qilinadi' });
-      const user = await qGet("SELECT * FROM users WHERE username = $1", [username]);
+      const user = await unsafeQuery.qGet("SELECT * FROM users WHERE username = $1", [username]);
       if (!user) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
@@ -74,7 +78,7 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
   router.post('/doctor-login', async (req, res) => {
     try {
       const { username, password } = req.body;
-      const doctor = await qGet("SELECT * FROM doctors WHERE username = $1", [username]);
+      const doctor = await unsafeQuery.qGet("SELECT * FROM doctors WHERE username = $1", [username]);
       if (!doctor) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
       if (!doctor.password_hash) return res.status(401).json({ error: 'Doctor paroli sozlanmagan' });
       const MAX_ATTEMPTS = 5;
@@ -85,21 +89,21 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
           const remaining = Math.ceil((lockTime - Date.now()) / 60000);
           return res.status(429).json({ error: `Shifokor hisobi vaqtincha bloklangan. ${remaining} daqiqadan keyin qayta urinib ko'ring.` });
         }
-        await q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
+        await unsafeQuery.q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
         doctor.failed_attempts = 0;
       }
       const valid = await bcrypt.compare(password, doctor.password_hash);
       if (!valid) {
         const newAttempts = (doctor.failed_attempts || 0) + 1;
         if (newAttempts >= MAX_ATTEMPTS) {
-          await q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3",
+          await unsafeQuery.q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3",
             [newAttempts, LOCKOUT_MINUTES, doctor.id]);
         } else {
-          await q("UPDATE doctors SET failed_attempts = $1 WHERE id = $2", [newAttempts, doctor.id]);
+          await unsafeQuery.q("UPDATE doctors SET failed_attempts = $1 WHERE id = $2", [newAttempts, doctor.id]);
         }
         return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
       }
-      await q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
+      await unsafeQuery.q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
       const token = signToken(doctor);
       res.json({
         success: true, token,
@@ -133,7 +137,10 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
       const blacklisted = await qGet("SELECT id FROM token_blacklist WHERE jti = $1", [decoded.jti]);
       if (blacklisted) return res.status(401).json({ success: false, error: 'Token bekor qilingan' });
       const newToken = signToken(decoded);
-      const freshUser = await qGet("SELECT id, username, role, name FROM users WHERE id = $1", [decoded.id]);
+      const freshUser = await unsafeQuery.qGet(
+        "SELECT id, username, role, name FROM users WHERE id = $1 AND tenant_id = $2",
+        [decoded.id, decoded.tenant_id]
+      );
       res.json({ success: true, token: newToken, user: freshUser || null, message: 'Token yangilandi' });
     } catch (e) { safeError(res, e); }
   });

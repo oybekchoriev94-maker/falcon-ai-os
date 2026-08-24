@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 
-export default function referralRoutes(pool, authMiddleware, checkRole) {
+export default function referralRoutes(pool, authMiddleware, checkRole, platformPool = pool) {
   const router = Router();
 
   async function q(sql, params = []) {
@@ -13,6 +13,10 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   }
   async function qGet(sql, params = []) {
     const result = await pool.query(sql, params);
+    return result.rows[0] || null;
+  }
+  async function platformQGet(sql, params = []) {
+    const result = await platformPool.query(sql, params);
     return result.rows[0] || null;
   }
 
@@ -222,7 +226,11 @@ export default function referralRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referral/qr/:token — QR token orqali hamkor ma'lumoti
   router.get('/qr/:token', async (req, res) => {
     try {
-      const partner = await qGet('SELECT id, name, referral_code FROM referral_partners WHERE qr_code_base64 = $1', [req.params.token]);
+      // Public QR token is the capability used to discover its tenant.
+      const partner = await platformQGet(
+        'SELECT id, name, referral_code FROM referral_partners WHERE qr_code_base64 = $1',
+        [req.params.token]
+      );
       if (!partner) return res.status(404).json({ success: false, error: 'QR kod topilmadi' });
       res.json({ success: true, partner });
     } catch (e) { safeError(res, e); }
