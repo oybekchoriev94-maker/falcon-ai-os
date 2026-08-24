@@ -46,6 +46,12 @@ describe('POST /api/auth/refresh', () => {
       .set('Authorization', `Bearer ${login.body.token}`);
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
+
+    const replay = await request(app)
+      .post('/api/auth/refresh')
+      .set('Authorization', `Bearer ${login.body.token}`);
+    expect(replay.status).toBe(401);
+    expect(replay.body.error).toMatch(/allaqachon/i);
   });
 
   it('rejects expired token', async () => {

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
 
 const dbMocks = vi.hoisted(() => ({
@@ -12,6 +11,7 @@ const dbMocks = vi.hoisted(() => ({
 vi.mock('../backend/db.js', () => dbMocks);
 
 import subscriptionRoutes from '../backend/routes/subscription.js';
+import { signToken } from '../backend/shared.js';
 
 describe('paid subscription changes', () => {
   beforeEach(() => {
@@ -31,11 +31,9 @@ describe('paid subscription changes', () => {
     app.locals.pool = { query: vi.fn().mockResolvedValue({ rows: [] }) };
     app.use('/subscription', subscriptionRoutes());
 
-    const token = jwt.sign(
-      { jti: 'jti-1', id: 'user-1', role: 'ceo', tenant_id: 'tenant-a' },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
+    const token = signToken({
+      id: 'user-1', role: 'ceo', tenant_id: 'tenant-a', username: 'ceo', name: 'CEO',
+    });
     const response = await request(app)
       .post('/subscription/change')
       .set('Authorization', `Bearer ${token}`)

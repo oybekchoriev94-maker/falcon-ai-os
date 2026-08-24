@@ -5,6 +5,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { bindTenantDbContext } from './request-tenant-context.js';
 
 export const JWT_EXPIRES = '2h';
+export const JWT_ISSUER = 'falcon-ai-os';
+export const JWT_AUDIENCE = 'falcon-clinic-api';
+export const JWT_VERIFY_OPTIONS = Object.freeze({
+  algorithms: ['HS256'],
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+});
 
 export function signToken(user) {
   const tenantId = user.tenant_id || user.clinic_id;
@@ -22,7 +29,12 @@ export function signToken(user) {
     specialization: user.specialization || null,
     doctor_id: user.doctor_id || user.id,
     patient_id: user.patient_id || null
-  }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  }, process.env.JWT_SECRET, {
+    algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+    expiresIn: JWT_EXPIRES,
+  });
 }
 
 export async function authMiddleware(req, res, next) {
@@ -31,8 +43,8 @@ export async function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Token talab qilinadi' });
   }
   try {
-    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
-    if (!decoded.tenant_id) {
+    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET, JWT_VERIFY_OPTIONS);
+    if (!decoded.jti || !decoded.id || !decoded.tenant_id) {
       return res.status(403).json({ error: 'Token tenant kontekstiga ega emas' });
     }
     const pool = req.app?.locals?.pool || (await import('./db.js')).getPool();
@@ -42,7 +54,9 @@ export async function authMiddleware(req, res, next) {
         if (result.rows.length > 0) {
           return res.status(401).json({ error: 'Token bekor qilingan, qayta kirishingiz kerak' });
         }
-      } catch (_) {}
+      } catch (_) {
+        return res.status(503).json({ error: 'Session holatini tekshirib bo\'lmadi' });
+      }
     }
     req.user = decoded;
     req.tenant_id = decoded.tenant_id;
@@ -235,7 +249,7 @@ export function agentBypassOrAuth(...allowedRoles) {
 
 export const schemas = {
   login: z.object({
-    username: z.string().min(3).max(50),
+    username: z.string().min(3).max(100),
     password: z.string().min(8).max(128)
   }),
   inventoryAdd: z.object({

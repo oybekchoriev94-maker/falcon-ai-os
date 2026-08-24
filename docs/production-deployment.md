@@ -23,6 +23,7 @@ qiymatlar haqiqiy, noyob secretlar bilan almashtiriladi:
 
 - `POSTGRES_PASSWORD`, `APP_DATABASE_PASSWORD` — kamida 16 belgi va URL-safe;
 - `JWT_SECRET`, `INTERNAL_SECRET` — kamida 32 belgi;
+- `JWT_REFRESH_WINDOW_DAYS` — 1–30 kun (tavsiya: `7`), muddati o'tgan access tokenni yangilashning maksimal oynasi;
 - `ADMIN_PASSWORD` va barcha `SEED_*_PASSWORD` — kamida 12 belgi;
 - `PUBLIC_URL` — HTTPS URL;
 - `PUBLIC_DOMAIN`, `SERVER_IP`.
