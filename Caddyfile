@@ -1,14 +1,14 @@
-falconmedai.uz {
+{$PUBLIC_DOMAIN:falconmedai.uz} {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
     @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
     handle @api {
-        reverse_proxy http://app:3000
+        reverse_proxy {$APP_URL:http://app:3000}
     }
     handle @tma {
-        reverse_proxy http://app:3000
+        reverse_proxy {$APP_URL:http://app:3000}
     }
     handle {
-        reverse_proxy http://frontend:3001
+        reverse_proxy {$FRONTEND_URL:http://frontend:3001}
     }
     header {
         X-Content-Type-Options "nosniff"
@@ -19,16 +19,16 @@ falconmedai.uz {
     }
 }
 
-http://167.233.44.193 {
+http://{$SERVER_IP:167.233.44.193} {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
     @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
     handle @api {
-        reverse_proxy http://app:3000
+        reverse_proxy {$APP_URL:http://app:3000}
     }
     handle @tma {
-        reverse_proxy http://app:3000
+        reverse_proxy {$APP_URL:http://app:3000}
     }
     handle {
-        reverse_proxy http://frontend:3001
+        reverse_proxy {$FRONTEND_URL:http://frontend:3001}
     }
 }

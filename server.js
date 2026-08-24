@@ -31,6 +31,7 @@ import { checkSubscription, requireFeature, checkAiLimit, checkDoctorLimit } fro
 import { tenantRateLimit } from './backend/tenant-rate-limit.js';
 import { correlationIdMiddleware } from './middleware/correlation.js';
 import { runWithTenantDbContext } from './backend/request-tenant-context.js';
+import { validateProductionEnvironment } from './backend/production-env.js';
 import { initCache, disconnectCache } from './backend/cache.js';
 import { logger, pinoHttpMiddleware } from './backend/logger.js';
 import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } from './backend/metrics.js';
@@ -271,7 +272,16 @@ app.get('/api/health', async (req, res) => {
     res.json({ status: 'degraded', service: 'Falcon AI OS', version: '2.0.0', timestamp: new Date().toISOString(), uptime: process.uptime() });
   }
 });
-app.get('/api/health/ready', (req, res) => res.json({ ready: true, timestamp: new Date().toISOString() }));
+app.get('/api/health/ready', async (req, res) => {
+  try {
+    await qGet('SELECT 1');
+    await unsafeQuery.qGet('SELECT 1');
+    res.json({ ready: true, database: 'ok', timestamp: new Date().toISOString() });
+  } catch (error) {
+    logger.warn({ err: error }, '[HEALTH] Readiness tekshiruvi muvaffaqiyatsiz');
+    res.status(503).json({ ready: false, database: 'unavailable', timestamp: new Date().toISOString() });
+  }
+});
 app.get('/api/health/live', (req, res) => res.status(200).end('alive'));
 
 // Metrics endpoint for Prometheus (faqat super-admin)
@@ -458,6 +468,7 @@ function startServer(port) {
 
 async function main() {
   try {
+    validateProductionEnvironment();
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
       console.error('DATABASE_URL .env da topilmadi! PostgreSQL ulanishi kerak.');
@@ -473,8 +484,8 @@ async function main() {
     finalizeApp(app);
     console.log('[AUTH] Users seeded — 4 roles ready');
 
-    if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 8) {
-      console.error('[INIT] ADMIN_PASSWORD .env da kamida 8 belgi qilib sozlanishi kerak!');
+    if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12) {
+      console.error('[INIT] ADMIN_PASSWORD .env da kamida 12 belgi qilib sozlanishi kerak!');
       process.exit(1);
     }
     const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@falconai.uz';

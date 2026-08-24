@@ -25,8 +25,9 @@ services:
 
   stt:
     <<: *common
+    image: ${STT_IMAGE:-falcon-ai-os-stt:local}
     build: ./stt-service
-    ports: ["8081:8081"]
+    expose: ["8081"]
     mem_limit: 2g
     environment:
       MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
@@ -46,6 +47,7 @@ services:
 
   db-bootstrap:
     <<: *common
+    image: ${BACKEND_IMAGE:-falcon-ai-os:local}
     build: .
     restart: "no"
     command: ["sh", "-c", "node scripts/migrate.js && node scripts/provision-app-role.js"]
@@ -61,8 +63,9 @@ services:
 
   app:
     <<: *common
+    image: ${BACKEND_IMAGE:-falcon-ai-os:local}
     build: .
-    ports: ["3000:3000"]
+    expose: ["3000"]
     mem_limit: 700m
     environment:
       NODE_ENV: production
@@ -115,17 +118,19 @@ services:
 
   frontend:
     <<: *common
+    image: ${FRONTEND_IMAGE:-falcon-ai-os-frontend:local}
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://falconmedai.uz
-    ports: ["3001:3001"]
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-https://falconmedai.uz}
+    expose: ["3001"]
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://falconmedai.uz
+      NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-https://falconmedai.uz}
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   caddy:
     <<: *common
@@ -139,6 +144,14 @@ services:
       - caddy-config:/config
     environment:
       APP_URL: http://app:3000
+      FRONTEND_URL: http://frontend:3001
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-falconmedai.uz}
+      SERVER_IP: ${SERVER_IP:-167.233.44.193}
+    depends_on:
+      app:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
 
 volumes:
   postgres-data:
