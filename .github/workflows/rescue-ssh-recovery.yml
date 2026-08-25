@@ -9,38 +9,27 @@ permissions:
   contents: read
 
 jobs:
-  rollback-production:
+  diagnose-app:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - name: Restore pre-deploy compose and environment
+      - name: Read application health and logs
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 15m
+          command_timeout: 2m
           script: |
-            set -euo pipefail
+            set -eu
             cd /opt/falcon-ai-os
-
-            backup_dir="$(find /opt/falcon-ai-os/backups/deploy -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)"
-            case "$backup_dir" in
-              /opt/falcon-ai-os/backups/deploy/20*) ;;
-              *) echo "Invalid backup path"; exit 1 ;;
-            esac
-            test -s "$backup_dir/docker-compose.yml"
-            test -s "$backup_dir/.env"
-            test -s "$backup_dir/falcon_ai_os.dump"
-
-            cp -a "$backup_dir/docker-compose.yml" docker-compose.yml
-            cp -a "$backup_dir/.env" .env
-            docker compose config --quiet
-            docker compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 900
             docker compose ps --all
-
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-app-1)" = "healthy"
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-db-1)" = "healthy"
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-stt-1)" = "healthy"
-            echo "ROLLBACK_COMPLETE=1"
-            echo "RESTORED_FROM=$backup_dir"
+            echo "APP_HEALTH_BEGIN"
+            docker inspect -f '{{json .State.Health}}' falcon-ai-os-app-1
+            echo "APP_HEALTH_END"
+            echo "APP_LOG_BEGIN"
+            docker compose logs --no-color --tail=240 app
+            echo "APP_LOG_END"
+            echo "BOOTSTRAP_LOG_BEGIN"
+            docker compose logs --no-color --tail=120 db-bootstrap
+            echo "BOOTSTRAP_LOG_END"
