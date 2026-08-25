@@ -9,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  inspect-compose:
+  inspect-env:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect current compose image configuration
+      - name: Check required environment names without reading values
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -23,7 +23,11 @@ jobs:
           script: |
             set -eu
             cd /opt/falcon-ai-os
-            echo "COMPOSE_IMAGES_BEGIN"
-            docker compose config --images
-            echo "COMPOSE_IMAGES_END"
-            grep -nE '^[[:space:]]+(image|build):' docker-compose.yml || true
+            test -f .env
+            for name in POSTGRES_PASSWORD APP_DATABASE_PASSWORD JWT_SECRET INTERNAL_SECRET SEED_CEO_PASSWORD SEED_ADMIN_PASSWORD SEED_RECEPTION_PASSWORD SEED_DOCTOR_PASSWORD ADMIN_PASSWORD; do
+              if grep -qE "^$name=.+$" .env; then
+                echo "$name=present"
+              else
+                echo "$name=missing"
+              fi
+            done
