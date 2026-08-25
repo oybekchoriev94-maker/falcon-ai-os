@@ -31,6 +31,9 @@ describe('production deployment contract', () => {
     expect(workflow).toContain('Stage production compose manifest');
     expect(workflow).toContain('falcon_preflight_');
     expect(workflow).toContain('pg_dump');
+    expect(workflow).toContain('validateProductionEnvironment');
+    expect(workflow.indexOf('validateProductionEnvironment'))
+      .toBeLessThan(workflow.indexOf('install -m 0644'));
     expect(workflow).not.toContain('git merge --ff-only');
     expect(workflow).not.toContain('DOCKER_PASSWORD');
     expect(workflow).not.toContain('DOCKER_USERNAME');
