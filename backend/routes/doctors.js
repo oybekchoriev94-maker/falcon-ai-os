@@ -29,6 +29,91 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // DOCTORS ENDPOINTS
   // ============================================================
 
+  // GET /api/doctors/specializations — mavjud yo'nalishlar ro'yxati.
+  //
+  // MANBA: ai/protocols/medical-skills.js — ovozli diktant shablonlari
+  // aynan shu kalitlar bo'yicha tanlanadi. Ilgari /onboarding sahifasida
+  // ro'yxat QO'LDA yozilgan edi va u shablonlardan orqada qolgan:
+  // "reproduktolog" (klinikaning eng katta yo'nalishi, 7 shifokor)
+  // ro'yxatda yo'q edi, ya'ni yangi shifokorni to'g'ri yo'nalish bilan
+  // qo'shib bo'lmasdi. Endi bitta manba.
+  //
+  // /api/scribe/specialties ham shu ma'lumotni beradi, lekin u AI
+  // limitlari ostida (checkAiLimit) — oddiy ro'yxat uchun kvota
+  // sarflash noto'g'ri bo'lardi.
+  router.get('/doctors/specializations', authMiddleware, async (req, res) => {
+    try {
+      const { listSpecializations } = await import('../../ai/protocols/medical-skills.js');
+      // Faqat kalit va yorliq — prompt va sxema mijozga kerak emas
+      res.json({
+        success: true,
+        specializations: listSpecializations().map(({ key, label }) => ({ key, label })),
+      });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // POST /api/doctors/:id/credentials — MAVJUD shifokorga tizimga kirish
+  // huquqini berish (yoki parolini almashtirish).
+  //
+  // NEGA KERAK: shifokorlar `users` emas, `doctors` jadvali orqali kiradi
+  // va buning uchun username + password_hash shart. Migratsiya bilan
+  // qo'shilgan shifokorlarda ular bo'sh — bronlarda ko'rinadi, lekin ish
+  // stoliga kira olmaydi.
+  //
+  // NEGA register-doctor YARAMAYDI: u YANGI yozuv yaratadi. Mavjud
+  // shifokor uchun ishlatilsa dublikat paydo bo'ladi va yangi yozuvda
+  // bronlar bo'lmagani uchun shifokor BO'SH navbat ko'radi — buni
+  // sezish qiyin, chunki xato chiqmaydi.
+  router.post('/doctors/:id/credentials',
+    authMiddleware, checkRole('admin', 'ceo', 'superadmin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id || 'default';
+      const username = String(req.body?.username || '').trim().toLowerCase();
+      const password = String(req.body?.password || '');
+
+      if (!/^[a-z0-9._-]{3,50}$/.test(username)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username 3-50 belgi: kichik lotin harflari, raqam, nuqta, tire',
+        });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Parol kamida 6 belgi bo\'lishi kerak' });
+      }
+
+      // TENANT TEKSHIRUVI MAJBURIY: aks holda bir klinika administratori
+      // boshqa klinikaning shifokoriga parol qo'yib, uning ma'lumotlariga
+      // kira olardi.
+      const doc = await qGet(
+        'SELECT id, first_name, last_name, specialization FROM doctors WHERE id = $1 AND tenant_id = $2',
+        [req.params.id, tenantId]
+      );
+      if (!doc) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+
+      // username butun tizim bo'ylab unique (jadvalda ham) — oldindan
+      // aniq xato beramiz, 23505 xatosini kutmasdan
+      const taken = await qGet('SELECT id FROM doctors WHERE username = $1 AND id <> $2',
+        [username, doc.id]);
+      if (taken) {
+        return res.status(409).json({ success: false, error: 'Bu username band' });
+      }
+
+      await q('UPDATE doctors SET username = $1, password_hash = $2 WHERE id = $3 AND tenant_id = $4',
+        [username, await bcrypt.hash(password, 10), doc.id, tenantId]);
+
+      // Parol javobda QAYTARILMAYDI — uni administrator o'zi kiritdi.
+      res.json({
+        success: true,
+        doctor: {
+          id: doc.id, username,
+          name: `${doc.last_name || ''} ${doc.first_name}`.trim(),
+          specialization: doc.specialization,
+        },
+        message: 'Kirish huquqi berildi',
+      });
+    } catch (e) { safeError(res, e); }
+  });
+
   // GET /api/doctors — klinikaning shifokorlar ro'yxati (public, tenant bo'yicha)
   router.get('/doctors', optionalAuth, async (req, res) => {
     try {
@@ -38,7 +123,29 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const offset = (page - 1) * limit;
       const total = await qGet("SELECT COUNT(*) as c FROM doctors WHERE tenant_id = $1", [tenantId]);
-      const docs = await q("SELECT * FROM doctors WHERE tenant_id = $1 ORDER BY first_name LIMIT $2 OFFSET $3", [tenantId, limit, offset]);
+
+      // XAVFSIZLIK: ilgari bu yerda `SELECT *` turardi va endpoint
+      // `optionalAuth` bilan ochiq — ya'ni x-tenant-id sarlavhasini
+      // yuborgan istalgan kishi PAROL HASHLARI va FACE_DESCRIPTOR
+      // (biometrik ma'lumot) ni yuklab olardi.
+      //
+      // Endi ustunlar aniq sanaladi va ikki darajaga bo'linadi:
+      // bemorga ko'rinadigan minimum, xodimga esa ish uchun keraklisi.
+      // Parol hashi va biometrika HECH QACHON qaytarilmaydi.
+      const isStaff = ['admin', 'ceo', 'superadmin', 'receptionist', 'doctor']
+        .includes(req.user?.role);
+
+      const cols = isStaff
+        ? `id, first_name, last_name, specialty, specialization, category, phone,
+           status, reception_price, referrer_bonus_percent, balance, created_at,
+           username, (password_hash IS NOT NULL) AS has_login`
+        : `id, first_name, last_name, specialty, specialization, status`;
+
+      const docs = await q(
+        `SELECT ${cols} FROM doctors WHERE tenant_id = $1
+          ORDER BY first_name LIMIT $2 OFFSET $3`,
+        [tenantId, limit, offset]
+      );
       res.json({ success: true, total: total.c, page, limit, total_pages: Math.ceil(total.c / limit), doctors: docs });
     } catch (e) { safeError(res, e); }
   });

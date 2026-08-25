@@ -102,3 +102,17 @@ agent/attendance/data/
 agent/attendance/models/
 agent/attendance/config.json
 agent/attendance/venv/
+# Sinov fotolari — real odamlarning yuzlari (biometrik ma'lumot)
+agent/attendance/test-photos/
+
+# Python kesh — hech qachon kuzatilmasin
+__pycache__/
+*.pyc
+
+# Bemorlarning qog'oz tibbiy kartalari fotolari — MAXFIY, git'ga tushmaydi
+tibbiy karta/
+
+# Runtime yuklamalar — production'da Docker volume'da saqlanadi,
+# repo faqat .gitkeep ni kuzatadi (tracked fayllarga ta'sir qilmaydi)
+public/uploads/*
+!.gitkeep

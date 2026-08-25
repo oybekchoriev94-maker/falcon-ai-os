@@ -32,6 +32,14 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 /* ── Types ── */
 interface Step { key: string; label: string; done: boolean; count: number }
@@ -44,9 +52,22 @@ interface MeResponse {
   subscription: { plan_name: string; status: string; trial_days_left: number | null };
   onboarding: { ready: boolean; steps: Step[]; appointments: number };
 }
-interface Doctor { id: string; first_name: string; last_name?: string; specialty?: string }
+interface Doctor {
+  id: string; first_name: string; last_name?: string;
+  specialty?: string; specialization?: string;
+  username?: string | null; has_login?: boolean;
+}
 
-const SPECIALIZATIONS = [
+/**
+ * Zaxira ro'yxat — server javob bermasa ishlatiladi.
+ *
+ * ASOSIY MANBA: /api/doctors/specializations (ai/protocols/medical-skills.js).
+ * Ilgari ro'yxat FAQAT shu yerda qo'lda yozilgan edi va shablonlardan
+ * orqada qolgan: "reproduktolog" — klinikaning eng katta yo'nalishi —
+ * ro'yxatda yo'q edi, ya'ni yangi shifokorni to'g'ri yo'nalish bilan
+ * qo'shib bo'lmasdi va uning diktanti umumiy shablonga tushardi.
+ */
+const FALLBACK_SPECIALIZATIONS = [
   { key: "terapevt", label: "Terapevt" }, { key: "pediatr", label: "Pediatr" },
   { key: "ginekolog", label: "Ginekolog" }, { key: "kardiolog", label: "Kardiolog" },
   { key: "nevrolog", label: "Nevrolog" }, { key: "stomatolog", label: "Stomatolog" },
@@ -111,11 +132,50 @@ export default function OnboardingPage() {
   });
   const doctors = docData?.doctors ?? [];
 
+  // Yo'nalishlar — diktant shablonlari bilan bitta manbadan
+  const { data: specData } = useQuery({
+    queryKey: ["specializations"],
+    queryFn: async () => {
+      const res = await api.get<{ specializations: { key: string; label: string }[] }>(
+        "/api/doctors/specializations"
+      );
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const SPECIALIZATIONS = specData?.specializations?.length
+    ? specData.specializations
+    : FALLBACK_SPECIALIZATIONS;
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["tenant-me"] });
     qc.invalidateQueries({ queryKey: ["doctors"] });
     qc.invalidateQueries({ queryKey: ["services-active"] });
   };
+
+  /* Mavjud shifokorga kirish huquqi berish */
+  const [credFor, setCredFor] = useState<Doctor | null>(null);
+  const [credUser, setCredUser] = useState("");
+  const [credPass, setCredPass] = useState("");
+
+  const setCredentials = useMutation({
+    mutationFn: async () => {
+      if (!credFor) throw new Error("Shifokor tanlanmagan");
+      const res = await api.post(`/api/doctors/${credFor.id}/credentials`, {
+        username: credUser.trim().toLowerCase(), password: credPass,
+      });
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: () => {
+      toast.success("Kirish huquqi berildi", {
+        description: `${credFor?.first_name} endi tizimga kira oladi`,
+      });
+      setCredFor(null); setCredUser(""); setCredPass("");
+      refresh();
+    },
+    onError: (e: Error) => toast.error("Berib bo'lmadi", { description: e.message }),
+  });
 
   /* ── Mutations ── */
   const addDoctor = useMutation({
@@ -402,9 +462,92 @@ export default function OnboardingPage() {
               {addDoctor.isPending ? <Loader2 className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
               Shifokorni qo&apos;shish
             </Button>
+
+            {/* ── MAVJUD SHIFOKORLAR ──
+                Yuqoridagi forma YANGI yozuv yaratadi. Mavjud shifokorni
+                shu forma bilan qayta qo'shish DUBLIKAT hosil qiladi:
+                bronlar eski yozuvda qolib, shifokor bo'sh navbat ko'radi.
+                Shuning uchun kirish huquqi shu ro'yxatdan beriladi. */}
+            {doctors.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Mavjud shifokorlar</p>
+                  {doctors.some((d) => !d.has_login) && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">
+                      {doctors.filter((d) => !d.has_login).length} tasi tizimga kira olmaydi
+                    </span>
+                  )}
+                </div>
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-input divide-y">
+                  {doctors.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {`${d.last_name || ""} ${d.first_name}`.trim()}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {SPECIALIZATIONS.find((s) => s.key === d.specialization)?.label
+                            || d.specialization || "—"}
+                          {d.has_login && d.username ? ` · ${d.username}` : ""}
+                        </p>
+                      </div>
+                      <Button size="sm" variant={d.has_login ? "ghost" : "secondary"}
+                        onClick={() => {
+                          setCredFor(d);
+                          setCredUser(d.username || "");
+                          setCredPass("");
+                        }}>
+                        {d.has_login ? "Parolni almashtirish" : "Login berish"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Mavjud shifokorga login berish / parolni almashtirish */}
+      <Dialog open={!!credFor} onOpenChange={(o) => { if (!o) setCredFor(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {credFor?.has_login ? "Parolni almashtirish" : "Kirish huquqini berish"}
+            </DialogTitle>
+            <DialogDescription>
+              {`${credFor?.last_name || ""} ${credFor?.first_name || ""}`.trim()}
+              {" — shifokor shu login bilan ish stoliga kiradi."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Login *</Label>
+              <Input value={credUser} onChange={(e) => setCredUser(e.target.value)}
+                placeholder="bobokulova" autoComplete="off" />
+              <p className="text-[11px] text-muted-foreground">
+                Kichik lotin harflari, raqam, nuqta yoki tire (3–50 belgi)
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Parol *</Label>
+              {/* Ataylab ko'rinadigan: administrator parolni shifokorga
+                  aytib berishi kerak, keyin uni ko'ra olmaydi. */}
+              <Input type="text" value={credPass} onChange={(e) => setCredPass(e.target.value)}
+                placeholder="kamida 6 belgi" autoComplete="new-password" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCredFor(null)}>Bekor qilish</Button>
+            <Button
+              onClick={() => setCredentials.mutate()}
+              disabled={setCredentials.isPending || credUser.trim().length < 3 || credPass.length < 6}>
+              {setCredentials.isPending && <Loader2 className="size-4 animate-spin" />}
+              Saqlash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 2 — Schedule */}
       <motion.div variants={itemAnim}>
