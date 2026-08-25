@@ -221,6 +221,14 @@ jobs:
             trap cleanup EXIT
 
             docker pull "$BACKEND_IMAGE"
+            docker run --rm --env-file .env \
+              -e NODE_ENV=production \
+              -e DATABASE_URL=postgresql://falcon_app:validation-only@db:5432/falcon_validation \
+              -e PLATFORM_DATABASE_URL=postgresql://falcon:validation-only@db:5432/falcon_validation \
+              -e RLS_ENFORCE_APP_ROLE=true \
+              "$BACKEND_IMAGE" node --input-type=module -e \
+              'import("./backend/production-env.js").then(({ validateProductionEnvironment }) => validateProductionEnvironment())'
+
             docker compose exec -T db createdb -U falcon "$preflight_db"
             docker compose exec -T db pg_restore -U falcon -d "$preflight_db" --no-owner --no-privileges < "$backup_dir/falcon_ai_os.dump"
             postgres_password="$(docker compose exec -T db printenv POSTGRES_PASSWORD)"
