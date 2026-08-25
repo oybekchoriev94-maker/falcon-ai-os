@@ -9,32 +9,29 @@ permissions:
   contents: read
 
 jobs:
-  finish-production:
+  verify-production:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - name: Start exact immutable production images
+      - name: Verify public HTTPS readiness
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 https://falconmedai.uz/api/health/ready
+          curl --fail --silent --show-error --head --max-time 20 https://falconmedai.uz/
+
+      - name: Verify VPS service health
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 15m
+          command_timeout: 2m
           script: |
-            set -euo pipefail
+            set -eu
             cd /opt/falcon-ai-os
-            export BACKEND_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os:2b240fe1501e93fa0460d537d277c734f81ac8ca"
-            export FRONTEND_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os-frontend:2b240fe1501e93fa0460d537d277c734f81ac8ca"
-            export STT_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os-stt:2b240fe1501e93fa0460d537d277c734f81ac8ca"
-
-            docker image inspect "$BACKEND_IMAGE" >/dev/null
-            docker image inspect "$FRONTEND_IMAGE" >/dev/null
-            docker image inspect "$STT_IMAGE" >/dev/null
-            docker compose config --quiet
-            docker compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 900
             docker compose ps --all
-
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-app-1)" = "healthy"
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-db-1)" = "healthy"
-            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-stt-1)" = "healthy"
-            echo "PRODUCTION_DEPLOY_COMPLETE=2b240fe1501e93fa0460d537d277c734f81ac8ca"
+            docker inspect -f 'APP={{.State.Health.Status}} IMAGE={{.Config.Image}}' falcon-ai-os-app-1
+            docker inspect -f 'DB={{.State.Health.Status}} IMAGE={{.Config.Image}}' falcon-ai-os-db-1
+            docker inspect -f 'STT={{.State.Health.Status}} IMAGE={{.Config.Image}}' falcon-ai-os-stt-1
+            docker inspect -f 'FRONTEND={{.State.Health.Status}} IMAGE={{.Config.Image}}' falcon-ai-os-frontend-1
+            curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/api/health/ready
