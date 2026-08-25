@@ -1,6 +1,11 @@
 {
   "_izoh": "Nusxa oling: cp config.example.json config.json — keyin tahrirlang",
 
+  "display": {
+    "_izoh": "--preview oynasidagi sarlavha. Klinika kompyuterida doim ekranda turadi.",
+    "clinic_name": "Oqtosh Klinikasi"
+  },
+
   "server": {
     "url": "https://falconmedai.uz",
     "device_token": "BU_YERGA_TOKEN",

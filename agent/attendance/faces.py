@@ -19,6 +19,14 @@ import urllib.request
 import cv2
 import numpy as np
 
+# OpenCV 5.0 har model yuklashda "Targets are not supported by the new
+# graph engine" deb ogohlantiradi. Bu ONNX'ni CPU'da yurgizishga ta'sir
+# qilmaydi, lekin loglarni ifloslantiradi va haqiqiy xatoni yashiradi.
+try:
+    cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+except Exception:
+    pass
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")

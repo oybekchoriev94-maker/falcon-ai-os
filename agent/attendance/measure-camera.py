@@ -17,6 +17,7 @@ Odam kamera oldida turgan holda ishga tushiring. 10 soniya o'lchaydi.
 """
 import argparse
 import getpass
+import os
 import statistics
 import sys
 import time
@@ -64,16 +65,39 @@ def main():
         urllib3.disable_warnings()
         password = getpass.getpass(f"{args.user}@{args.nvr} paroli: ")
     else:
-        backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_V4L2
-        cap = cv2.VideoCapture(args.device, backend)
-        if not cap.isOpened():
-            cap = cv2.VideoCapture(args.device)
-        if not cap.isOpened():
-            raise SystemExit(f"Kamera {args.device} ochilmadi")
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-        for _ in range(5):
-            cap.grab()
+        # Ba'zi kameralar (masalan Rapoo) DirectShow ostida qora kadr
+        # qaytaradi, lekin Media Foundation (Windows Camera ilovasi
+        # ishlatadigan) bilan yaxshi ishlaydi. Shuning uchun bir nechta
+        # backend sinaladi — birinchi QORA BO'LMAGAN kadr beruvchisi olinadi.
+        if sys.platform.startswith("win"):
+            candidates = [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("AUTO", cv2.CAP_ANY)]
+        else:
+            candidates = [("V4L2", cv2.CAP_V4L2), ("AUTO", cv2.CAP_ANY)]
+
+        tried = []
+        for name, backend in candidates:
+            c = cv2.VideoCapture(args.device, backend)
+            if not c.isOpened():
+                c.release()
+                tried.append(f"{name}(ochilmadi)")
+                continue
+            c.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+            c.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+            for _ in range(5):
+                c.grab()
+            ok, probe = c.read()
+            if ok and probe is not None and float(probe.mean()) >= 3.0:
+                cap = c
+                print(f"Kamera {args.device}: {name} backend orqali ochildi")
+                break
+            tried.append(f"{name}(qora kadr)")
+            c.release()
+
+        if cap is None:
+            raise SystemExit(
+                f"Kamera {args.device} hech qanday backend bilan ishlamadi "
+                f"(sinaldi: {', '.join(tried) or '-'})"
+            )
         print(f"Kamera: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x"
               f"{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 
@@ -83,6 +107,8 @@ def main():
     sizes = []
     frames = 0
     with_face = 0
+    last_frame = None
+    brightness = []
     deadline = time.time() + args.seconds
 
     while time.time() < deadline:
@@ -100,6 +126,9 @@ def main():
             continue
 
         frames += 1
+        last_frame = frame.copy()
+        # O'rtacha yorqinlik — kamera qopqog'i yopiq bo'lsa ~0 chiqadi
+        brightness.append(float(frame.mean()))
         detected = engine.detect(frame)
         if len(detected):
             with_face += 1
@@ -129,10 +158,36 @@ def main():
     print("=" * 52)
     print(f"Kadrlar: {frames}   Yuz topilgan: {with_face}")
 
+    # Kamera nima ko'rganini FAYLGA saqlaymiz — muammoni ko'z bilan
+    # ko'rish eng ishonchli usul (qopqoq yopiqmi, qorong'imi, boshqa
+    # kamerami — hammasi rasmdan bilinadi).
+    saved = None
+    if last_frame is not None:
+        saved = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "data", "camera-test.jpg")
+        os.makedirs(os.path.dirname(saved), exist_ok=True)
+        cv2.imwrite(saved, last_frame)
+
+    if brightness:
+        avg_b = sum(brightness) / len(brightness)
+        print(f"O'rtacha yorqinlik: {avg_b:.0f} / 255")
+        if avg_b < 10:
+            print("  -> Rasm deyarli QORA. Kamera qopqog'i yopiq yoki")
+            print("     boshqa dastur (Teams, Zoom) kamerani band qilgan.")
+        elif avg_b < 40:
+            print("  -> Juda qorong'i. Yorug'lik qo'shing.")
+
+    if saved:
+        print(f"\nKamera ko'rgan rasm saqlandi:\n  {saved}")
+        print("Shu faylni oching — o'zingizni ko'ryapsizmi?")
+
     if not sizes:
         print("\nYUZ TOPILMADI.")
-        print("Sabablari: kamera odamga qaramagan, juda uzoq, yoki qorong'i.")
-        print("Kamerani kirish eshigi oldiga, bo'y balandligiga qo'ying.")
+        print("Rasmni ochib ko'ring:")
+        print("  - qora bo'lsa      -> kamera qopqog'i / boshqa dastur band qilgan")
+        print("  - o'zingiz yo'q    -> kamera boshqa tomonga qaragan")
+        print("  - o'zingiz bor     -> yuz juda kichik yoki qorong'i, yaqinroq keling")
+        print("  - boshqa manzara   -> boshqa kamera indeksi: --device 1")
         return
 
     avg = statistics.mean(sizes)

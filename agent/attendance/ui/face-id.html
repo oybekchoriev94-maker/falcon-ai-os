@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face ID — {{CLINIC_NAME}}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dseg7-classic@5.2.5/index.css">
+<style>
+  :root{
+    --font-body:"Archivo",system-ui,sans-serif;
+    --font-heading:"Archivo",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    min-height:100vh;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#eef1f6,#dfe6f0);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-body);
+  }
+  @keyframes fid-fade{0%,100%{opacity:.45}50%{opacity:1}}
+  @keyframes fid-glow{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.9;transform:scale(1.05)}}
+  @keyframes fid-pop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
+  @keyframes fid-in{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}}
+  @keyframes fid-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-20px)}}
+  @keyframes fid-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-24px,26px)}}
+  @keyframes fid-scanline{0%{transform:translate(-50%,-95px);opacity:0}10%{opacity:1}50%{transform:translate(-50%,95px);opacity:1}90%{opacity:1}100%{transform:translate(-50%,-95px);opacity:0}}
+  @keyframes fid-name-in{0%{opacity:0;transform:translateY(10px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}
+
+  .blob1{position:absolute;top:-120px;left:-100px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,#4d8bff 0%,transparent 72%);filter:blur(30px);opacity:.35;animation:fid-drift1 12s ease-in-out infinite;z-index:0}
+  .blob2{position:absolute;bottom:-140px;right:-110px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,#22c485 0%,transparent 72%);filter:blur(30px);opacity:.3;animation:fid-drift2 14s ease-in-out infinite;z-index:0}
+
+  .card{position:relative;z-index:1;width:100%;max-width:420px;margin:24px;background:radial-gradient(120% 100% at 50% 0%,#1b2740,#0c1220 70%);border-radius:32px;box-shadow:0 30px 70px rgba(10,20,40,.35);display:flex;flex-direction:column;min-height:min(760px,92vh);overflow:hidden}
+
+  .topbar{flex:none;display:flex;align-items:center;justify-content:space-between;padding:22px 22px 0}
+  .topbar .clock{font:600 13px var(--font-body);color:rgba(255,255,255,.55)}
+  .topbar .clinic{font:600 11px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
+
+  .header{flex:none;display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 22px 4px}
+  .header .icon{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center}
+  .header .title{font-family:var(--font-heading);font-weight:700;font-size:22px;color:#fff}
+
+  .scan-area{flex:none;position:relative;height:280px;margin-top:6px}
+  .scan-area .face-wrap{position:absolute;left:50%;top:50%;width:88%;height:250px;transform:translate(-50%,-50%);border-radius:20px;overflow:hidden;background:#0a0e18;filter:grayscale(1) contrast(1.1)}
+  .scan-area .face-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+  .scan-area .glow{position:absolute;left:50%;top:50%;width:92%;height:270px;transform:translate(-50%,-50%);border-radius:24px}
+  .scan-area .brackets{position:absolute;left:50%;top:50%;width:92%;height:270px;transform:translate(-50%,-50%)}
+  .scan-area .scanline{position:absolute;left:50%;top:50%;width:150px;height:3px;border-radius:3px;background:linear-gradient(90deg,transparent,#4d8bff,transparent);box-shadow:0 0 10px 2px rgba(77,139,255,.7);animation:fid-scanline 2.2s ease-in-out infinite}
+  .scan-area .badge{position:absolute;left:50%;top:calc(50% + 46px);transform:translate(-50%,0);width:44px;height:44px;border-radius:50%;border:3px solid #0c1220;display:flex;align-items:center;justify-content:center;animation:fid-pop .35s ease-out}
+  .chip{position:absolute;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:8px 12px}
+  .chip .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .chip span.txt{font:600 11.5px var(--font-body);color:#fff;white-space:nowrap}
+  .chip-tr{top:18px;right:14px}
+  .chip-bl{bottom:14px;left:8px}
+
+  .wave{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:2px}
+
+  .content{flex:1;padding:14px 20px 24px;display:flex;flex-direction:column;gap:12px;min-height:0}
+
+  .clock-card{padding:10px 6px 14px}
+  .clock-card .inner{position:relative;background:#0a0d12;border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:14px 16px 16px;box-shadow:0 10px 24px rgba(0,0,0,.4)}
+  .clock-card .ampm{position:absolute;left:16px;top:52px;font:700 13px var(--font-body);color:#2dd4bf;text-shadow:0 0 6px rgba(45,212,191,.7)}
+  .clock-card .week{display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .clock-card .week span{font:700 11px var(--font-body);letter-spacing:.06em;color:rgba(45,212,191,.35)}
+  .clock-card .week span.on{color:#2dd4bf;text-shadow:0 0 8px rgba(45,212,191,.8)}
+  .clock-card .digits{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding-top:12px}
+  .clock-card .hm{font-family:'DSEG7 Classic',monospace;font-weight:400;font-size:58px;line-height:1;letter-spacing:1px;color:#2dd4bf;text-shadow:0 0 14px rgba(45,212,191,.85),0 0 3px rgba(45,212,191,.9)}
+  .clock-card .ss{font-family:'DSEG7 Classic',monospace;font-weight:400;font-size:22px;color:rgba(45,212,191,.6);text-shadow:0 0 6px rgba(45,212,191,.6);align-self:flex-start;margin-top:6px}
+
+  .info-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;animation:fid-in .25s ease-out}
+  .info-card .row{display:flex;align-items:center;gap:12px}
+  .info-card .avatar{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#4d8bff,#22c485);flex:none}
+  .info-card .who{flex:1;display:flex;flex-direction:column;gap:2px;animation:fid-name-in .5s cubic-bezier(.2,.8,.2,1) .15s both}
+  .info-card .who .name{font:700 17px var(--font-heading);color:#fff}
+  .info-card .who .sub{font:500 12px var(--font-body);color:rgba(255,255,255,.5)}
+  .info-card .ok-badge{font:700 10.5px var(--font-body);letter-spacing:.04em;text-transform:uppercase;color:#0c1220;background:#22c485;border-radius:999px;padding:5px 10px;flex:none}
+  .info-card .hr{height:1px;background:rgba(255,255,255,.1)}
+  .info-card .meta{display:flex;justify-content:space-between}
+  .info-card .meta span{font:500 12px var(--font-body);color:rgba(255,255,255,.55)}
+  .info-card .meta b{color:#fff}
+
+  .fail-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;animation:fid-in .25s ease-out}
+  .fail-card .top{display:flex;align-items:center;justify-content:space-between}
+  .fail-card .top .t{font:700 15px var(--font-heading);color:#fff}
+  .fail-card .top .d{font:600 11px var(--font-body);color:rgba(255,255,255,.5)}
+  .fail-card p{margin:0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.6)}
+
+  .spacer{flex:1}
+  .footer-hint{text-align:center;font:600 11px var(--font-body);color:rgba(255,255,255,.28);letter-spacing:.04em}
+
+  [data-state]{display:none}
+  [data-state].active{display:block}
+  .scan-area[data-state]{display:none}
+  .scan-area[data-state].active{display:block}
+</style>
+</head>
+<body>
+
+<div class="blob1"></div>
+<div class="blob2"></div>
+
+<div class="card">
+  <div class="topbar">
+    <span class="clock" id="topClock">--:--</span>
+    <span class="clinic">{{CLINIC_NAME}}</span>
+  </div>
+
+  <div class="header">
+    <div class="icon">
+      <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1V13M1 7H13" stroke="#4d8bff" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </div>
+    <span class="title">Face ID</span>
+  </div>
+
+  <!-- ── SKANERLANMOQDA ── -->
+  <div class="scan-area active" data-state="scanning">
+    <div class="face-wrap"><img id="faceImgScanning" alt=""></div>
+    <div class="glow" style="background:radial-gradient(circle,rgba(77,139,255,.35),transparent 70%);animation:fid-glow 2.4s ease-in-out infinite"></div>
+    <svg class="brackets" width="190" height="190" viewBox="0 0 160 160" style="animation:fid-fade 1.8s ease-in-out infinite">
+      <path d="M18 46 L18 18 L46 18" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M114 18 L142 18 L142 46" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M18 114 L18 142 L46 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M142 114 L142 142 L114 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="scanline"></div>
+    <div class="chip chip-tr"><span class="dot" style="background:#4d8bff;box-shadow:0 0 8px #4d8bff"></span><span class="txt">Yorug'lik — <span id="scLight">—</span></span></div>
+    <div class="chip chip-bl"><span class="dot" style="background:#22c485;box-shadow:0 0 8px #22c485"></span><span class="txt">Yuz o'lchami — <span id="scFacePx">—</span></span></div>
+  </div>
+
+  <!-- ── TANILDI ── -->
+  <div class="scan-area" data-state="success">
+    <div class="face-wrap"><img id="faceImgSuccess" alt=""></div>
+    <div class="glow" style="background:radial-gradient(circle,rgba(34,196,133,.35),transparent 70%)"></div>
+    <svg class="brackets" width="190" height="190" viewBox="0 0 160 160">
+      <path d="M18 46 L18 18 L46 18" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M114 18 L142 18 L142 46" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M18 114 L18 142 L46 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M142 114 L142 142 L114 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="badge" style="background:#22c485;box-shadow:0 0 18px rgba(34,196,133,.6)">
+      <svg width="18" height="14" viewBox="0 0 24 18"><path d="M2 9 L9 16 L22 2" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="chip chip-tr"><span class="dot" style="background:#22c485;box-shadow:0 0 8px #22c485"></span><span class="txt">Ishonch — <span id="suScore">—</span>%</span></div>
+    <div class="chip chip-bl"><span class="dot" style="background:#4d8bff;box-shadow:0 0 8px #4d8bff"></span><span class="txt">Javob vaqti — <span id="suResp">—</span>ms</span></div>
+  </div>
+
+  <!-- ── TANILMADI ── -->
+  <div class="scan-area" data-state="failed">
+    <div class="face-wrap" style="opacity:.85"><img id="faceImgFailed" alt=""></div>
+    <div class="glow" style="background:radial-gradient(circle,rgba(120,140,180,.28),transparent 70%)"></div>
+    <svg class="brackets" width="190" height="190" viewBox="0 0 160 160" style="opacity:.6">
+      <path d="M18 46 L18 18 L46 18" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M114 18 L142 18 L142 46" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M18 114 L18 142 L46 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+      <path d="M142 114 L142 142 L114 142" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="badge" style="background:#3b4a6b;box-shadow:0 0 18px rgba(59,74,107,.6)">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M4 4 L20 20 M20 4 L4 20" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="chip chip-tr"><span class="dot" style="background:#9db3d9"></span><span class="txt">Yorug'lik — <span id="faLight">—</span></span></div>
+    <div class="chip chip-bl"><span class="dot" style="background:#9db3d9"></span><span class="txt">Eng yaqin — <span id="faBest">—</span>%</span></div>
+  </div>
+
+  <div class="wave">
+    <svg width="140" height="24" viewBox="0 0 140 24"><path d="M4 4 Q70 26 136 4" stroke="rgba(255,255,255,.18)" stroke-width="1.5" fill="none"/></svg>
+  </div>
+
+  <div class="content">
+
+    <div data-state="scanning" class="active">
+      <div class="clock-card">
+        <div class="inner">
+          <span class="ampm" id="ampm">--</span>
+          <div class="week" id="week">
+            <span data-d="0">YAK</span><span data-d="1">DUSH</span><span data-d="2">SESH</span>
+            <span data-d="3">CHOR</span><span data-d="4">PAY</span><span data-d="5">JUM</span><span data-d="6">SHAN</span>
+          </div>
+          <div class="digits">
+            <span class="hm" id="hm">--:--</span>
+            <span class="ss" id="ss">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div data-state="success">
+      <div class="info-card">
+        <div class="row">
+          <div class="avatar"></div>
+          <div class="who">
+            <span class="name" id="suName">—</span>
+            <span class="sub">Xodim &middot; <span id="suVisitKind">—</span> tashrif</span>
+          </div>
+          <span class="ok-badge">Tasdiqlangan</span>
+        </div>
+        <div class="hr"></div>
+        <div class="meta">
+          <span>&#9679; Holat <b>Keldi</b></span>
+          <span>&#9679; Vaqt <b id="suTime">—</b></span>
+        </div>
+      </div>
+    </div>
+
+    <div data-state="failed">
+      <div class="fail-card">
+        <div class="top">
+          <span class="t">Yuz tanilmadi</span>
+          <span class="d" id="faDur">—</span>
+        </div>
+        <p>Yorug'likni yaxshilang, kamerani to'g'ridan qarating. Agar siz ro'yxatdan o'tmagan bo'lsangiz, registraturaga murojaat qiling.</p>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="footer-hint">Xodimlar davomati &middot; avtomatik yuz tanish</div>
+  </div>
+</div>
+
+<script>
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  function tickClock(){
+    const d = new Date();
+    document.getElementById('topClock').textContent = pad2(d.getHours())+':'+pad2(d.getMinutes());
+    document.getElementById('hm').textContent = pad2(d.getHours())+':'+pad2(d.getMinutes());
+    document.getElementById('ss').textContent = pad2(d.getSeconds());
+    document.getElementById('ampm').textContent = d.getHours() < 12 ? 'AM' : 'PM';
+    document.querySelectorAll('#week span').forEach(function(el){
+      el.classList.toggle('on', Number(el.dataset.d) === d.getDay());
+    });
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  let lastState = null;
+  function applyState(s){
+    if (s === lastState) return;
+    lastState = s;
+    document.querySelectorAll('[data-state]').forEach(function(el){
+      el.classList.toggle('active', el.dataset.state === s);
+    });
+  }
+
+  async function pollState(){
+    try{
+      const res = await fetch('/state.json', { cache: 'no-store' });
+      const d = await res.json();
+      applyState(d.fid_state);
+
+      if (d.fid_state === 'scanning'){
+        document.getElementById('scLight').textContent = d.light_label;
+        document.getElementById('scFacePx').textContent = d.face_px ? (d.face_px + 'px') : 'aniqlanmoqda';
+      } else if (d.fid_state === 'success'){
+        document.getElementById('suScore').textContent = d.score_pct;
+        document.getElementById('suResp').textContent = d.resp_ms;
+        document.getElementById('suName').textContent = d.name || '—';
+        document.getElementById('suVisitKind').textContent = d.visit_kind || '—';
+        document.getElementById('suTime').textContent = d.event_time || '—';
+      } else if (d.fid_state === 'failed'){
+        document.getElementById('faLight').textContent = d.light_label;
+        document.getElementById('faBest').textContent = d.best_unmatched_pct;
+        document.getElementById('faDur').textContent = d.unmatched_sec + 's';
+      }
+    } catch(e) { /* agent vaqtincha javob bermayapti — oxirgi holat ekranda qoladi */ }
+    setTimeout(pollState, 400);
+  }
+  pollState();
+
+  setInterval(function(){
+    const src = '/frame.jpg?t=' + Date.now();
+    ['faceImgScanning','faceImgSuccess','faceImgFailed'].forEach(function(id){
+      document.getElementById(id).src = src;
+    });
+  }, 250);
+</script>
+
+</body>
+</html>
