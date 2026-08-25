@@ -9,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  repair-production-env:
+  finish-production:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Rotate weak seed secrets and finish deploy
+      - name: Start exact immutable production images
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -23,27 +23,13 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/falcon-ai-os
-            test -f .env
+            export BACKEND_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os:2b240fe1501e93fa0460d537d277c734f81ac8ca"
+            export FRONTEND_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os-frontend:2b240fe1501e93fa0460d537d277c734f81ac8ca"
+            export STT_IMAGE="ghcr.io/oybekchoriev94-maker/falcon-ai-os-stt:2b240fe1501e93fa0460d537d277c734f81ac8ca"
 
-            stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-            install -d -m 0700 backups/deploy
-            cp -a .env "backups/deploy/env-before-seed-rotation-$stamp"
-
-            set_secret() {
-              name="$1"
-              value="$(openssl rand -hex 24)"
-              if grep -qE "^$name=" .env; then
-                sed -i "s|^$name=.*|$name=$value|" .env
-              else
-                printf '%s=%s\n' "$name" "$value" >> .env
-              fi
-            }
-
-            set_secret SEED_CEO_PASSWORD
-            set_secret SEED_ADMIN_PASSWORD
-            set_secret SEED_DOCTOR_PASSWORD
-            chmod 0600 .env
-
+            docker image inspect "$BACKEND_IMAGE" >/dev/null
+            docker image inspect "$FRONTEND_IMAGE" >/dev/null
+            docker image inspect "$STT_IMAGE" >/dev/null
             docker compose config --quiet
             docker compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 900
             docker compose ps --all
@@ -51,4 +37,4 @@ jobs:
             test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-app-1)" = "healthy"
             test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-db-1)" = "healthy"
             test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-stt-1)" = "healthy"
-            echo "PRODUCTION_RECOVERY_COMPLETE=1"
+            echo "PRODUCTION_DEPLOY_COMPLETE=2b240fe1501e93fa0460d537d277c734f81ac8ca"
