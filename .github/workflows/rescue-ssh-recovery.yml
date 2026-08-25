@@ -9,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  verify-normal-boot:
+  inspect-compose:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify normal OS SSH and deployment prerequisites
+      - name: Inspect current compose image configuration
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -22,16 +22,8 @@ jobs:
           command_timeout: 2m
           script: |
             set -eu
-            test "$(hostname)" != "rescue"
-            echo "NORMAL_BOOT=1"
-            hostname
-            uname -a
-            test -d /opt/falcon-ai-os
-            test -f /opt/falcon-ai-os/docker-compose.yml
-            command -v git
-            command -v docker
             cd /opt/falcon-ai-os
-            git status --short --branch
-            docker compose ps
-            df -h /
-            free -m
+            echo "COMPOSE_IMAGES_BEGIN"
+            docker compose config --images
+            echo "COMPOSE_IMAGES_END"
+            grep -nE '^[[:space:]]+(image|build):' docker-compose.yml || true
