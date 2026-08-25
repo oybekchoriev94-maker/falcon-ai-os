@@ -49,6 +49,16 @@ export function validateProductionEnvironment(env = process.env) {
     errors.push('RLS_ENFORCE_APP_ROLE production muhitida true bo\'lishi kerak');
   }
 
+  if (!['true', 'false'].includes(String(env.EDGE_INGEST_ENABLED || 'false'))) {
+    errors.push('EDGE_INGEST_ENABLED true yoki false bo\'lishi kerak');
+  }
+  if (
+    env.EDGE_INGEST_ENABLED === 'true'
+    && !/^[a-f0-9]{64}$/i.test(String(env.EDGE_KEY_ENCRYPTION_KEY || ''))
+  ) {
+    errors.push('EDGE_KEY_ENCRYPTION_KEY Edge yoqilganda 32-byte hex secret bo\'lishi kerak');
+  }
+
   const refreshWindowDays = Number(env.JWT_REFRESH_WINDOW_DAYS || 7);
   if (!Number.isInteger(refreshWindowDays) || refreshWindowDays < 1 || refreshWindowDays > 30) {
     errors.push('JWT_REFRESH_WINDOW_DAYS 1 dan 30 gacha butun son bo\'lishi kerak');

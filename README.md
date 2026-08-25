@@ -32,6 +32,7 @@
 | Modul | Tavsif |
 |-------|--------|
 | **Face ID** 🫵 | Yuz orqali identifikatsiya + liveness detection + davomat |
+| **Smart NVR Edge** 🎥 | Lokal kamera tahlili, HMAC event sync, replay himoyasi va tenant izolatsiyasi |
 | **AI Scribe** 🎙️ | Shifokor diktantini → tashxis, ICD-10, dori, vital signallar |
 | **AI Receptionist** 🤖 | 24/7 ovozli operator: grafik tekshirish, band qilish |
 | **Smart Inventory** 📦 | Ombor, batch (FEFO), normativlar, kam qoldiq xavfi |
@@ -45,6 +46,9 @@
 ---
 
 ## 🏗 Arxitektura
+
+Edge/NVR control-plane'ni productionga chiqarish va imzo protokoli:
+[docs/edge-vision-integration.md](docs/edge-vision-integration.md).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

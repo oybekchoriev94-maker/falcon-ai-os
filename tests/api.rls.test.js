@@ -112,6 +112,28 @@ describe('PostgreSQL tenant RLS', () => {
     expect(result.rows[0]).toEqual({ rls_enabled: true, policy_exists: true });
   });
 
+  it('enables tenant RLS on every Edge control-plane table', async () => {
+    const result = await ownerPool.query(`
+      SELECT c.relname AS table_name,
+             c.relrowsecurity AS rls_enabled,
+             EXISTS (
+               SELECT 1 FROM pg_policy p
+               WHERE p.polrelid = c.oid AND p.polname = 'falcon_tenant_isolation'
+             ) AS policy_exists
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = ANY($1::text[])
+      ORDER BY c.relname
+    `, [['edge_nodes', 'edge_nonces', 'vision_events']]);
+
+    expect(result.rows).toEqual([
+      { table_name: 'edge_nodes', rls_enabled: true, policy_exists: true },
+      { table_name: 'edge_nonces', rls_enabled: true, policy_exists: true },
+      { table_name: 'vision_events', rls_enabled: true, policy_exists: true },
+    ]);
+  });
+
   it('uses a non-owner application role when configured', async () => {
     if (!process.env.RLS_ENFORCE_APP_ROLE) return;
     const applicationPool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });

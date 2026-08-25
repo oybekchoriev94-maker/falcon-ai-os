@@ -25,6 +25,8 @@ async function initializeTestApp() {
   process.env.NODE_ENV = 'test';
   process.env.JWT_SECRET ||= randomBytes(32).toString('hex');
   process.env.INTERNAL_SECRET ||= randomBytes(32).toString('hex');
+  process.env.EDGE_INGEST_ENABLED = 'true';
+  process.env.EDGE_KEY_ENCRYPTION_KEY ||= randomBytes(32).toString('hex');
   process.env.ADMIN_PASSWORD ||= randomBytes(24).toString('base64url');
   process.env.SEED_ADMIN_PASSWORD ||= randomBytes(24).toString('base64url');
   process.env.SEED_CEO_PASSWORD ||= randomBytes(24).toString('base64url');
