@@ -1,0 +1,28 @@
+name: Rescue SSH recovery
+
+on:
+  push:
+    branches: [ops/rescue-ssh-recovery]
+    paths: [.github/workflows/rescue-ssh-recovery.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-rescue-disk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect rescue disks (read-only)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            echo "RESCUE_HOST=$(hostname)"
+            uname -a
+            lsblk -o NAME,PATH,TYPE,FSTYPE,SIZE,MOUNTPOINTS
+            findmnt -rno SOURCE,FSTYPE,OPTIONS /
