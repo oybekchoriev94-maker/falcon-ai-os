@@ -146,12 +146,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+
   deploy:
     needs: docker
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+    env:
+      STAGE_DIR: /tmp/falcon-ai-os-deploy-${{ github.run_id }}
+      DEPLOY_RUN_ID: ${{ github.run_id }}
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage production compose manifest
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: docker-compose.yml
+          target: ${{ env.STAGE_DIR }}
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -159,25 +177,76 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}
           IMAGE_TAG: ${{ github.sha }}
+          STAGE_DIR: ${{ env.STAGE_DIR }}
+          DEPLOY_RUN_ID: ${{ env.DEPLOY_RUN_ID }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 20m
-          envs: GHCR_USERNAME,GHCR_TOKEN,IMAGE_NAMESPACE,IMAGE_TAG
+          envs: GHCR_USERNAME,GHCR_TOKEN,IMAGE_NAMESPACE,IMAGE_TAG,STAGE_DIR,DEPLOY_RUN_ID
           script: |
             set -euo pipefail
             cd /opt/falcon-ai-os
-            git fetch origin main
-            git switch main
-            git merge --ff-only origin/main
+            case "$STAGE_DIR" in
+              /tmp/falcon-ai-os-deploy-[0-9]*) ;;
+              *) echo "Invalid staging path"; exit 1 ;;
+            esac
+            test -f "$STAGE_DIR/docker-compose.yml"
+            test -f .env
+            test "$(df --output=avail -B1 / | tail -1)" -gt 2147483648
+
             export BACKEND_IMAGE="${IMAGE_NAMESPACE}/falcon-ai-os:${IMAGE_TAG}"
             export FRONTEND_IMAGE="${IMAGE_NAMESPACE}/falcon-ai-os-frontend:${IMAGE_TAG}"
             export STT_IMAGE="${IMAGE_NAMESPACE}/falcon-ai-os-stt:${IMAGE_TAG}"
+
+            stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            backup_dir="/opt/falcon-ai-os/backups/deploy/$stamp"
+            install -d -m 0700 "$backup_dir"
+            cp -a docker-compose.yml "$backup_dir/docker-compose.yml"
+            cp -a .env "$backup_dir/.env"
+            docker compose exec -T db pg_dump -U falcon -d falcon_ai_os -Fc > "$backup_dir/falcon_ai_os.dump"
+            test -s "$backup_dir/falcon_ai_os.dump"
+            chmod 0600 "$backup_dir/falcon_ai_os.dump"
+
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-            docker compose pull app frontend stt db caddy
+            preflight_db="falcon_preflight_${DEPLOY_RUN_ID}"
+            cleanup() {
+              if [ -n "${preflight_db:-}" ]; then
+                docker compose exec -T db dropdb -U falcon --if-exists "$preflight_db" >/dev/null 2>&1 || true
+              fi
+              docker logout ghcr.io >/dev/null 2>&1 || true
+              rm -rf "$STAGE_DIR"
+            }
+            trap cleanup EXIT
+
+            docker pull "$BACKEND_IMAGE"
+            docker compose exec -T db createdb -U falcon "$preflight_db"
+            docker compose exec -T db pg_restore -U falcon -d "$preflight_db" --no-owner --no-privileges < "$backup_dir/falcon_ai_os.dump"
+            postgres_password="$(docker compose exec -T db printenv POSTGRES_PASSWORD)"
+            network_name="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' falcon-ai-os-db-1)"
+            docker run --rm --network "$network_name" \
+              -e NODE_ENV=production \
+              -e DB_NAME="$preflight_db" \
+              -e DB_PASSWORD="$postgres_password" \
+              "$BACKEND_IMAGE" sh -ceu \
+              'encoded_password="$(node -p "encodeURIComponent(process.env.DB_PASSWORD)")"; export MIGRATION_DATABASE_URL="postgresql://falcon:${encoded_password}@db:5432/${DB_NAME}"; export DATABASE_URL="$MIGRATION_DATABASE_URL"; node scripts/migrate.js'
+            docker compose exec -T db dropdb -U falcon "$preflight_db"
+            preflight_db=""
+
+            if ! grep -qE '^APP_DATABASE_PASSWORD=.+$' .env; then
+              umask 077
+              printf '\nAPP_DATABASE_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> .env
+            fi
+            chmod 0600 .env
+            install -m 0644 "$STAGE_DIR/docker-compose.yml" docker-compose.yml
+            docker compose config --quiet
+
+            docker compose pull app db-bootstrap frontend stt db caddy
             docker compose up -d --no-build --force-recreate --remove-orphans --wait --wait-timeout 900
-            docker compose ps
-            docker system prune -f
+            docker compose ps --all
+            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-app-1)" = "healthy"
+            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-db-1)" = "healthy"
+            test "$(docker inspect -f '{{.State.Health.Status}}' falcon-ai-os-stt-1)" = "healthy"
             echo "Deploy complete: ${IMAGE_TAG} $(date)"
+            echo "Backup: $backup_dir"

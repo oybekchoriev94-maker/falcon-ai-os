@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import knex from 'knex';
 import knexConfig from '../knexfile.js';
+import { resolveMigrationOptions } from './migration-compat.js';
 
 const env = process.env.NODE_ENV || 'development';
 const config = knexConfig[env];
@@ -15,7 +16,8 @@ const db = knex(config);
 async function migrate() {
   try {
     console.log(`[MIGRATE] Running migrations (${env})...`);
-    const [batch, migrations] = await db.migrate.latest();
+    const migrationOptions = await resolveMigrationOptions(db, config.migrations);
+    const [batch, migrations] = await db.migrate.latest(migrationOptions);
     if (migrations.length === 0) {
       console.log('[MIGRATE] All migrations already applied');
     } else {
