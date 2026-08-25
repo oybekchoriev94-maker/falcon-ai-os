@@ -41,6 +41,8 @@ jobs:
       RLS_ENFORCE_APP_ROLE: "true"
       JWT_SECRET: ci-jwt-secret-32-chars-test-only-123456
       INTERNAL_SECRET: ci-internal-secret-32-chars-test-123456
+      EDGE_INGEST_ENABLED: "true"
+      EDGE_KEY_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       ADMIN_PASSWORD: TestAdmin123
       SEED_ADMIN_PASSWORD: TestAdmin123
       SEED_CEO_PASSWORD: ceo-change-me-now

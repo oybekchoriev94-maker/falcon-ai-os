@@ -12,7 +12,7 @@ export function auditLog(poolOrGetter) {
           action: `${req.method} ${req.path}`,
           resource: req.originalUrl,
           details: JSON.stringify({
-            body: sanitizeBody(req.body),
+            body: req.auditSummary || sanitizeBody(req.body),
             status: res.statusCode,
           }),
           ip_address: req.ip || req.headers['x-forwarded-for'],
@@ -41,5 +41,7 @@ function sanitizeBody(body) {
   delete sanitized.password_hash;
   delete sanitized.face_descriptor;
   delete sanitized.token;
+  delete sanitized.signing_key;
+  delete sanitized.signing_secret;
   return sanitized;
 }

@@ -58,6 +58,7 @@ import adminRoutes from './backend/routes/admin.js';
 import scribeRoutes from './backend/routes/scribe.js';
 import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
+import { createEdgeAdminRoutes, createEdgeIngestRoutes } from './backend/routes/edge.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -113,6 +114,12 @@ app.use(cors({
     ? ['https://t.me', 'https://web.telegram.org', process.env.PUBLIC_URL, process.env.API_URL].filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'https://t.me', 'https://web.telegram.org'],
   credentials: true
+}));
+app.use('/api/edge/v1', express.json({
+  limit: '1mb',
+  verify: (req, _res, buffer) => {
+    req.rawBody = Buffer.from(buffer);
+  },
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(metricsMiddleware);
@@ -304,6 +311,14 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
 
   targetApp.locals.pool = pool;
   if (seedUsers) await seedDefaultUsers(pool);
+
+  targetApp.use('/api/edge/v1', createEdgeIngestRoutes(pool, getPlatformPool()));
+  targetApp.use(
+    `${API_PREFIX}/edge`,
+    authMiddleware,
+    checkRole('superadmin', 'ceo', 'admin'),
+    createEdgeAdminRoutes(pool)
+  );
 
   targetApp.use(`${API_PREFIX}/auth`, authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
   targetApp.use('/api/auth', authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));

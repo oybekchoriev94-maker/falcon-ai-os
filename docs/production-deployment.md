@@ -31,6 +31,17 @@ qiymatlar haqiqiy, noyob secretlar bilan almashtiriladi:
 - `PUBLIC_URL` — HTTPS URL;
 - `PUBLIC_DOMAIN`, `SERVER_IP`.
 
+Edge/NVR control-plane dastlab o'chiq turadi. Faollashtirishdan oldin kalitni
+VPS'ning `.env` fayliga yozing; kalitni Git yoki loglarga chiqarmang:
+
+```bash
+openssl rand -hex 32
+```
+
+Natijani `EDGE_KEY_ENCRYPTION_KEY` ga saqlang va shundan keyingina
+`EDGE_INGEST_ENABLED=true` qiling. Kalit bo'lmasa modul `503 EDGE_DISABLED`
+qaytaradi, platformaning qolgan funksiyalari ishlashda davom etadi.
+
 Payment, SMTP, Telegram va AI provider qiymatlari faqat tegishli funksiya
 yoqilganda talab qilinadi.
 

@@ -24,6 +24,7 @@ export const TENANT_SCOPED_TABLES = new Set([
   'telegram_users', 'wards', 'beds', 'admissions', 'daily_notes', 'prescriptions',
   'inpatient_services', 'discharges', 'usage_metering', 'subscriptions',
   'b2b_contracts', 'idempotency_keys', 'clinic_services', 'audit_logs',
+  'edge_nodes', 'edge_nonces', 'vision_events',
 ]);
 
 const TABLE_RE = /\b(?:from|join|into|update)\s+([a-z_][a-z0-9_]*)(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/gi;
