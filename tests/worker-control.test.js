@@ -10,6 +10,8 @@ import {
   evaluateShift,
   buildDailyReport,
   detectZoneAlerts,
+  buildZonePresence,
+  detectPresenceAlerts,
 } from '../backend/services/worker-control.js';
 
 const local = (y, mo, d, h, mi = 0) => new Date(y, mo - 1, d, h, mi).toISOString();
@@ -220,5 +222,84 @@ describe('detectZoneAlerts — zona signallari', () => {
   it('signal: qoidasiz zona va bo\'sh ro\'yxatlar xavfsiz', () => {
     expect(detectZoneAlerts([], rules)).toEqual([]);
     expect(detectZoneAlerts([{ zone_id: 'boshqa', occurred_at: local(2026, 8, 26, 9, 0) }], [])).toEqual([]);
+  });
+});
+
+describe('buildZonePresence — zona faolligi', () => {
+  it('xodim+zona bo\'yicha guruhlaydi: birinchi/oxirgi/sanoq/span', () => {
+    const presence = buildZonePresence([
+      { zone_id: 'qabulxona', subject_ref: 'staff:aliyev-vali', occurred_at: local(2026, 8, 26, 9, 0) },
+      { zone_id: 'qabulxona', subject_ref: 'staff:aliyev-vali', occurred_at: local(2026, 8, 26, 11, 30) },
+      { zone_id: 'qabulxona', subject_ref: 'staff:aliyev-vali', occurred_at: local(2026, 8, 26, 10, 0) },
+    ]);
+    expect(presence).toHaveLength(1);
+    expect(presence[0]).toMatchObject({
+      subject_ref: 'staff:aliyev-vali', zone_id: 'qabulxona',
+      count: 3, span_minutes: 150,
+    });
+    expect(presence[0].first_seen).toBe(local(2026, 8, 26, 9, 0));
+    expect(presence[0].last_seen).toBe(local(2026, 8, 26, 11, 30));
+  });
+
+  it('turli xodim va zonalar alohida hisoblanadi', () => {
+    const presence = buildZonePresence([
+      { zone_id: 'qabulxona', subject_ref: 'staff:aliyev-vali', occurred_at: local(2026, 8, 26, 9, 0) },
+      { zone_id: 'ombor', subject_ref: 'staff:aliyev-vali', occurred_at: local(2026, 8, 26, 9, 5) },
+      { zone_id: 'qabulxona', subject_ref: 'staff:karimova-nilufar', occurred_at: local(2026, 8, 26, 9, 10) },
+    ]);
+    expect(presence).toHaveLength(3);
+    expect(presence.every((p) => p.count === 1 && p.span_minutes === 0)).toBe(true);
+  });
+
+  it('xodim bo\'lmagan hodisalar va buzilgan vaqtlar tashlanadi', () => {
+    const presence = buildZonePresence([
+      { zone_id: 'qabulxona', subject_ref: 'patient:123', occurred_at: local(2026, 8, 26, 9, 0) },
+      { zone_id: 'qabulxona', subject_ref: null, occurred_at: local(2026, 8, 26, 9, 0) },
+      { zone_id: 'qabulxona', subject_ref: 'staff:aliyev-vali', occurred_at: 'not-a-date' },
+    ]);
+    expect(presence).toEqual([]);
+  });
+
+  it('bo\'sh ro\'yxat bo\'sh natija qaytaradi', () => {
+    expect(buildZonePresence()).toEqual([]);
+    expect(buildZonePresence([])).toEqual([]);
+  });
+});
+
+describe('detectPresenceAlerts — zonada ko\'rinmagan xodim', () => {
+  const presenceRule = { zone_id: 'qabulxona', rule_type: 'presence_required', severity: 'warning' };
+
+  it('smenasi bor xodim zonada umuman ko\'rinmasa — signal', () => {
+    const alerts = detectPresenceAlerts([baseShift], [presenceRule], []);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      zone_id: 'qabulxona', rule_type: 'presence_required',
+      severity: 'warning', subject_ref: 'staff:aliyev-vali', staff_name: 'Aliyev Vali',
+    });
+    expect(alerts[0].occurred_at).toBe(local(2026, 8, 26, 9, 0));
+  });
+
+  it('xodim bir marta ko\'rinsa ham signal chiqmaydi', () => {
+    const presence = [{ subject_ref: 'staff:aliyev-vali', zone_id: 'qabulxona', count: 1 }];
+    expect(detectPresenceAlerts([baseShift], [presenceRule], presence)).toEqual([]);
+  });
+
+  it('o\'chirilgan qoida va boshqa zona hisobga olinmaydi', () => {
+    const disabled = { ...presenceRule, enabled: false };
+    expect(detectPresenceAlerts([baseShift], [disabled], [])).toEqual([]);
+    const otherZone = { ...presenceRule, zone_id: 'ombor' };
+    const presence = [{ subject_ref: 'staff:aliyev-vali', zone_id: 'ombor', count: 1 }];
+    expect(detectPresenceAlerts([baseShift], [presenceRule], presence)).toHaveLength(1);
+    expect(detectPresenceAlerts([baseShift], [otherZone], presence)).toEqual([]);
+  });
+
+  it('boshqa qoida turlari bu yerda ishlamaydi', () => {
+    const afterHours = { zone_id: 'qabulxona', rule_type: 'after_hours', severity: 'critical' };
+    expect(detectPresenceAlerts([baseShift], [afterHours], [])).toEqual([]);
+  });
+
+  it('smena yoki qoida bo\'lmasa signal yo\'q', () => {
+    expect(detectPresenceAlerts([], [presenceRule], [])).toEqual([]);
+    expect(detectPresenceAlerts([baseShift], [], [])).toEqual([]);
   });
 });

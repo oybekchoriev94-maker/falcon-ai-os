@@ -13,7 +13,10 @@ import { z } from 'zod';
 import { q, qGet } from '../db.js';
 import { authMiddleware, validate } from '../shared.js';
 import { requirePermission } from '../rbac.js';
-import { buildDailyReport, detectZoneAlerts } from '../services/worker-control.js';
+import {
+  buildDailyReport, buildZonePresence, detectPresenceAlerts,
+  detectZoneAlerts, staffSubjectRef,
+} from '../services/worker-control.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -29,7 +32,7 @@ const shiftSchema = z.object({
 
 const zoneRuleSchema = z.object({
   zone_id: z.string().trim().min(3).max(64),
-  rule_type: z.enum(['after_hours', 'restricted']),
+  rule_type: z.enum(['after_hours', 'restricted', 'presence_required']),
   allowed_start: z.string().regex(TIME_RE).optional(),
   allowed_end: z.string().regex(TIME_RE).optional(),
   severity: z.enum(['info', 'warning', 'critical']).default('warning'),
@@ -95,10 +98,50 @@ export default function workerControlRoutes() {
            AND occurred_at <  $2::timestamp + interval '30 hours'`,
         [req.user.tenant_id, date]
       );
-      const alerts = detectZoneAlerts(events, rules);
+      const shifts = await q(
+        `SELECT staff_name, shift_date, start_time FROM staff_shifts
+         WHERE tenant_id = $1 AND shift_date = $2`,
+        [req.user.tenant_id, date]
+      );
+      const zoneAlerts = detectZoneAlerts(events, rules);
+      const missing = detectPresenceAlerts(shifts, rules, buildZonePresence(events));
+      const alerts = [...missing, ...zoneAlerts]
+        .sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
       res.json({ success: true, date, total: alerts.length, alerts });
     } catch (e) {
       res.status(500).json({ error: 'Signallarni olib bo\'lmadi', details: e.message });
+    }
+  });
+
+  // GET /api/workers/presence?date=YYYY-MM-DD — xodimlarning zona-faolligi
+  router.get('/presence', authMiddleware, requirePermission('staff.read'), async (req, res) => {
+    const date = dateParam(req, res);
+    if (!date) return;
+    try {
+      const events = await q(
+        `SELECT zone_id, subject_ref, occurred_at FROM vision_events
+         WHERE tenant_id = $1 AND subject_ref LIKE 'staff:%'
+           AND occurred_at >= $2::timestamp - interval '2 hours'
+           AND occurred_at <  $2::timestamp + interval '30 hours'`,
+        [req.user.tenant_id, date]
+      );
+      // subject_ref → xodim ismi: smena jadvali + faol xodimlar ro'yxati
+      const [shiftNames, staffNames] = await Promise.all([
+        q('SELECT DISTINCT staff_name FROM staff_shifts WHERE tenant_id = $1 AND shift_date = $2',
+          [req.user.tenant_id, date]),
+        q('SELECT full_name FROM staff_members WHERE tenant_id = $1 AND is_active = true',
+          [req.user.tenant_id]),
+      ]);
+      const names = new Map();
+      for (const n of [...shiftNames.map((s) => s.staff_name), ...staffNames.map((s) => s.full_name)]) {
+        const ref = staffSubjectRef(n);
+        if (ref && !names.has(ref)) names.set(ref, n);
+      }
+      const presence = buildZonePresence(events)
+        .map((p) => ({ ...p, staff_name: names.get(p.subject_ref) || null }));
+      res.json({ success: true, date, total: presence.length, presence });
+    } catch (e) {
+      res.status(500).json({ error: 'Zona faolligini olib bo\'lmadi', details: e.message });
     }
   });
 

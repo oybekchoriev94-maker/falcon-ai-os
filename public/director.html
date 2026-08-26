@@ -56,6 +56,7 @@
         <button class="btn-secondary tab-btn" data-tab="alerts" onclick="switchTab('alerts')">🚨 Signallar</button>
         <button class="btn-secondary tab-btn" data-tab="shifts" onclick="switchTab('shifts')">🗓 Smenalar</button>
         <button class="btn-secondary tab-btn" data-tab="zones" onclick="switchTab('zones')">📍 Zona qoidalari</button>
+        <button class="btn-secondary tab-btn" data-tab="presence" onclick="switchTab('presence')">🕐 Faollik</button>
         <button class="btn-secondary tab-btn" data-tab="cameras" onclick="switchTab('cameras')">📷 Kameralar</button>
         <button class="btn-secondary tab-btn" data-tab="tasks" onclick="switchTab('tasks')">✅ Vazifalar</button>
       </div>
@@ -145,6 +146,7 @@
               <select id="zType" class="input-field" onchange="toggleZoneTimes()">
                 <option value="after_hours">after_hours</option>
                 <option value="restricted">restricted</option>
+                <option value="presence_required">presence_required</option>
               </select></div>
             <div id="zStartWrap"><label class="block text-xs text-slate-400 mb-1">Ruxsat: dan</label>
               <input type="time" id="zStart" class="input-field" value="08:00"></div>
@@ -167,6 +169,27 @@
               <th class="py-2 pr-4">Daraja</th><th class="py-2">Holat</th>
             </tr></thead>
             <tbody id="zoneRows"><tr><td colspan="5" class="py-4 text-slate-500">Yuklanmoqda...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== FAOLLIK (presence) ===== -->
+      <div id="tab-presence" class="tab-panel hidden space-y-4">
+        <div class="card">
+          <div class="flex flex-wrap items-center gap-3">
+            <h3 class="text-lg font-semibold">Zona faolligi</h3>
+            <input type="date" id="presDate" class="input-field" style="max-width:190px" onchange="loadPresence()">
+            <button class="btn-secondary text-sm" onclick="loadPresence()">🔄 Yangilash</button>
+          </div>
+          <p class="text-slate-400 text-xs mt-2">Kamera ko'rgan vaqt — taxminiy dalil. Birinchi va oxirgi ko'rinish orasi hisoblanadi.</p>
+        </div>
+        <div class="card overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-slate-400 border-b border-slate-700">
+              <th class="py-2 pr-4">Xodim</th><th class="py-2 pr-4">Zona</th><th class="py-2 pr-4">Birinchi ko'rinish</th>
+              <th class="py-2 pr-4">Oxirgi ko'rinish</th><th class="py-2 pr-4">Vaqt (taxm.)</th><th class="py-2">Ko'rinishlar</th>
+            </tr></thead>
+            <tbody id="presRows"><tr><td colspan="6" class="py-4 text-slate-500">Yuklanmoqda...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -281,7 +304,7 @@
   }
 
   // ── Tabs ────────────────────────────────────────────────────────
-  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, cameras: false, tasks: false };
+  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, presence: false, cameras: false, tasks: false };
   function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
     document.getElementById('tab-' + name).classList.remove('hidden');
@@ -289,7 +312,7 @@
       b.classList.toggle('btn-primary', b.dataset.tab === name);
       b.classList.toggle('btn-secondary', b.dataset.tab !== name);
     });
-    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, cameras: loadNodes, tasks: loadTasks }[name])(); }
+    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, presence: loadPresence, cameras: loadNodes, tasks: loadTasks }[name])(); }
   }
 
   // ── Davomat ─────────────────────────────────────────────────────
@@ -331,7 +354,7 @@
 
   // ── Signallar ───────────────────────────────────────────────────
   const SEV_COLOR = { critical: '#ef4444', warning: '#f59e0b', info: '#60a5fa' };
-  const RULE_LABEL = { after_hours: 'Ish vaqtidan tashqari', restricted: 'Ruxsatsiz zona' };
+  const RULE_LABEL = { after_hours: 'Ish vaqtidan tashqari', restricted: 'Ruxsatsiz zona', presence_required: 'Zonada ko\'rinmagan' };
 
   async function loadAlerts() {
     const date = document.getElementById('alertDate').value || todayStr();
@@ -345,7 +368,7 @@
           <td class="py-2 pr-4 font-medium">${esc(a.zone_id)}</td>
           <td class="py-2 pr-4 text-slate-400">${RULE_LABEL[a.rule_type] || a.rule_type}</td>
           <td class="py-2 pr-4"><span class="badge" style="background:${SEV_COLOR[a.severity]}22;color:${SEV_COLOR[a.severity]}">${a.severity}</span></td>
-          <td class="py-2 pr-4">${esc(a.subject_ref || '—')}</td>
+          <td class="py-2 pr-4">${esc(a.staff_name || a.subject_ref || '—')}</td>
           <td class="py-2 text-slate-400">${esc(a.camera_id || '—')}</td>
         </tr>`).join('');
       document.getElementById('alertRows').innerHTML = rows || '<tr><td colspan="6" class="py-4 text-slate-500">Bu kunga signal yo\'q ✅</td></tr>';
@@ -401,9 +424,31 @@
 
   // ── Zona qoidalari ──────────────────────────────────────────────
   function toggleZoneTimes() {
-    const restricted = document.getElementById('zType').value === 'restricted';
-    document.getElementById('zStartWrap').style.visibility = restricted ? 'hidden' : 'visible';
-    document.getElementById('zEndWrap').style.visibility = restricted ? 'hidden' : 'visible';
+    const type = document.getElementById('zType').value;
+    // restricted va presence_required uchun vaqt oynasi kerak emas
+    const hide = type === 'restricted' || type === 'presence_required';
+    document.getElementById('zStartWrap').style.visibility = hide ? 'hidden' : 'visible';
+    document.getElementById('zEndWrap').style.visibility = hide ? 'hidden' : 'visible';
+  }
+
+  // ── Zona faolligi ───────────────────────────────────────────────
+  async function loadPresence() {
+    const date = document.getElementById('presDate').value || todayStr();
+    try {
+      const r = await fetch(`${API}/api/workers/presence?date=${date}`, { headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      const rows = (d.presence || []).map((p) => `
+        <tr class="border-b border-slate-800">
+          <td class="py-2 pr-4 font-medium">${esc(p.staff_name || p.subject_ref)}</td>
+          <td class="py-2 pr-4 text-slate-400">${esc(p.zone_id)}</td>
+          <td class="py-2 pr-4">${fmtTime(p.first_seen)}</td>
+          <td class="py-2 pr-4">${fmtTime(p.last_seen)}</td>
+          <td class="py-2 pr-4">${p.span_minutes} daq</td>
+          <td class="py-2 text-slate-400">${p.count} ta</td>
+        </tr>`).join('');
+      document.getElementById('presRows').innerHTML = rows || '<tr><td colspan="6" class="py-4 text-slate-500">Bu kunda xodim ko\'rinishlari topilmadi</td></tr>';
+    } catch (e) { showError(e.message); }
   }
 
   async function loadZones() {

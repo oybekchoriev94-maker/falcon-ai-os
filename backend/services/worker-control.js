@@ -182,3 +182,75 @@ function toAlert(ev, rule) {
     event_id: ev.id || null,
   };
 }
+
+/**
+ * Kamera hodisalaridan xodimlarning zona-faolligini hisoblaydi.
+ * Faqat 'staff:...' bilan belgilangan hodisalar olinadi.
+ *
+ * DIQQAT: span = birinchi va oxirgi ko'rinish orasi (taxminiy).
+ * Kamera ko'rmagan vaqt hisoblanmaydi — bu DALIL, aniq hisob emas.
+ *
+ * @param {Array} events { zone_id, subject_ref, occurred_at }
+ * @returns {Array} [{ subject_ref, zone_id, first_seen, last_seen, count, span_minutes }]
+ */
+export function buildZonePresence(events = []) {
+  const map = new Map();
+  for (const ev of events) {
+    const ref = ev.subject_ref;
+    if (!ref || !String(ref).startsWith('staff:')) continue;
+    const t = new Date(ev.occurred_at).getTime();
+    if (!Number.isFinite(t)) continue;
+    const key = `${ref}|${ev.zone_id}`;
+    const slot = map.get(key) || {
+      subject_ref: ref, zone_id: ev.zone_id,
+      first: t, last: t, count: 0,
+    };
+    slot.first = Math.min(slot.first, t);
+    slot.last = Math.max(slot.last, t);
+    slot.count += 1;
+    map.set(key, slot);
+  }
+  return [...map.values()].map((s) => ({
+    subject_ref: s.subject_ref,
+    zone_id: s.zone_id,
+    first_seen: new Date(s.first).toISOString(),
+    last_seen: new Date(s.last).toISOString(),
+    count: s.count,
+    span_minutes: Math.round((s.last - s.first) / 60000),
+  })).sort((a, b) => a.subject_ref.localeCompare(b.subject_ref) || a.zone_id.localeCompare(b.zone_id));
+}
+
+/**
+ * presence_required qoidalari bo'yicha signallar: smenasi bor xodim
+ * o'sha kuni belgilangan zonada UMUMAN ko'rinmagan bo'lsa — signal.
+ * (Ko'ringan bo'lsa — davomat hisoboti qancha turganini ko'rsatadi.)
+ *
+ * @param {Array} shifts   kun smenalari { staff_name, shift_date, start_time }
+ * @param {Array} rules    zona qoidalari (rule_type='presence_required')
+ * @param {Array} presence buildZonePresence() natijasi
+ * @returns {Array} alerts [{ zone_id, rule_type, severity, occurred_at, subject_ref, staff_name }]
+ */
+export function detectPresenceAlerts(shifts = [], rules = [], presence = []) {
+  const required = (rules || []).filter((r) => r.enabled !== false && r.rule_type === 'presence_required');
+  if (!required.length) return [];
+  const seen = new Set((presence || []).map((p) => `${p.subject_ref}|${p.zone_id}`));
+  const alerts = [];
+  for (const rule of required) {
+    for (const shift of shifts) {
+      const ref = staffSubjectRef(shift.staff_name);
+      if (!ref || seen.has(`${ref}|${rule.zone_id}`)) continue;
+      const start = shiftMoment(shift.shift_date, shift.start_time);
+      alerts.push({
+        zone_id: rule.zone_id,
+        rule_type: 'presence_required',
+        severity: rule.severity || 'warning',
+        occurred_at: start ? start.toISOString() : `${shift.shift_date}T${shift.start_time || '00:00'}:00`,
+        subject_ref: ref,
+        staff_name: shift.staff_name,
+        camera_id: null,
+        event_id: null,
+      });
+    }
+  }
+  return alerts;
+}
