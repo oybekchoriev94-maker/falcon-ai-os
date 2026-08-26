@@ -52,6 +52,19 @@ export async function up(knex) {
       )
     `);
   }
+
+  // Tenant izolyatsiyasi — api.rls.test.js har bir tenant_id li jadvalda
+  // siyosatni tekshiradi; 036'dan keyin yaratilgan jadvallarga o'zimiz qo'yamiz.
+  for (const table of ['staff_shifts', 'vision_zone_rules']) {
+    await knex.raw(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
+    await knex.raw(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`);
+    await knex.raw(`DROP POLICY IF EXISTS falcon_tenant_isolation ON ${table}`);
+    await knex.raw(`
+      CREATE POLICY falcon_tenant_isolation ON ${table}
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
+    `);
+  }
 }
 
 export async function down(knex) {

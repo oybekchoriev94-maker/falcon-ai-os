@@ -462,6 +462,8 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use('/webhooks', webhookRoutes());
   targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes(upload));
   targetApp.use(`${API_PREFIX}/clinics`, clinicRoutes());
+  // Testlar va eski frontend /api prefiksini ishlatadi — ikkala manzilda ham ochiq
+  targetApp.use('/api/clinics', clinicRoutes());
   targetApp.use(`${API_PREFIX}/workers`, workerControlRoutes());
   targetApp.use(`${API_PREFIX}/medplum`, medplumRoutes());
   targetApp.use(`${API_PREFIX}/hrms`, hrmsRoutes());
