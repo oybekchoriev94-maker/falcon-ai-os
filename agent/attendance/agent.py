@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Xodimlar davomati agenti — Rapoo (yoki istalgan USB) web-kamera.
+Davomat agenti — Rapoo (yoki istalgan USB) web-kamera.
+XODIMLAR va BEMORLAR: faces/ papkada oddiy ism — xodim,
+"bemor_" prefiksi bilan — bemor (masalan faces/bemor_Alisher Karim/).
 
 OQIM:
-    kamera -> yuz aniqlash -> tanish -> keldi/ketdi -> navbat -> server
+    kamera -> yuz aniqlash -> tanish -> multi-frame tasdiq +
+    liveness -> keldi/ketdi -> navbat -> server
+
+Face ID v2 (PR #10): hodisa bilan birga frame_count va liveness_score
+ketadi; server ularni qayta tekshiradi. Bemor keldi -> bugungi bron
+avtomatik check-in bo'ladi (server tomonida).
 
 MUHIM QOIDA: yuz shablonlari (data/faces_db.json) SHU KOMPYUTERDA
-qoladi. Serverga faqat {ism, yo'nalish, vaqt} yuboriladi.
+qoladi. Serverga faqat {ism, yo'nalish, vaqt, metadata} yuboriladi.
 
 Internet uzilsa agent ishlashda davom etadi va hodisalarni
 data/queue.jsonl ga yozadi; aloqa tiklangach jo'natadi.
@@ -27,6 +34,7 @@ import cv2
 import numpy as np
 
 import faces as faces_mod
+import liveness as liveness_mod
 import web_ui
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -67,6 +75,20 @@ def load_config():
         )
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+# Face ID v2: papka nomi orqali subyekt turi. Bemorlar uchun papka
+# "bemor_" prefiksi bilan ataladi: faces/bemor_Alisher Karim/...
+PATIENT_PREFIXES = ("bemor_", "bemor:")
+
+
+def parse_subject(name):
+    """(subject_type, toza ism) qaytaradi."""
+    for pref in PATIENT_PREFIXES:
+        if name.lower().startswith(pref):
+            rest = name[len(pref):].strip()
+            return "patient", (rest or name)
+    return "staff", name
 
 
 # ── Kamera ────────────────────────────────────────────────────
@@ -152,6 +174,11 @@ class Attendance:
       Tasodifiy noto'g'ri tanishdan himoya: ism `confirm_frames` marta
       ketma-ket ko'rinishi kerak. Bitta xato kadr davomat yozmaydi.
 
+      Face ID v2 (PR #10): tasdiqlash oynasidagi kadrlardan LIVENESS
+      ham hisoblanadi — yuz markazining siljishi. Foto/qog'ozdagi yuz
+      harakatsiz, jonli odamniki siljiydi. Ball hodisada serverga
+      ketadi; server uni qayta tekshiradi (flag, o'chirish emas).
+
     KETDI — odam `absence_timeout` soniya ko'rinmadi.
       Vaqt sifatida OXIRGI KO'RINGAN payt yoziladi (hozirgi emas) —
       aks holda hamma "ketdi" vaqti bir xil chiqadi.
@@ -162,11 +189,15 @@ class Attendance:
         self.absence_timeout = a.get("absence_timeout_sec", 180)
         self.confirm_frames = a.get("confirm_frames", 3)
         self.confirm_window = a.get("confirm_window_sec", 10)
+        self.liveness_threshold = a.get("liveness_threshold",
+                                        liveness_mod.MOTION_THRESHOLD)
         self.on_event = on_event
 
         self.today = date.today().isoformat()
         self.people = {}                  # ism -> holat
         self.recent = {}                  # ism -> ko'rilgan vaqtlar (deque)
+        # ism -> [(vaqt, cx, cy, w)] — liveness uchun yuz kuzatuvlari
+        self.obs = {}
 
     def _st(self, name):
         return self.people.setdefault(
@@ -186,11 +217,19 @@ class Attendance:
         for st in self.people.values():
             st.update({"present": False, "first_in": None, "arrivals": 0, "last_seen": 0.0})
         self.recent.clear()
+        self.obs.clear()
 
-    def seen(self, name, now, score):
+    def seen(self, name, now, score, bbox=None, subject_type="staff"):
         """Yuz tanildi. Tasdiqlangandan keyingina 'keldi' yoziladi."""
         st = self._st(name)
         st["last_seen"] = now
+        st["subject_type"] = subject_type
+
+        # Liveness kuzatuvlari — tasdiqlash oynasiga mos saqlanadi
+        if bbox is not None:
+            x, y, w, h = [float(v) for v in bbox[:4]]
+            dq_obs = self.obs.setdefault(name, deque(maxlen=self.confirm_frames * 3))
+            dq_obs.append((now, x + w / 2, y + h / 2, w))
 
         if st["present"]:
             return
@@ -210,8 +249,24 @@ class Attendance:
         if st["first_in"] is None:
             st["first_in"] = when.isoformat(timespec="seconds")
         dq.clear()
-        log(f"KELDI: {name}  {when.strftime('%H:%M:%S')}  (o'xshashlik {score:.2f})")
-        self.on_event(name, "in", when, score)
+
+        # Multi-frame + liveness metadata (server qayta tekshiradi)
+        frames = [o for o in self.obs.get(name, []) if (now - o[0]) <= self.confirm_window]
+        liv = liveness_mod.compute_liveness(frames, threshold=self.liveness_threshold)
+        meta = {
+            "subject_type": subject_type,
+            "frame_count": len(frames),
+            "liveness_score": liv["score"],
+            "liveness_ok": liv["ok"],
+        }
+        if self.obs.get(name) is not None:
+            self.obs[name].clear()
+
+        kind = "XODIM" if subject_type == "staff" else "BEMOR"
+        live_mark = "jonli" if liv["ok"] else f"liveness past ({liv['score']:.3f})"
+        log(f"KELDI [{kind}]: {name}  {when.strftime('%H:%M:%S')}  "
+            f"({len(frames)} kadr, {live_mark}, o'xshashlik {score:.2f})")
+        self.on_event(name, "in", when, score, meta)
 
     def tick(self, now):
         for name, st in self.people.items():
@@ -284,7 +339,7 @@ class Sender:
                 f.write(json.dumps(ev, ensure_ascii=False) + "\n")
         os.replace(tmp, QUEUE_PATH)
 
-    def add(self, name, direction, when, score):
+    def add(self, name, direction, when, score, meta=None):
         ev = {
             "person_name": name,
             "direction": direction,
@@ -292,6 +347,15 @@ class Sender:
         }
         if score is not None:
             ev["confidence"] = round(float(score), 3)
+        if meta:
+            # Face ID v2: server shu metadata'ni qayta tekshiradi
+            ev["subject_type"] = meta.get("subject_type", "staff")
+            if meta.get("frame_count"):
+                ev["frame_count"] = int(meta["frame_count"])
+            if meta.get("liveness_score") is not None:
+                ev["liveness_score"] = float(meta["liveness_score"])
+            if meta.get("liveness_ok") is not None:
+                ev["liveness_ok"] = bool(meta["liveness_ok"])
         self.queue.append(ev)
         self._persist()
 
@@ -481,7 +545,7 @@ def main():
     if db_mat is None:
         log("Yuz bazasi bo'sh. Avval: python enroll.py")
     else:
-        log(f"Bazada {len(set(db_names))} ta xodim ({len(db_names)} surat)")
+        log(f"Bazada {len(set(db_names))} ta odam ({len(db_names)} surat)")
 
     sender = Sender(cfg)
 
@@ -491,14 +555,17 @@ def main():
 
     web_state = web_ui.SharedState(clinic_name) if args.web else None
 
-    def ui_event(name, direction, when, score):
-        sender.add(name, direction, when, score)
+    def ui_event(name, direction, when, score, meta=None):
+        sender.add(name, direction, when, score, meta)
         last_event["name"] = name
         last_event["direction"] = direction
         last_event["at"] = time.time()
         if web_state is not None and direction == "in":
             arrivals = att.people.get(name, {}).get("arrivals", 1)
-            visit_kind = "Birinchi" if arrivals <= 1 else "Takroriy"
+            if (meta or {}).get("subject_type") == "patient":
+                visit_kind = "Bemor"
+            else:
+                visit_kind = "Birinchi" if arrivals <= 1 else "Takroriy"
             web_state.mark_arrival(name, score, visit_kind, when.strftime("%H:%M"))
 
     att = Attendance(cfg, on_event=ui_event)
@@ -613,7 +680,10 @@ def main():
 
                 accepted += 1
                 if name:
-                    att.seen(name, now, score)
+                    # Papka nomi orqali subyekt turi: bemor_ prefiksi -> bemor.
+                    # Serverga TOZA ism + subject_type ketadi.
+                    subject_type, clean_name = parse_subject(name)
+                    att.seen(clean_name, now, score, bbox=f_full, subject_type=subject_type)
                     matched_this_frame = True
                 else:
                     unmatched_this_frame = True

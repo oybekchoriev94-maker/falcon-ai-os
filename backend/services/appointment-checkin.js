@@ -5,7 +5,10 @@
 // bir xil navbat natijasi — qaysi kanaldan kelishidan qat'i nazar.
 // ============================================================
 
-const VALID_SOURCES = new Set(['kiosk', 'registratura', 'telegram']);
+// 'face' — Face ID v2 (PR #10): bemor yuzi tanilgach agent hodisasi
+// orqali avtomatik check-in. Boshqa kanallardan farqi yo'q — shu
+// ro'yxatdagi har bir manba bir xil tekshiruvdan o'tadi.
+const VALID_SOURCES = new Set(['kiosk', 'registratura', 'telegram', 'face']);
 
 /**
  * @param {import('pg').Pool} pool

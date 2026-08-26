@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Xodimlar bazasini faces/ papkadagi suratlardan quradi.
+Yuz bazasini faces/ papkadagi suratlardan quradi (xodimlar VA bemorlar).
 
 Suratlarni qo'yish:
-    faces/Aliyev Vali.jpg              -> "Aliyev Vali"
+    faces/Aliyev Vali.jpg              -> "Aliyev Vali" (xodim)
     faces/Aliyev Vali/1.jpg, 2.jpg     -> "Aliyev Vali" (aniqroq)
 
-Har xodimga 2-3 ta surat qo'ying: turli burchak va yorug'likda.
+Bemorlar uchun papka/fayl nomi "bemor_" prefiksi bilan boshlanadi:
+    faces/bemor_Alisher Karim/1.jpg    -> bemor "Alisher Karim"
+Bemor keldi degan hodisa serverda avtomatik check-in ga ulanadi.
+
+Har odamga 2-3 ta surat qo'ying: turli burchak va yorug'likda.
 Bitta suratda tanish ~85%, uchtada ~95% ga chiqadi.
 
-Ism SERVERGA shu ko'rinishda boradi. Shifokorlar ro'yxatidagi
+Xodim ismi SERVERGA shu ko'rinishda boradi. Shifokorlar ro'yxatidagi
 "Ism Familiya" bilan bir xil yozsangiz, davomat avtomatik bog'lanadi.
+Bemorlar uchun patients jadvalidagi "Ism Familiya" bilan bir xil yozing.
 
 Ishga tushirish:
     python enroll.py
@@ -33,11 +38,12 @@ if __name__ == "__main__":
         print("faces/ papkasiga surat soling, masalan: faces/Aliyev Vali.jpg")
         sys.exit(1)
 
-    print(f"\nTayyor: {len(people)} ta xodim")
+    print(f"\nTayyor: {len(people)} ta odam (xodim + bemor)")
     for name, embs in sorted(people.items()):
+        kind = "bemor" if name.lower().startswith(("bemor_", "bemor:")) else "xodim"
         mark = "✓" if len(embs) >= 2 else "!"
         note = "" if len(embs) >= 2 else "  (aniqlik uchun yana surat qo'shing)"
-        print(f"  {mark} {name} — {len(embs)} ta surat{note}")
+        print(f"  {mark} [{kind}] {name} — {len(embs)} ta surat{note}")
 
     if result["errors"]:
         print("\nOgohlantirishlar:")

@@ -29,15 +29,20 @@
     "_izoh_cosine": "Tanish qat'iyligi. Yuqori = qat'iyroq. 0.40 tavsiya etiladi: noto'g'ri odamni 'keldi' deb yozishdan ko'ra, bir kadr o'tkazib yuborgan yaxshi.",
     "cosine_threshold": 0.40,
 
+    "_izoh_papka": "Bemorlar uchun papka 'bemor_' prefiksi bilan: faces/bemor_Alisher Karim/. Oddiy ism — xodim.",
+
     "det_score": 0.7
   },
 
   "attendance": {
-    "_izoh_confirm": "Ism shuncha marta ketma-ket tanilgandan keyingina 'keldi' yoziladi. Tasodifiy xato kadrdan himoya.",
+    "_izoh_confirm": "Ism shuncha marta ketma-ket tanilgandan keyingina 'keldi' yoziladi. Tasodifiy xato kadrdan himoya (multi-frame).",
     "confirm_frames": 3,
     "confirm_window_sec": 10,
 
-    "_izoh_absence": "Xodim shuncha soniya ko'rinmasa 'ketdi' deb yoziladi. Qisqa qo'ysangiz, xona ichida yurgan odam ham 'ketdi' bo'lib qoladi.",
+    "_izoh_liveness": "Jonlilik chegarasi: yuz shunchalik siljigan bo'lishi kerak (kenglikka nisbatan). Foto/qog'ozda ~0. Pasaytirmang — soxta yuz o'tib ketadi.",
+    "liveness_threshold": 0.02,
+
+    "_izoh_absence": "Odam shuncha soniya ko'rinmasa 'ketdi' deb yoziladi. Qisqa qo'ysangiz, xona ichida yurgan odam ham 'ketdi' bo'lib qoladi.",
     "absence_timeout_sec": 180
   },
 
