@@ -7,6 +7,7 @@
 
 import { createTenantDb } from './db-context.js';
 import { getAgent, getAllAgents, getAgentCount } from './registry.js';
+import { canonicalForAgent, CANONICAL_AGENTS } from './canonical.js';
 
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '45000');
 const MAX_LOG = 100;
@@ -54,6 +55,39 @@ async function meterUsage(db, agentName) {
   }
 }
 
+/** Agent qaysi kanonik agentga tegishli ekanini aniqlaydi */
+function resolveCanonical(agentName, agent) {
+  if (agent?.canonical) return agent.canonical;
+  return canonicalForAgent(agentName)?.id || null;
+}
+
+/**
+ * Doimiy audit: har ijro agent_executions jadvaliga yoziladi.
+ * Best-effort — audit xatosi agent natijasiga ta'sir qilmasligi kerak.
+ */
+async function persistAudit(db, { agentName, canonicalId, status, code, durationMs, user, requestId, error }) {
+  try {
+    await db.qExec(
+      `INSERT INTO agent_executions
+         (tenant_id, agent, canonical_id, status, code, duration_ms, user_id, request_id, error_summary)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        db.tenantId,
+        agentName,
+        canonicalId,
+        status,
+        code || null,
+        durationMs ?? null,
+        user?.id || null,
+        requestId || null,
+        error ? String(error).slice(0, 500) : null,
+      ]
+    );
+  } catch (e) {
+    console.warn(`[AGENT] Audit xatosi (${agentName}):`, e.message);
+  }
+}
+
 /**
  * Agentni ishga tushirish.
  *
@@ -90,11 +124,13 @@ export async function executeAgent(agentName, input = {}, ctx = {}) {
   }
 
   const db = createTenantDb(tenantId);
+  const canonicalId = resolveCanonical(agentName, agent);
   const agentCtx = {
     tenantId,
     db,
     user: ctx.user || null,
     requestId: ctx.requestId || null,
+    canonical: canonicalId,
   };
 
   try {
@@ -108,16 +144,19 @@ export async function executeAgent(agentName, input = {}, ctx = {}) {
     if (data && typeof data === 'object' && data.error && Object.keys(data).length <= 2) {
       const duration_ms = Date.now() - started;
       log({ agent: agentName, status: 'error', duration: duration_ms, error: data.error, tenant: tenantId });
+      await persistAudit(db, { agentName, canonicalId, status: 'error', code: data.code || 'AGENT_ERROR', durationMs: duration_ms, user: ctx.user, requestId: ctx.requestId, error: data.error });
       return fail(agentName, data.code || 'AGENT_ERROR', data.error, { duration_ms });
     }
 
     await meterUsage(db, agentName);
     const duration_ms = Date.now() - started;
     log({ agent: agentName, status: 'success', duration: duration_ms, tenant: tenantId });
+    await persistAudit(db, { agentName, canonicalId, status: 'success', durationMs: duration_ms, user: ctx.user, requestId: ctx.requestId });
     return { success: true, agent: agentName, data, duration_ms };
   } catch (e) {
     const duration_ms = Date.now() - started;
     log({ agent: agentName, status: 'error', duration: duration_ms, error: e.message, tenant: tenantId });
+    await persistAudit(db, { agentName, canonicalId, status: 'error', code: e.code || 'AGENT_EXCEPTION', durationMs: duration_ms, user: ctx.user, requestId: ctx.requestId, error: e.message });
     return fail(agentName, e.code || 'AGENT_EXCEPTION', e.message, { duration_ms });
   }
 }
@@ -152,7 +191,8 @@ export async function executePipeline(steps, ctx = {}) {
 export function getSystemStatus() {
   return {
     agents: getAgentCount(),
-    agents_list: getAllAgents().map((a) => ({ name: a.name, description: a.description, version: a.version })),
+    canonical_agents: CANONICAL_AGENTS.length,
+    agents_list: getAllAgents().map((a) => ({ name: a.name, description: a.description, version: a.version, canonical: resolveCanonical(a.name, a) })),
     execution_log_count: EXECUTION_LOG.length,
     last_executions: getExecutionLog(5),
   };

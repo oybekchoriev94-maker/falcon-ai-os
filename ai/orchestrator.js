@@ -12,6 +12,7 @@ import { FalconTTSStreamer, agentTextToSpeech } from './engines/voice-streamer.j
 
 import { executeAgent, executePipeline, getExecutionLog, getSystemStatus as runtimeStatus } from './core/runtime.js';
 import { getAgent, getAllAgents, getAgentCount, getAgentsByCategory, searchAgents } from './core/registry.js';
+import { CANONICAL_AGENTS, getCanonicalAgent, canonicalForAgent, getCanonicalCoverage } from './core/canonical.js';
 import { isLLMConfigured } from './core/tools.js';
 import { getPool } from '../backend/db.js';
 
@@ -25,6 +26,11 @@ export {
   getAgentCount,
   getAgentsByCategory,
   searchAgents,
+  // Kanonik agentlar xartiyasi
+  CANONICAL_AGENTS,
+  getCanonicalAgent,
+  canonicalForAgent,
+  getCanonicalCoverage,
   // Dvigatellar
   llm,
   llmStream,
