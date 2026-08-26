@@ -17,7 +17,7 @@ export async function up(knex) {
     await knex.raw(`
       CREATE TABLE agent_executions (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         agent varchar(80) NOT NULL,
         canonical_id varchar(40),
         status varchar(20) NOT NULL,
@@ -43,8 +43,8 @@ export async function up(knex) {
     await knex.raw('ALTER TABLE agent_executions FORCE ROW LEVEL SECURITY');
     await knex.raw(`
       CREATE POLICY falcon_tenant_isolation ON agent_executions
-        USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-        WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
     `);
   }
 }

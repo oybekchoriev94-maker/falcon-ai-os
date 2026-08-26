@@ -20,7 +20,7 @@ export async function up(knex) {
     await knex.raw(`
       CREATE TABLE ocr_documents (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         patient_id uuid REFERENCES patients(id) ON DELETE SET NULL,
         doc_type varchar(30) NOT NULL DEFAULT 'boshqa'
           CHECK (doc_type IN ('tibbiy_karta', 'xulosa', 'retsept', 'yonaltirma', 'shartnoma', 'akt', 'boshqa')),
@@ -53,8 +53,8 @@ export async function up(knex) {
     await knex.raw('ALTER TABLE ocr_documents FORCE ROW LEVEL SECURITY');
     await knex.raw(`
       CREATE POLICY falcon_tenant_isolation ON ocr_documents
-        USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-        WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
     `);
   }
 }

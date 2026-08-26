@@ -20,7 +20,7 @@ export async function up(knex) {
     await knex.raw(`
       CREATE TABLE external_ids (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         system varchar(40) NOT NULL,
         entity varchar(40) NOT NULL,
         local_id uuid NOT NULL,
@@ -44,8 +44,8 @@ export async function up(knex) {
     await knex.raw('ALTER TABLE external_ids FORCE ROW LEVEL SECURITY');
     await knex.raw(`
       CREATE POLICY falcon_tenant_isolation ON external_ids
-        USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-        WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), ''))
     `);
   }
 }

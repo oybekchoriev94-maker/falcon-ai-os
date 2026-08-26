@@ -20,7 +20,7 @@ export async function up(knex) {
     await knex.raw(`
       CREATE TABLE staff_shifts (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         staff_name text NOT NULL,
         doctor_id uuid REFERENCES doctors(id) ON DELETE SET NULL,
         shift_date date NOT NULL,
@@ -40,7 +40,7 @@ export async function up(knex) {
     await knex.raw(`
       CREATE TABLE vision_zone_rules (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
         zone_id varchar(64) NOT NULL,
         rule_type varchar(20) NOT NULL CHECK (rule_type IN ('after_hours', 'restricted')),
         allowed_start time,
