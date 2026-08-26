@@ -37,7 +37,9 @@ import { logger, pinoHttpMiddleware } from './backend/logger.js';
 import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } from './backend/metrics.js';
 
 import * as orchestrator from './ai/orchestrator.js';
-import { llm, transcribe, speak, isLLMReady } from './ai/orchestrator.js';
+import { llm, transcribe, speak, isLLMReady, isSTTReady, isTTSReady } from './ai/orchestrator.js';
+import { isOCRReady } from './ai/engines/ocr.js';
+import { parseBackupStatus, backupHealth, aggregateHealth } from './backend/services/system-health.js';
 
 import authRoutes, { seedDefaultUsers } from './backend/routes/auth.js';
 import paymentRoutes from './backend/routes/payments.js';
@@ -372,6 +374,58 @@ app.get('/api/health/ready', async (req, res) => {
   }
 });
 app.get('/api/health/live', (req, res) => res.status(200).end('alive'));
+
+// Chuqur tekshiruv (PR #15): DB kechikishi, AI dvigatellar, backup
+// yangiligi. Faqat super-admin — tashqi muhit holati sir hisoblanadi.
+app.get('/api/health/deep', authMiddleware, checkRole('superadmin'), async (req, res) => {
+  const started = Date.now();
+
+  // DB — kritik komponent: javob vaqti bilan birga tekshiriladi
+  let dbOk = false;
+  let dbMs = null;
+  try {
+    const t0 = Date.now();
+    await qGet('SELECT 1');
+    dbMs = Date.now() - t0;
+    dbOk = true;
+  } catch { /* pastda degraded ko'rinadi */ }
+
+  // Backup holati: konteynerda /backup (compose: ./backups:/backup)
+  const backupDir = process.env.BACKUP_DIR || '/backup';
+  let backupText = null;
+  try {
+    backupText = fs.readFileSync(path.join(backupDir, 'last-backup.json'), 'utf8');
+  } catch { /* fayl yo'q = backup hali sozlanmagan */ }
+  const backup = backupHealth(parseBackupStatus(backupText));
+
+  const engines = {
+    llm: isLLMReady(),
+    stt: isSTTReady(),
+    tts: isTTSReady(),
+    ocr: isOCRReady(),
+  };
+
+  const checks = [
+    { name: 'database', ok: dbOk, critical: true },
+    { name: 'backup', ok: backup.state === 'ok' },
+    { name: 'llm', ok: engines.llm },
+    { name: 'stt', ok: engines.stt },
+    { name: 'tts', ok: engines.tts },
+    { name: 'ocr', ok: engines.ocr },
+  ];
+  const { overall, problems } = aggregateHealth(checks);
+
+  res.status(overall === 'down' ? 503 : 200).json({
+    overall,
+    problems,
+    database: { ok: dbOk, latency_ms: dbMs },
+    backup,
+    engines,
+    uptime_sec: Math.round(process.uptime()),
+    checked_in_ms: Date.now() - started,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // Metrics endpoint for Prometheus (faqat super-admin)
 app.get('/metrics', authMiddleware, checkRole('superadmin'), metricsEndpoint);

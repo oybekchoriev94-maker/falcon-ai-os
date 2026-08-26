@@ -104,6 +104,10 @@ validate_url_safe_password APP_DATABASE_PASSWORD
 # --- Deploy ---
 echo "Building and starting containers..."
 cd "$REPO_DIR"
+# Backup papka oldindan yaratiladi — aks holda Docker uni root egasi
+# bilan yaratadi va backup-pg.sh yozolmaydi (PR #15)
+mkdir -p backups
+chmod +x scripts/backup-pg.sh scripts/restore-pg.sh scripts/watchdog.sh
 docker compose build --pull
 docker compose up -d --force-recreate --remove-orphans --wait --wait-timeout 900
 docker compose ps
@@ -122,3 +126,8 @@ echo "Don't forget to:"
 echo "  1. Configure DNS A record for your domain -> VPS IP"
 echo "  2. Set up Telegram bot webhooks"
 echo "  3. Test payment webhooks (Payme / Click)"
+echo "  4. Set up production cron (crontab -e):"
+echo "     30 2 * * *  cd $REPO_DIR && ./scripts/backup-pg.sh >> backups/backup.log 2>&1"
+echo "     */5 * * * * cd $REPO_DIR && ./scripts/watchdog.sh >> backups/watchdog.log 2>&1"
+echo "  5. Set ADMIN_TG_BOT_TOKEN + ADMIN_TG_CHAT_ID in .env for alerts"
+echo "  6. DR mashqini tekshiring: scripts/restore-pg.sh (test bazada)"

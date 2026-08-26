@@ -116,3 +116,6 @@ tibbiy karta/
 # repo faqat .gitkeep ni kuzatadi (tracked fayllarga ta'sir qilmaydi)
 public/uploads/*
 !.gitkeep
+
+# PostgreSQL backup dump'lari va watchdog holati (PR #15) — MAXFIY
+backups/

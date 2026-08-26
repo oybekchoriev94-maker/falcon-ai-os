@@ -11,6 +11,8 @@ import { safeError } from '../services/safe-error.js';
 import { optionalAuth } from '../shared.js';
 import { SURXONDARYO_DISTRICTS } from '../constants/regions.js';
 import { llm, transcribe } from '../../ai/orchestrator.js';
+// PR #15: shifokorlar soni tarif rejasi bilan cheklanadi
+import { checkSubscription, checkDoctorLimit } from '../subscription-middleware.js';
 
 export default function doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload) {
   const router = Router();
@@ -158,7 +160,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, validate, 
   // POST /api/auth/register-doctor — admin yangi shifokor qo'shishi
   // Klinika rahbari (ceo) ham shifokor qo'sha olishi kerak — yangi klinika
   // ro'yxatdan o'tganda birinchi hisob aynan 'ceo' bo'ladi.
-  router.post('/auth/register-doctor', authMiddleware, checkRole('admin', 'ceo', 'superadmin'), validate(schemas.registerDoctor), async (req, res) => {
+  router.post('/auth/register-doctor', authMiddleware, checkRole('admin', 'ceo', 'superadmin'), checkSubscription, checkDoctorLimit, validate(schemas.registerDoctor), async (req, res) => {
     try {
       const tenantId = req.user.tenant_id;
       const { name, username, password, specialization } = req.body;

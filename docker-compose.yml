@@ -219,7 +219,11 @@ services:
       TTS_AUTH_TOKEN: ${TTS_AUTH_TOKEN:-}
       TTS_VOICE: ${TTS_VOICE:-}
     volumes:
-      - falcon-backup:/backup
+      # Backup va monitoring status fayllari. HOST'dagi ./backups papkaga
+      # bog'langan (PR #15): scripts/backup-pg.sh host'dan yozadi,
+      # app konteyneri /api/health/deep uchun /backup dan o'qiydi,
+      # watchdog esa eskirishni tekshiradi. Dump fayllar .gitignore'da.
+      - ./backups:/backup
       - falcon-logs:/app/logs
       # Klinika logotiplari va PDF hisobotlar deploy'da yo'qolmasligi uchun
       - app-uploads:/app/public/uploads
@@ -278,7 +282,6 @@ volumes:
   app-reports:
   # Ovozli diktantlar — xato bo'lganda qayta ishlash uchun saqlanadi
   app-voice:
-  falcon-backup:
   falcon-logs:
   caddy-data:
   caddy-config:

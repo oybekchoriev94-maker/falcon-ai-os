@@ -9,6 +9,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 import { normalizePhone, generateMrn } from '../services/patient-store.js';
 import { matchReasons } from '../services/queue-service.js';
+// PR #15: bemorlar soni tarif rejasi bilan cheklanadi
+import { checkSubscription, checkPatientLimit } from '../subscription-middleware.js';
 
 const PATIENT_COLUMNS =
   'id, first_name, last_name, middle_name, phone, birth_date, region, district, address, ' +
@@ -355,7 +357,7 @@ export default function patientsRoutes(pool, authMiddleware) {
   });
 
   // POST / — yangi bemor qo'shish (avto MRN, telefon takrorlansa 409)
-  router.post('/', authMiddleware, validate(patientSchema), async (req, res) => {
+  router.post('/', authMiddleware, checkSubscription, checkPatientLimit, validate(patientSchema), async (req, res) => {
     try {
       const tenantId = tenantOf(req);
       const result = await createPatient(tenantId, req.body);
