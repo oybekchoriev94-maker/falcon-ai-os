@@ -61,6 +61,7 @@ import medplumRoutes from './backend/routes/medplum.js';
 import hrmsRoutes from './backend/routes/hrms.js';
 import erpnextRoutes from './backend/routes/erpnext.js';
 import taskRoutes from './backend/routes/tasks.js';
+import ocrRoutes from './backend/routes/ocr.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
 import scribeRoutes from './backend/routes/scribe.js';
@@ -412,6 +413,8 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use(`${API_PREFIX}/hrms`, hrmsRoutes());
   targetApp.use(`${API_PREFIX}/erpnext`, erpnextRoutes());
   targetApp.use(`${API_PREFIX}/tasks`, taskRoutes());
+  // PR #8: hujjat elektronlashtirish (OCR/STT/AI) — LLM limiti himoyasi bilan
+  targetApp.use(`${API_PREFIX}/ocr`, tenantRateLimit('ai'), ocrRoutes(upload));
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
 
   // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.

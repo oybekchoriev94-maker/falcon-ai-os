@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falcon AI OS — Hujjat elektronlashtirish</title>
+  <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+  <!-- ===== LOGIN ===== -->
+  <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <div class="glass rounded-3xl p-8 w-full max-w-md fade-in">
+      <div class="text-center mb-8">
+        <div class="text-5xl mb-3">📄</div>
+        <h1 class="text-2xl font-bold">Hujjat elektronlashtirish</h1>
+        <p class="text-slate-400 mt-1">Qog'oz karta va hujjatlar → OCR / STT / AI</p>
+      </div>
+      <form id="loginForm" class="space-y-4">
+        <div><label class="block text-sm font-medium text-slate-300 mb-1">Foydalanuvchi nomi</label>
+          <input type="text" id="loginUsername" class="input-field" required></div>
+        <div><label class="block text-sm font-medium text-slate-300 mb-1">Parol</label>
+          <input type="password" id="loginPassword" class="input-field" required></div>
+        <div id="loginError" class="text-red-400 text-sm hidden"></div>
+        <button type="submit" id="loginBtn" class="btn-primary w-full text-lg">Kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MAIN ===== -->
+  <div id="mainView" class="hidden min-h-screen" style="background:radial-gradient(ellipse at top,#1e293b,#0f172a)">
+    <nav class="glass sticky top-0 z-50 border-b border-slate-700/50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">📄</span>
+            <span class="font-bold text-lg">Hujjat elektronlashtirish</span>
+            <span id="engineBadges" class="ml-2 text-xs text-slate-400"></span>
+          </div>
+          <div class="flex items-center gap-4">
+            <a href="/dashboard.html" class="text-slate-300 hover:text-white text-sm">← Dashboard</a>
+            <span id="userNameDisplay" class="text-slate-300 text-sm"></span>
+            <button onclick="logout()" class="btn-danger text-sm px-4 py-2">Chiqish</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+      <!-- ===== YANGI HUJJAT ===== -->
+      <div class="card">
+        <h3 class="text-lg font-semibold mb-1">Yangi hujjat</h3>
+        <p class="text-slate-400 text-xs mb-4">Uch usul: rasm skan (OCR), ovozli diktant (STT) yoki tayyor matn. AI maydonlarni ajratadi — siz tekshirib tasdiqlaysiz.</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div><label class="block text-xs text-slate-400 mb-1">Hujjat turi</label>
+            <select id="docType" class="input-field">
+              <option value="tibbiy_karta">Tibbiy karta</option>
+              <option value="xulosa">Xulosa</option>
+              <option value="retsept">Retsept</option>
+              <option value="yonaltirma">Yo'naltirma</option>
+              <option value="shartnoma">Shartnoma</option>
+              <option value="akt">Akt</option>
+              <option value="boshqa">Boshqa</option>
+            </select></div>
+          <div><label class="block text-xs text-slate-400 mb-1">Til</label>
+            <select id="docLang" class="input-field">
+              <option value="uz">O'zbekcha</option>
+              <option value="ru">Ruscha</option>
+            </select></div>
+          <div class="col-span-2"><label class="block text-xs text-slate-400 mb-1">Bemor (ixtiyoriy)</label>
+            <input id="docPatient" class="input-field" placeholder="Bemor ismi — qidirish uchun Enter" list="patientList">
+            <datalist id="patientList"></datalist></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="border border-slate-700 rounded-xl p-4">
+            <p class="font-medium mb-2">🖼 Rasm skan (OCR)</p>
+            <input type="file" id="imgFile" accept="image/jpeg,image/png,image/webp,image/bmp" class="text-sm text-slate-400 mb-2">
+            <button onclick="uploadImage()" class="btn-primary w-full text-sm">Yuklash</button>
+          </div>
+          <div class="border border-slate-700 rounded-xl p-4">
+            <p class="font-medium mb-2">🎤 Ovozli diktant (STT)</p>
+            <input type="file" id="audioFile" accept="audio/*" class="text-sm text-slate-400 mb-2">
+            <button onclick="uploadAudio()" class="btn-primary w-full text-sm">Yuborish</button>
+          </div>
+          <div class="border border-slate-700 rounded-xl p-4">
+            <p class="font-medium mb-2">⌨️ Tayyor matn</p>
+            <textarea id="txtInput" class="input-field text-sm" rows="2" placeholder="Hujjat matnini kiriting..."></textarea>
+            <button onclick="submitText()" class="btn-primary w-full text-sm mt-2">Saqlash</button>
+          </div>
+        </div>
+        <div id="createMsg" class="text-sm mt-3 hidden"></div>
+      </div>
+
+      <!-- ===== RO'YXAT ===== -->
+      <div class="card">
+        <div class="flex flex-wrap items-center gap-3 mb-3">
+          <h3 class="text-lg font-semibold">Hujjatlar</h3>
+          <select id="fltType" class="input-field" style="max-width:170px" onchange="loadDocs()">
+            <option value="">Barcha turlar</option>
+            <option value="tibbiy_karta">Tibbiy karta</option><option value="xulosa">Xulosa</option>
+            <option value="retsept">Retsept</option><option value="yonaltirma">Yo'naltirma</option>
+            <option value="shartnoma">Shartnoma</option><option value="akt">Akt</option><option value="boshqa">Boshqa</option>
+          </select>
+          <select id="fltStatus" class="input-field" style="max-width:170px" onchange="loadDocs()">
+            <option value="">Barcha holatlar</option>
+            <option value="pending">Kutilmoqda</option><option value="done">Tayyor</option><option value="failed">Xato</option>
+          </select>
+          <button class="btn-secondary text-sm" onclick="loadDocs()">🔄 Yangilash</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-slate-400 border-b border-slate-700">
+              <th class="py-2 pr-4">Sana</th><th class="py-2 pr-4">Tur</th><th class="py-2 pr-4">Manba</th>
+              <th class="py-2 pr-4">Bemor</th><th class="py-2 pr-4">Holat</th><th class="py-2 pr-4">Tasdiq</th><th class="py-2"></th>
+            </tr></thead>
+            <tbody id="docRows"><tr><td colspan="7" class="py-4 text-slate-500">Yuklanmoqda...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== BATAFSIL ===== -->
+      <div id="detailCard" class="card hidden">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold" id="dtTitle">Hujjat</h3>
+          <div class="flex gap-2">
+            <button class="btn-secondary text-sm" onclick="processDoc()" id="btnProcess">⚙️ Qayta ishlash (OCR + AI)</button>
+            <button class="btn-primary text-sm" onclick="saveReview()">✔ Tekshirdim va saqlash</button>
+            <button class="btn-danger text-sm" id="btnDelete" onclick="deleteDoc()">🗑</button>
+          </div>
+        </div>
+        <div id="dtMsg" class="text-sm mb-2 hidden"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-400 mb-1">AI ajratgan maydonlar (taxmin — tekshiring)</p>
+            <div id="dtFields" class="space-y-2"></div>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400 mb-1">Xom matn (OCR/STT/diktant) — tahrat qilish mumkin</p>
+            <textarea id="dtRaw" class="input-field text-sm" rows="14"></textarea>
+            <p class="text-xs text-slate-400 mt-2">Izoh (tasdiqda)</p>
+            <input id="dtNote" class="input-field text-sm" placeholder="Masalan: skan sifati past, ism aniqlandi">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const API = window.location.origin;
+  let token = localStorage.getItem('falcon_token');
+  let user = (() => { try { return JSON.parse(localStorage.getItem('falcon_user') || 'null'); } catch { return null; } })();
+  let currentDoc = null;
+
+  const TYPE_LABEL = { tibbiy_karta: 'Tibbiy karta', xulosa: 'Xulosa', retsept: 'Retsept', yonaltirma: "Yo'naltirma", shartnoma: 'Shartnoma', akt: 'Akt', boshqa: 'Boshqa' };
+  const SRC_LABEL = { upload: '🖼 rasm', stt: '🎤 diktant', text: '⌨️ matn' };
+  const ST_LABEL = { pending: ['Kutilmoqda', '#f59e0b'], processing: ['Ishlanmoqda...', '#60a5fa'], done: ['Tayyor', '#22c55e'], failed: ['Xato', '#ef4444'] };
+  const FIELD_LABEL = { summary: 'Qisqa mazmun', patient_name: 'Bemor FIO', birth_date: "Tug'ilgan sana", phone: 'Telefon', diagnosis: 'Tashxis', complaints: 'Shikoyatlar', medications: 'Dorilar', doctor_name: 'Shifokor', document_date: 'Hujjat sanasi', notes: 'Qo\'shimcha' };
+
+  function authHeaders() { return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }; }
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function fmtDate(iso) { return iso ? new Date(iso).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'; }
+  function msg(id, text, ok) { const el = document.getElementById(id); el.textContent = text; el.className = 'text-sm mt-3 ' + (ok ? 'text-green-400' : 'text-red-400'); }
+  function msg2(id, text, ok) { const el = document.getElementById(id); el.textContent = text; el.className = 'text-sm mb-2 ' + (ok ? 'text-green-400' : 'text-red-400'); }
+
+  // ── Auth ──────────────────────────────────────────────────────
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+    btn.disabled = true; btn.textContent = 'Tekshirilmoqda...';
+    try {
+      const res = await fetch(API + '/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: document.getElementById('loginUsername').value, password: document.getElementById('loginPassword').value }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Login xatosi');
+      token = data.token; user = data.user;
+      localStorage.setItem('falcon_token', token);
+      localStorage.setItem('falcon_user', JSON.stringify(user));
+      enter();
+    } catch (err) {
+      errEl.textContent = err.message; errEl.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Kirish';
+    }
+  });
+
+  function logout() { localStorage.removeItem('falcon_token'); localStorage.removeItem('falcon_user'); location.reload(); }
+
+  function enter() {
+    if (!['ceo', 'admin', 'doctor', 'receptionist'].includes(user?.role)) {
+      alert("Bu bo'lim faqat shifokor, admin, rahbar va registratura uchun"); logout(); return;
+    }
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('mainView').classList.remove('hidden');
+    document.getElementById('userNameDisplay').textContent = user.full_name || user.username || '';
+    loadStatus(); loadDocs(); searchPatients();
+  }
+
+  if (token && user) enter();
+
+  // ── Dvigatel holatlari ────────────────────────────────────────
+  async function loadStatus() {
+    try {
+      const r = await fetch(API + '/api/ocr/status', { headers: authHeaders() });
+      const d = await r.json();
+      if (!d.success) return;
+      const b = (name, on) => `<span class="badge" style="background:${on ? '#22c55e22' : '#ef444422'};color:${on ? '#22c55e' : '#ef4444'}">${name}: ${on ? 'ochiq' : "o'chiq"}</span>`;
+      document.getElementById('engineBadges').innerHTML = b('OCR', d.engines.ocr) + ' ' + b('STT', d.engines.stt) + ' ' + b('AI', d.engines.llm);
+    } catch { /* jim */ }
+  }
+
+  // ── Bemor qidirish (datalist) ─────────────────────────────────
+  let patientMap = {};
+  async function searchPatients() {
+    try {
+      const r = await fetch(API + '/api/patients?limit=200', { headers: authHeaders() });
+      const d = await r.json();
+      const list = d.patients || d.data || [];
+      const dl = document.getElementById('patientList');
+      dl.innerHTML = ''; patientMap = {};
+      for (const p of list) {
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ');
+        patientMap[name.toLowerCase()] = p.id;
+        const opt = document.createElement('option'); opt.value = name; dl.appendChild(opt);
+      }
+    } catch { /* bemor ro'yxati ixtiyoriy */ }
+  }
+  function selectedPatientId() {
+    const v = document.getElementById('docPatient').value.trim().toLowerCase();
+    return v ? (patientMap[v] || undefined) : undefined;
+  }
+
+  // ── Yaratish ──────────────────────────────────────────────────
+  function baseForm() {
+    const fd = new FormData();
+    fd.append('doc_type', document.getElementById('docType').value);
+    fd.append('language', document.getElementById('docLang').value);
+    const pid = selectedPatientId();
+    if (pid) fd.append('patient_id', pid);
+    return fd;
+  }
+
+  async function postForm(url, fd) {
+    const r = await fetch(API + url, { headers: { Authorization: 'Bearer ' + token }, body: fd, method: 'POST' });
+    const d = await r.json();
+    if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+    return d;
+  }
+
+  async function uploadImage() {
+    const f = document.getElementById('imgFile').files[0];
+    if (!f) return msg('createMsg', "Avval rasm faylini tanlang", false);
+    try {
+      const fd = baseForm(); fd.append('file', f);
+      const d = await postForm('/api/ocr/documents', fd);
+      msg('createMsg', '✅ Rasm saqlandi. Endi "Qayta ishlash" tugmasini bosing.', true);
+      loadDocs(); openDoc(d.document.id);
+    } catch (e) { msg('createMsg', '❌ ' + e.message, false); }
+  }
+
+  async function uploadAudio() {
+    const f = document.getElementById('audioFile').files[0];
+    if (!f) return msg('createMsg', "Avval audio faylini tanlang", false);
+    msg('createMsg', '⏳ STT transkripsiya qilinmoqda...', true);
+    try {
+      const fd = baseForm(); fd.append('audio', f);
+      const d = await postForm('/api/ocr/voice', fd);
+      msg('createMsg', '✅ Diktant matnga aylantirildi. AI ajratmasi uchun "Qayta ishlash"ni bosing.', true);
+      loadDocs(); openDoc(d.document.id);
+    } catch (e) { msg('createMsg', '❌ ' + e.message, false); }
+  }
+
+  async function submitText() {
+    const text = document.getElementById('txtInput').value.trim();
+    if (text.length < 3) return msg('createMsg', "Matn juda qisqa", false);
+    try {
+      const body = { doc_type: document.getElementById('docType').value, language: document.getElementById('docLang').value, raw_text: text };
+      const pid = selectedPatientId();
+      if (pid) body.patient_id = pid;
+      const r = await fetch(API + '/api/ocr/text', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      msg('createMsg', '✅ Matn saqlandi.', true);
+      document.getElementById('txtInput').value = '';
+      loadDocs(); openDoc(d.document.id);
+    } catch (e) { msg('createMsg', '❌ ' + e.message, false); }
+  }
+
+  // ── Ro'yxat ───────────────────────────────────────────────────
+  async function loadDocs() {
+    try {
+      let url = API + '/api/ocr/documents?limit=200';
+      if (document.getElementById('fltType').value) url += '&doc_type=' + document.getElementById('fltType').value;
+      if (document.getElementById('fltStatus').value) url += '&status=' + document.getElementById('fltStatus').value;
+      const r = await fetch(url, { headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      const rows = (d.documents || []).map((doc) => {
+        const st = ST_LABEL[doc.status] || [doc.status, '#94a3b8'];
+        return `<tr class="border-b border-slate-800 cursor-pointer hover:bg-slate-800/30" onclick="openDoc('${doc.id}')">
+          <td class="py-2 pr-4 text-slate-400">${fmtDate(doc.created_at)}</td>
+          <td class="py-2 pr-4 font-medium">${TYPE_LABEL[doc.doc_type] || doc.doc_type}</td>
+          <td class="py-2 pr-4 text-slate-400">${SRC_LABEL[doc.source] || doc.source}</td>
+          <td class="py-2 pr-4">${esc(doc.patient_name || '—')}</td>
+          <td class="py-2 pr-4"><span class="badge" style="background:${st[1]}22;color:${st[1]}">${st[0]}</span></td>
+          <td class="py-2 pr-4">${doc.reviewed_at ? '✔' : '<span class="text-slate-500">—</span>'}</td>
+          <td class="py-2 text-slate-500 text-xs">${esc(doc.error || '')}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('docRows').innerHTML = rows || '<tr><td colspan="7" class="py-4 text-slate-500">Hujjat topilmadi</td></tr>';
+    } catch (e) { document.getElementById('docRows').innerHTML = `<tr><td colspan="7" class="py-4 text-red-400">${esc(e.message)}</td></tr>`; }
+  }
+
+  // ── Batafsil ──────────────────────────────────────────────────
+  async function openDoc(id) {
+    try {
+      const r = await fetch(API + '/api/ocr/documents/' + id, { headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      currentDoc = d.document;
+      document.getElementById('detailCard').classList.remove('hidden');
+      document.getElementById('dtTitle').textContent = (d.doc_type_label || 'Hujjat') + (currentDoc.patient_name ? ' — ' + currentDoc.patient_name : '');
+      document.getElementById('dtRaw').value = currentDoc.raw_text || '';
+      document.getElementById('dtNote').value = currentDoc.review_note || '';
+      document.getElementById('btnDelete').style.display = ['ceo', 'admin'].includes(user.role) ? '' : 'none';
+      renderFields();
+      document.getElementById('detailCard').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { alert(e.message); }
+  }
+
+  function renderFields() {
+    const s = currentDoc.structured || {};
+    const html = Object.entries(FIELD_LABEL).map(([k, label]) => {
+      const v = s[k];
+      return `<div class="border border-slate-700 rounded-lg px-3 py-2">
+        <p class="text-xs text-slate-400">${label}</p>
+        <p class="text-sm mt-0.5">${v ? esc(v) : '<span class="text-slate-600">—</span>'}</p>
+      </div>`;
+    }).join('');
+    const meta = currentDoc.reviewed_at
+      ? `<p class="text-xs text-green-400 mb-2">✔ Tasdiqlangan: ${fmtDate(currentDoc.reviewed_at)}</p>`
+      : '<p class="text-xs text-amber-400 mb-2">⚠️ Hali tasdiqlanmagan — AI matni taxminiy</p>';
+    document.getElementById('dtFields').innerHTML = meta + html;
+  }
+
+  async function processDoc() {
+    if (!currentDoc) return;
+    msg2('dtMsg', '⏳ Ishlanmoqda (OCR + AI)... bu 30 soniyagacha davom etishi mumkin', true);
+    try {
+      const r = await fetch(API + '/api/ocr/documents/' + currentDoc.id + '/process', { method: 'POST', headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      currentDoc = d.document;
+      document.getElementById('dtRaw').value = currentDoc.raw_text || '';
+      renderFields(); loadDocs();
+      if (currentDoc.status === 'done') msg2('dtMsg', '✅ Tayyor. Maydonlarni tekshirib "Tasdiqlash"ni bosing.', true);
+      else msg2('dtMsg', '❌ ' + (currentDoc.error || 'Qayta ishlab bo\'lmadi'), false);
+    } catch (e) { msg2('dtMsg', '❌ ' + e.message, false); }
+  }
+
+  async function saveReview() {
+    if (!currentDoc) return;
+    try {
+      const r = await fetch(API + '/api/ocr/documents/' + currentDoc.id, {
+        method: 'PATCH', headers: authHeaders(),
+        body: JSON.stringify({
+          raw_text: document.getElementById('dtRaw').value,
+          review_note: document.getElementById('dtNote').value || null,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      currentDoc = d.document;
+      renderFields(); loadDocs();
+      msg2('dtMsg', '✔ Saqlandi va tasdiqlandi', true);
+    } catch (e) { msg2('dtMsg', '❌ ' + e.message, false); }
+  }
+
+  async function deleteDoc() {
+    if (!currentDoc || !confirm("Hujjat o'chirilsinmi?")) return;
+    const r = await fetch(API + '/api/ocr/documents/' + currentDoc.id, { method: 'DELETE', headers: authHeaders() });
+    if (r.ok) {
+      currentDoc = null;
+      document.getElementById('detailCard').classList.add('hidden');
+      loadDocs();
+    }
+  }
+  </script>
+</body>
+</html>

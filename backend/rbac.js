@@ -59,6 +59,11 @@ export const PERMISSIONS = Object.freeze({
   'tasks.read':  ['ceo', 'admin', 'doctor', 'receptionist'],
   'tasks.write': ['ceo', 'admin', 'doctor', 'receptionist'],
 
+  // Hujjat elektronlashtirish (PR #8): o'qish hamma klinik xodimda,
+  // yuklash/tuzatish/tasdiqlash — shifokor, admin, rahbar, registratura
+  'documents.read':  ['ceo', 'admin', 'doctor', 'receptionist'],
+  'documents.write': ['ceo', 'admin', 'doctor', 'receptionist'],
+
   // Klinika sozlamalari
   'settings.manage': ['ceo', 'admin'],
 
