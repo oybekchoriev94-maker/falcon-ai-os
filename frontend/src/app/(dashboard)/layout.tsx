@@ -28,6 +28,8 @@ import {
   Bell,
   Monitor,
   UserCheck,
+  FileText,
+  ScanFace,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -57,6 +59,8 @@ const navItems = [
   { href: "/lab", label: "Laboratoriya", icon: Building2, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/alerts", label: "Xavfsizlik", icon: Bell, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/attendance", label: "Davomat", icon: UserCheck, roles: ["superadmin", "ceo", "admin"] },
+  { href: "/xodim-nazorati", label: "Xodim nazorati", icon: ScanFace, roles: ["superadmin", "ceo", "admin"] },
+  { href: "/hujjatlar", label: "Hujjatlar", icon: FileText, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/kiosk-devices", label: "Kiosk qurilmalari", icon: Monitor, roles: ["superadmin", "ceo", "admin"] },
   { href: "/insights", label: "Biznes tahlili", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin"] },
   { href: "/inventory", label: "Ombor", icon: Package, roles: ["superadmin", "ceo", "admin"] },

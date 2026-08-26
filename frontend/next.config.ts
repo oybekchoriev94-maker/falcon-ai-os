@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: API_URL + "/api/:path*",
       },
+      // Eski alohida HTML sahifalar yagona dashboard'ga yo'naltiriladi
+      { source: "/davomat.html", destination: "/attendance" },
+      { source: "/hujjatlar.html", destination: "/hujjatlar" },
+      { source: "/director.html", destination: "/xodim-nazorati" },
     ];
   },
 };

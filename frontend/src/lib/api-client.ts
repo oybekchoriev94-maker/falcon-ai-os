@@ -129,6 +129,10 @@ class ApiClient {
     return this.request("PUT", path, body) as any;
   }
 
+  async patch<T = Record<string, any>>(path: string, body?: unknown): Promise<T & { success?: boolean; error?: string }> {
+    return this.request("PATCH", path, body) as any;
+  }
+
   async delete<T = Record<string, any>>(path: string): Promise<T & { success?: boolean; error?: string }> {
     return this.request("DELETE", path) as any;
   }

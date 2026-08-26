@@ -6,6 +6,7 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import CameraEvidenceSection from "@/components/inventory/camera-evidence";
 import {
   Package,
   AlertTriangle,
@@ -474,6 +475,11 @@ export default function InventoryPage() {
             )}
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Ombor-kamera korrelyatsiyasi (PR #12) — kamera yo'q = signal */}
+      <motion.div variants={itemAnim}>
+        <CameraEvidenceSection />
       </motion.div>
 
       <Dialog open={editOpen} onOpenChange={(v) => { setEditOpen(v); if (!v) { setSelected(null); resetForm(); } }}>
