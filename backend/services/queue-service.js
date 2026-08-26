@@ -10,7 +10,7 @@
 // SOF funksiya — DB'siz unit-test qilinadi.
 // ============================================================
 
-function normPhone(p) {
+export function normPhone(p) {
   const d = String(p || '').replace(/\D/g, '');
   if (!d) return '';
   if (d.length === 9) return '+998' + d;
@@ -18,7 +18,7 @@ function normPhone(p) {
   return '+' + d;
 }
 
-function dedupeKey(name, phone) {
+export function dedupeKey(name, phone) {
   const n = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
   return `${n}|${normPhone(phone)}`;
 }
@@ -98,6 +98,28 @@ export function buildLiveQueue(appointmentRows = [], queueRows = [], now = new D
   });
 
   return { queue, counts };
+}
+
+/**
+ * Navbat chaqiruvi matnini tuzadi (SOF) — kiosk TV / ovozli e'lon uchun.
+ * Keyin bu matn TTS dvigateliga (masalan OmniVoice, uz/uzn) beriladi.
+ *
+ * PII: TV ekrani kabi ism qisqartiriladi (Familiya + ism bosh harfi).
+ *
+ * @param {Object} item navbat elementi: { patient_name, doctor_name,
+ *   access_code?, queue_number?, room? }
+ * @returns {string} o'zbekcha e'lon matni, bo'sh bo'lsa ''
+ */
+export function buildCallAnnouncement(item) {
+  if (!item) return '';
+  const parts = String(item.patient_name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const shortName = parts.length > 1 ? `${parts[0]} ${parts[1][0]}.` : parts[0];
+  const code = item.access_code
+    || (item.queue_number ? `N${item.queue_number}` : '');
+  const doctor = item.doctor_name ? ` ${item.doctor_name} qabuliga` : '';
+  const room = item.room ? ` ${item.room}-xona,` : '';
+  return `Hurmatli ${shortName},${room}${doctor} marhamat.${code ? ` Kodingiz: ${code}.` : ''}`;
 }
 
 /**

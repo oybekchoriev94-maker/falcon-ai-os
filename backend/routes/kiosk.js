@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { normalizePhone } from '../services/patient-store.js';
 import { createPayment } from '../services/payment-gateway.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
+import { dedupeKey, buildCallAnnouncement } from '../services/queue-service.js';
 import { listConsultations } from '../services/consultation-catalog.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -821,11 +822,15 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   // Endi: faqat arrived_at bor (ya'ni jismonan KELGAN) bemorlar ko'rinadi.
   // Har biriga taxminiy kutish vaqti hisoblanadi — o'sha shifokorda
   // undan oldin kutayotganlar soni x xizmat davomiyligi.
+  //
+  // 2026-08: walk-in bemorlar ham qo'shildi — registraturada jonli
+  // navbatga qo'yilganlar (patient_queue). Dublikatlar telefon+ism
+  // bo'yicha tozalanadi (queue-service.dedupeKey — /queue/live bilan bir xil).
   router.get('/queue', deviceAuth, async (req, res) => {
     try {
       const rows = await q(
-        `SELECT a.access_code, a.patient_name, a.scheduled_at, a.status, a.arrived_at,
-                a.payment_status, a.doctor_id, a.doctor_name, d.specialization,
+        `SELECT a.id, a.access_code, a.patient_name, a.phone, a.scheduled_at, a.status,
+                a.arrived_at, a.payment_status, a.doctor_id, a.doctor_name, d.specialization,
                 COALESCE(s.duration_min, 20) AS duration_min
            FROM appointments a
            LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
@@ -834,19 +839,50 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
             AND date(a.scheduled_at) = CURRENT_DATE
             AND a.status IN ('scheduled','confirmed','in_progress')
             AND a.arrived_at IS NOT NULL
-          ORDER BY
-            -- Qabuldagilar tepada, keyin kim OLDIN kelgan bo'lsa shu oldin
-            CASE WHEN a.status = 'in_progress' THEN 0 ELSE 1 END,
-            a.arrived_at ASC
           LIMIT 30`,
         [req.kioskTenantId]
       );
+
+      // Walk-in: bron qilmagan, registraturada navbatga qo'yilgan bemorlar.
+      const walkins = await q(
+        `SELECT id, queue_number, patient_name, phone, doctor, status, created_at
+           FROM patient_queue
+          WHERE tenant_id = $1 AND status IN ('waiting', 'in_progress')`,
+        [req.kioskTenantId]
+      );
+      const seen = new Set(rows.map((r) => dedupeKey(r.patient_name, r.phone)));
+      const merged = [...rows];
+      for (const w of walkins) {
+        if (seen.has(dedupeKey(w.patient_name, w.phone))) continue;
+        seen.add(dedupeKey(w.patient_name, w.phone));
+        merged.push({
+          access_code: null,
+          queue_number: w.queue_number,
+          patient_name: w.patient_name,
+          scheduled_at: w.created_at,
+          status: w.status,
+          arrived_at: w.created_at,
+          payment_status: 'pending',
+          doctor_id: null,
+          doctor_name: w.doctor || 'Qabul',
+          specialization: null,
+          duration_min: 20,
+          walk_in: true,
+        });
+      }
+      // Tartib: qabuldagilar tepada, keyin kim OLDIN kelgan bo'lsa shu oldin
+      merged.sort((a, b) => {
+        const pa = a.status === 'in_progress' ? 0 : 1;
+        const pb = b.status === 'in_progress' ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return new Date(a.arrived_at).getTime() - new Date(b.arrived_at).getTime();
+      });
 
       // Taxminiy kutish — har shifokor uchun alohida hisoblanadi: undan
       // oldin (in_progress yoki undan oldin kelgan) nechta bemor bo'lsa,
       // shularning xizmat davomiyligi yig'indisi.
       const aheadByDoctor = new Map();
-      const withWait = rows.map((r) => {
+      const withWait = merged.map((r) => {
         const key = r.doctor_id || r.doctor_name;
         const waitedSoFar = aheadByDoctor.get(key) || 0;
         const isWaiting = r.status !== 'in_progress';
@@ -861,7 +897,8 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         queue: withWait.map((r) => {
           const parts = String(r.patient_name || '').trim().split(/\s+/);
           return {
-            code: r.access_code,
+            // Walk-in bemorda access_code yo'q — navbat raqami ko'rsatiladi
+            code: r.access_code || `N${r.queue_number}`,
             display_name: parts.length > 1
               ? `${parts[0]} ${parts[1][0]}.`
               : (parts[0] || '—'),
@@ -870,10 +907,54 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
             department: r.specialization,
             status: r.status,
             paid: r.payment_status === 'paid',
+            walk_in: !!r.walk_in,
             wait_minutes: r.wait_minutes,
           };
         }),
       });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // GET /api/kiosk/queue/announce — ovozli chaqiruv matni (TTS uchun).
+  // TV/karnay tizimi shu matnni oladi va TTS dvigatelida (masalan
+  // OmniVoice — uz/uzn tillarini qo'llaydi) o'qib beradi.
+  // Chaqiriladiganlar: qabulga kirayotgan (in_progress) bemorlar.
+  router.get('/queue/announce', deviceAuth, async (req, res) => {
+    try {
+      const rows = await q(
+        `SELECT a.access_code, a.patient_name, a.doctor_name, a.status
+           FROM appointments a
+          WHERE a.tenant_id = $1
+            AND date(a.scheduled_at) = CURRENT_DATE
+            AND a.status = 'in_progress'
+            AND a.arrived_at IS NOT NULL
+          ORDER BY a.arrived_at DESC LIMIT 5`,
+        [req.kioskTenantId]
+      );
+      const walkins = await q(
+        `SELECT queue_number, patient_name, doctor, status
+           FROM patient_queue
+          WHERE tenant_id = $1 AND status = 'in_progress'
+          ORDER BY created_at DESC LIMIT 5`,
+        [req.kioskTenantId]
+      );
+      const calls = [
+        ...rows.map((r) => ({
+          code: r.access_code,
+          doctor: r.doctor_name,
+          text: buildCallAnnouncement(r),
+        })),
+        ...walkins.map((r) => ({
+          code: `N${r.queue_number}`,
+          doctor: r.doctor || 'Qabul',
+          text: buildCallAnnouncement({
+            patient_name: r.patient_name, doctor_name: r.doctor, queue_number: r.queue_number,
+          }),
+        })),
+      ].filter((c) => c.text);
+      res.json({ success: true, total: calls.length, calls });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
     }

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { buildLiveQueue, matchReasons } from '../backend/services/queue-service.js';
+import { buildLiveQueue, matchReasons, buildCallAnnouncement } from '../backend/services/queue-service.js';
 
 const NOW = new Date(2026, 7, 26, 12, 0); // 2026-08-26 12:00 lokal
 const minAgo = (m) => new Date(NOW.getTime() - m * 60000);
@@ -95,5 +95,24 @@ describe('matchReasons — dublikat sabablari', () => {
     const reasons = matchReasons(patient, { phone: '+998901234567', passport_number: 'AA1234567' });
     expect(reasons).toContain('phone');
     expect(reasons).toContain('passport');
+  });
+});
+
+describe('buildCallAnnouncement — ovozli chaqiruv matni', () => {
+  it('bron bemori uchun to\'liq e\'lon tuzadi (PII qisqartirilgan)', () => {
+    const text = buildCallAnnouncement({
+      patient_name: 'Aliyev Vali', doctor_name: 'Dr Karimov', access_code: 'A1B2', room: 3,
+    });
+    expect(text).toBe('Hurmatli Aliyev V., 3-xona, Dr Karimov qabuliga marhamat. Kodingiz: A1B2.');
+  });
+
+  it('walk-in bemor uchun navbat raqamini aytadi', () => {
+    const text = buildCallAnnouncement({ patient_name: 'Bemor B', doctor_name: 'Qabul', queue_number: 12 });
+    expect(text).toBe('Hurmatli Bemor B., Qabul qabuliga marhamat. Kodingiz: N12.');
+  });
+
+  it('bo\'sh yoki ismsiz element uchun bo\'sh qaytaradi', () => {
+    expect(buildCallAnnouncement(null)).toBe('');
+    expect(buildCallAnnouncement({ patient_name: '  ' })).toBe('');
   });
 });
