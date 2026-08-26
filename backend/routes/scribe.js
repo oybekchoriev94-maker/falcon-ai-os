@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { MEDICAL_SKILLS, listSpecializations, resolveSpecialization } from '../../ai/protocols/medical-skills.js';
 import { SUPPORTED_LANGUAGES } from '../../ai/engines/stt.js';
+import { validateMedications } from '../services/medication-check.js';
 
 // Whisper sonlarni so'z bilan chiqaradi ("qirq besh"). LLM ajratishda raqamga o'giramiz.
 const NUMBER_RULE =
@@ -9,6 +10,19 @@ const NUMBER_RULE =
   "Masalan: \"qirq besh\" -> 45, \"o'ttiz yetti nuqta besh\" -> 37.5, \"yuz yigirma\" -> 120, " +
   "\"to'qson\" -> 90, \"besh yuz ming\" -> 500000. Yosh, harorat, bosim, puls, doza, " +
   "telefon raqami, miqdor, narx — hammasi raqamda bo'lsin.";
+
+// Tuzilmali qabul shabloni (roadmap PR #7): shikoyat, anamnez, tekshiruv,
+// tashxis, tavsiya va dorilar ALOHIDA maydonlarda. Eski kalitlar (medicines,
+// procedure) saqlanadi — eski UI va ombor sarfi shabloniga tayanadi.
+const INTAKE_PROMPT =
+  "Siz shifokor yordamchisisiz. Diktantdan qabul ma'lumotlarini ajratib, faqat JSON qaytaring:\n" +
+  '{"patient_name":"...","complaints":"...","anamnesis":"...","examination":"...",' +
+  '"diagnosis":"...","recommendations":"...",' +
+  '"medications":[{"name":"...","dose":"...","frequency":"..."}],' +
+  '"medicines":"...","procedure":"..."}\n' +
+  "medications — har bir dori alohida obyekt (nom, doza, qabul chastotasi). " +
+  "medicines — xuddi shu dorilarning qisqa satr ko'rinishi. " +
+  "Diktantda aytilmagan maydonni BO'SH satr qoldiring — o'ylab topmang.";
 
 export default function scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger) {
   const router = Router();
@@ -76,9 +90,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         null;
       const basePrompt = specialization
         ? MEDICAL_SKILLS[specialization].systemPrompt
-        : 'Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, ' +
-          'buyurilgan dorilarni ajratib, faqat JSON qaytaring: ' +
-          '{"patient_name":"...","diagnosis":"...","procedure":"...","medicines":"..."}';
+        : INTAKE_PROMPT;
       const result = await llm(
         basePrompt +
         "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." +
@@ -88,10 +100,18 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         "\nAgar diktantda biror muolaja/protsedura nomi aytilsa, JSONga qo'shimcha \"procedure\" kalitini ham qo'shing.",
         text
       );
+      // Dori/doza tekshiruvi — LLM ishonchsiz joyda deterministic himoya (PR #7).
+      // Ehtiyot: llm() JSON topilmasa SATR qaytarishi mumkin — primitivga
+      // maydon qo'shib bo'lmaydi (strict mode TypeError).
+      const medCheck = validateMedications(result);
+      if (result && typeof result === 'object' && !result.error) {
+        result.medication_check = medCheck.medications;
+      }
       const consId = uuidv4();
       // patient_id — UI kartani oldindan tanlagan bo'lsa yoziladi, aks holda NULL
       // (istoriya keyin qo'lda biriktirish uchun ochiq).
-      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      // status='draft' — shifokor tasdig'idan keyingina yakuniy bo'ladi (PR #7).
+      await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, patient_name, raw_text, data_json, status) VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')",
         [consId, tenantId, req.body?.doctor_id || req.user?.id || null, req.body?.patient_id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
       let consumption = null;
       if (result.procedure) {
@@ -103,7 +123,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
       const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
-      res.json({ success: true, transcription: text, language: sttLanguage, data: result, consultation_id: consId, auto_consumption: consumption });
+      res.json({ success: true, transcription: text, language: sttLanguage, data: result, consultation_id: consId, status: 'draft', medication_warnings: medCheck.warnings, auto_consumption: consumption });
     } catch (e) { serverError(res, e); }
   });
 
@@ -171,6 +191,10 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       await markTranscribed(pool, rec?.id, text);
       // Diktant ruscha bo'lishi mumkin — LLM ikkala tilni ham tushunishi kerak
       const result = await llm(prompt + "\n\nDiktant o'zbek yoki rus tilida bo'lishi mumkin — ikkalasini ham tushunasiz va JSON kalitlarini o'zgartirmasdan to'ldirasiz." + NUMBER_RULE, text);
+      const medCheck = validateMedications(result);
+      if (result && typeof result === 'object' && !result.error) {
+        result.medication_check = medCheck.medications;
+      }
       const consId = uuidv4();
       await q("INSERT INTO patient_consultations (id, tenant_id, doctor_id, patient_id, patient_name, raw_text, data_json) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         [consId, tenantId, req.user?.id || null, req.body?.patient_id || null, result.patient_name || "Noma'lum", text, JSON.stringify(result)]);
@@ -209,7 +233,7 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
       const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
-      res.json({ success: true, transcription: text, language: sttLanguage || null, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId });
+      res.json({ success: true, transcription: text, language: sttLanguage || null, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId, medication_warnings: medCheck.warnings });
     } catch (e) { serverError(res, e); }
   });
 
@@ -229,14 +253,132 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
   router.get('/history', authMiddleware, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit) || 20;
+      const status = req.query.status === 'draft' || req.query.status === 'confirmed' ? req.query.status : null;
       const tenantId = req.user?.tenant_id || req.tenant_id;
       let consultations;
       if (req.user.role === 'doctor') {
-        consultations = await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY created_at DESC LIMIT $3", [tenantId, req.user.id, limit]);
+        consultations = status
+          ? await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 AND doctor_id = $2 AND status = $3 ORDER BY created_at DESC LIMIT $4", [tenantId, req.user.id, status, limit])
+          : await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 AND doctor_id = $2 ORDER BY created_at DESC LIMIT $3", [tenantId, req.user.id, limit]);
       } else {
-        consultations = await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2", [tenantId, limit]);
+        consultations = status
+          ? await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT $3", [tenantId, status, limit])
+          : await q("SELECT * FROM patient_consultations WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2", [tenantId, limit]);
       }
       res.json({ success: true, total: consultations.length, consultations });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // ─── Shifokor tasdig'i oqimi (roadmap PR #7) ─────────────────────
+  // AI diktantni DRAFT sifatida saqlaydi; shifokor ko'rib chiqib,
+  // kerak bo'lsa tahrirlaydi va TASDIQLAYDI — faqat shundan keyin
+  // yozuv bemor tarixining yakuniy qismiga aylanadi.
+
+  /** Bitta konsultatsiya. Shifokor faqat o'zinikini ko'radi. */
+  router.get('/consultations/:id', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const cons = await qGet("SELECT * FROM patient_consultations WHERE id = $1 AND tenant_id = $2", [req.params.id, tenantId]);
+      if (!cons) return res.status(404).json({ success: false, error: 'Konsultatsiya topilmadi' });
+      if (req.user.role === 'doctor' && cons.doctor_id !== req.user.id) {
+        return res.status(403).json({ success: false, error: 'Access Denied' });
+      }
+      res.json({ success: true, consultation: cons });
+    } catch (e) { serverError(res, e); }
+  });
+
+  /** Draftni tahrirlash (tasdiqlangunga qadar). */
+  router.put('/consultations/:id', authMiddleware, checkRole('doctor', 'admin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const cons = await qGet("SELECT * FROM patient_consultations WHERE id = $1 AND tenant_id = $2", [req.params.id, tenantId]);
+      if (!cons) return res.status(404).json({ success: false, error: 'Konsultatsiya topilmadi' });
+      if (req.user.role === 'doctor' && cons.doctor_id !== req.user.id) {
+        return res.status(403).json({ success: false, error: 'Access Denied' });
+      }
+      if (cons.status === 'confirmed') {
+        return res.status(409).json({ success: false, error: 'Tasdiqlangan yozuvni tahrirlab bo\'lmaydi' });
+      }
+      const { raw_text, data_json, patient_name } = req.body || {};
+      if (raw_text === undefined && data_json === undefined && patient_name === undefined) {
+        return res.status(400).json({ success: false, error: 'O\'zgartiriladigan maydon yo\'q' });
+      }
+      const updated = await qGet(
+        `UPDATE patient_consultations SET
+           raw_text = COALESCE($1, raw_text),
+           data_json = COALESCE($2, data_json),
+           patient_name = COALESCE($3, patient_name)
+         WHERE id = $4 AND tenant_id = $5
+         RETURNING id, status, patient_name, raw_text, data_json`,
+        [
+          raw_text === undefined ? null : String(raw_text),
+          data_json === undefined ? null : JSON.stringify(data_json),
+          patient_name === undefined ? null : String(patient_name),
+          req.params.id, tenantId,
+        ]
+      );
+      res.json({ success: true, consultation: updated });
+    } catch (e) { serverError(res, e); }
+  });
+
+  /** Tasdiqlash — draft bemor tarixining yakuniy yozuviga aylanadi. */
+  router.post('/consultations/:id/confirm', authMiddleware, checkRole('doctor', 'admin'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const cons = await qGet("SELECT * FROM patient_consultations WHERE id = $1 AND tenant_id = $2", [req.params.id, tenantId]);
+      if (!cons) return res.status(404).json({ success: false, error: 'Konsultatsiya topilmadi' });
+      if (req.user.role === 'doctor' && cons.doctor_id !== req.user.id) {
+        return res.status(403).json({ success: false, error: 'Access Denied' });
+      }
+      if (cons.status === 'confirmed') {
+        return res.status(409).json({ success: false, error: 'Konsultatsiya allaqachon tasdiqlangan' });
+      }
+      await q("UPDATE patient_consultations SET status = 'confirmed', confirmed_at = NOW(), confirmed_by = $1 WHERE id = $2 AND tenant_id = $3",
+        [req.user.id, req.params.id, tenantId]);
+      res.json({ success: true, consultation_id: cons.id, status: 'confirmed' });
+    } catch (e) { serverError(res, e); }
+  });
+
+  /**
+   * Qabuldan OLDINGI AI xulosa (roadmap PR #7): bemorning tasdiqlangan
+   * konsultatsiyalari asosida qisqa xulosa. LLM ishlamasa (Ollama o'chiq,
+   * kalit yo'q) DETERMINISTIK ro'yxatga qaytadi — xulosa hech qachon
+   * xato bilan to'xtamaydi.
+   */
+  router.get('/patient-summary/:patientId', authMiddleware, checkRole('doctor', 'admin', 'ceo'), async (req, res) => {
+    try {
+      const tenantId = req.user?.tenant_id || req.tenant_id;
+      const rows = await q(
+        `SELECT created_at, patient_name, data_json FROM patient_consultations
+         WHERE tenant_id = $1 AND patient_id = $2 AND status = 'confirmed'
+         ORDER BY created_at DESC LIMIT 5`,
+        [tenantId, req.params.patientId]
+      );
+      if (rows.length === 0) {
+        return res.json({ success: true, patient_id: req.params.patientId, summary: "Bemor uchun oldingi qabul yozuvlari topilmadi.", source: 'none', consultations: 0 });
+      }
+      // Deterministik zaxira — har doim tayyor
+      const lines = rows.map((r) => {
+        let data = {};
+        try { data = typeof r.data_json === 'string' ? JSON.parse(r.data_json) : (r.data_json || {}); } catch { /* buzilgan JSON — o'tkazamiz */ }
+        const date = new Date(r.created_at).toISOString().slice(0, 10);
+        const parts = [date];
+        if (data.diagnosis) parts.push(`Tashxis: ${data.diagnosis}`);
+        if (data.medicines) parts.push(`Dorilar: ${data.medicines}`);
+        return parts.join(' — ');
+      });
+      const deterministic = lines.join('\n');
+      try {
+        const { llm } = await import('../../ai/orchestrator.js');
+        const ai = await llm(
+          "Siz klinik yordamchisiz. Bemorning oldingi qabul yozuvlaridan qisqa, faktga asoslangan xulosa tuzing (3-5 jumla). Yangi ma'lumot o'ylab topmang. Faqat matn qaytaring.",
+          deterministic
+        );
+        if (typeof ai === 'string' && ai.trim()) {
+          return res.json({ success: true, patient_id: req.params.patientId, summary: ai.trim(), source: 'ai', consultations: rows.length });
+        }
+      } catch (e) { logger.warn({ err: e }, '[SUMMARY] LLM xatosi — deterministic xulosaga o\'tildi'); }
+      res.json({ success: true, patient_id: req.params.patientId, summary: deterministic, source: 'deterministic', consultations: rows.length });
     } catch (e) { serverError(res, e); }
   });
 
