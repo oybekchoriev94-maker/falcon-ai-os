@@ -16,19 +16,30 @@
  * ko'rinadi — ular haqiqiy karta ochilganda qo'lda biriktiriladi.
  */
 export async function up(knex) {
-  await knex.schema.alterTable('appointments', (t) => {
-    t.uuid('patient_id').references('id').inTable('patients').onDelete('SET NULL');
-    t.index(['tenant_id', 'patient_id']);
-  });
+  // DIQQAT: idempotent — 007_tenant_isolation_and_tma_integrity (boshqa
+  // branch'dan kelgan dublikat raqamli migratsiya) patient_consultations
+  // .patient_id ni OLDINROQ qo'shib qo'yadi. CI'da toza bazada "column
+  // already exists" bilan yiqilgan (2026-08-26). Shu sababli ustun va
+  // indekslar faqat yo'q bo'lsa qo'shiladi.
+  if (!(await knex.schema.hasColumn('appointments', 'patient_id'))) {
+    await knex.schema.alterTable('appointments', (t) => {
+      t.uuid('patient_id').references('id').inTable('patients').onDelete('SET NULL');
+    });
+  }
+  await knex.raw(`CREATE INDEX IF NOT EXISTS appointments_tenant_id_patient_id_index
+    ON appointments (tenant_id, patient_id)`);
 
-  await knex.schema.alterTable('patient_consultations', (t) => {
-    t.uuid('patient_id').references('id').inTable('patients').onDelete('SET NULL');
-    t.index(['tenant_id', 'patient_id']);
-  });
+  if (!(await knex.schema.hasColumn('patient_consultations', 'patient_id'))) {
+    await knex.schema.alterTable('patient_consultations', (t) => {
+      t.uuid('patient_id').references('id').inTable('patients').onDelete('SET NULL');
+    });
+  }
+  await knex.raw(`CREATE INDEX IF NOT EXISTS patient_consultations_tenant_id_patient_id_index
+    ON patient_consultations (tenant_id, patient_id)`);
 
   // MRN — klinika ichida noyob. NULL bo'lsa cheklov qo'llanmaydi (eski bemorlar).
   await knex.raw(`
-    CREATE UNIQUE INDEX patients_tenant_mrn_unique
+    CREATE UNIQUE INDEX IF NOT EXISTS patients_tenant_mrn_unique
     ON patients (tenant_id, medical_record_number)
     WHERE medical_record_number IS NOT NULL
   `);
@@ -36,7 +47,7 @@ export async function up(knex) {
   // Telefon — normalizatsiya qilingan (faqat raqamlar) ko'rinishda noyob.
   // Application layer +998XXXXXXXXX saqlaydi; NULL cheklovsiz.
   await knex.raw(`
-    CREATE UNIQUE INDEX patients_tenant_phone_unique
+    CREATE UNIQUE INDEX IF NOT EXISTS patients_tenant_phone_unique
     ON patients (tenant_id, phone)
     WHERE phone IS NOT NULL AND phone <> ''
   `);
