@@ -792,12 +792,17 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
       res.json({
         success: true,
         already: r.already,
+        queue_position: r.queue_position ?? null,
         appointment: {
           patient_name: r.appointment.patient_name,
           doctor_name: r.appointment.doctor_name,
           scheduled_at: r.appointment.scheduled_at,
         },
-        message: r.already ? 'Siz allaqachon kelganingizni belgilagansiz.' : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
+        message: r.already
+          ? 'Siz allaqachon kelganingizni belgilagansiz.'
+          : r.queue_position
+            ? `Xush kelibsiz! Navbatda ${r.queue_position}-o'rindasiz.`
+            : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
       });
     } catch (e) {
       res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });

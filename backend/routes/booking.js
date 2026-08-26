@@ -420,7 +420,7 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
         source: 'registratura',
         actorUserId: req.user?.id || null,
       });
-      res.json({ success: true, already: r.already, appointment: r.appointment });
+      res.json({ success: true, already: r.already, queue_position: r.queue_position ?? null, appointment: r.appointment });
     } catch (e) {
       res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });
     }
@@ -586,8 +586,13 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
       res.json({
         success: true,
         already: r.already,
+        queue_position: r.queue_position ?? null,
         appointment: r.appointment,
-        message: r.already ? 'Siz allaqachon kelganingizni belgilagansiz.' : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
+        message: r.already
+          ? 'Siz allaqachon kelganingizni belgilagansiz.'
+          : r.queue_position
+            ? `Xush kelibsiz! Navbatda ${r.queue_position}-o'rindasiz.`
+            : 'Xush kelibsiz! Navbatga qo\'shildingiz.',
       });
     } catch (e) {
       res.status(e.status || 500).json({ success: false, error: e.message, code: e.code });

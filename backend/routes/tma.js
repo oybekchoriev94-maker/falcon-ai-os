@@ -489,7 +489,7 @@ export default function tmaRoutes(pool, bookingCore, platformPool = pool) {
         appointmentId,
         source: 'telegram',
       });
-      res.json({ success: true, already: r.already, appointment: r.appointment });
+      res.json({ success: true, already: r.already, queue_position: r.queue_position ?? null, appointment: r.appointment });
     } catch (e) {
       if (e.status) return res.status(e.status).json({ success: false, error: e.message, code: e.code });
       safeError(res, e);

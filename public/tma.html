@@ -594,7 +594,7 @@ async function bookAppointment(){
 async function doCheckin(appointmentId){
   try{
     const data=await api('POST','/api/tma/checkin',appointmentId?{appointment_id:appointmentId}:{});
-    if(data?.success){showToast(data.already?'Siz allaqachon kelganingizni belgilagansiz':'Xush kelibsiz! Navbatga qo\'shildingiz');loadQueue();loadDashboard()}
+    if(data?.success){const pos=data.queue_position?` Navbatingiz: ${data.queue_position}-o'rin.`:'';showToast(data.already?'Siz allaqachon kelganingizni belgilagansiz':'Xush kelibsiz! Navbatga qo\'shildingiz.'+pos);loadQueue();loadDashboard()}
     else showToast(data?.error||'Xatolik','error')
   }catch(e){showToast('Xatolik yuz berdi','error')}
 }
