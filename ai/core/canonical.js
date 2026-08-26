@@ -1,7 +1,17 @@
 // ============================================================
 // Falcon AI OS — Kanonik agentlar xartiyasi ("asosiy miya")
 //
-// Yo'l xarita talabi: 34 sochilgan agent o'rniga 12 ta KANONIK agent.
+// Yo'l xarita talabi (PLATFORM-ROADMAP.md, "Asosiy AI agentlar"):
+// 34 sochilgan agent o'rniga 12 ta KANONIK agent. Ro'yxat shu
+// hujjatdagi tartib bilan birma-bir mos:
+//
+//   1. Reception             7. HR and Attendance
+//   2. Doctor Copilot        8. Vision Security
+//   3. Patient History       9. Finance Anomaly
+//   4. Document/OCR         10. Clinic Director
+//   5. Laboratory           11. Compliance and Audit
+//   6. Pharmacy & Inventory 12. Patient Communication
+//
 // Har bir kanonik agent uchun MAJBURIY deklaratsiya:
 //   - mission                  aniq vazifasi
 //   - data_scope               ko'ra oladigan ma'lumotlari
@@ -11,158 +21,150 @@
 //   - mapped_agents            hozirgi 34 agentdan qaysilari shu kanonik
 //                              agentga xizmat qiladi
 //
-// Xartiya — deklarativ hujjat emas, RUNTIME nazoratining manbasi:
-// runtime har ijroni shu xartiyadagi canonical_id bilan audit qiladi.
+// QAT'IY QOIDA (yo'l xarita): AI mustaqil ravishda yakuniy tashxis,
+// retsept, xodim jazosi, pul qaytarish yoki omborni hisobdan chiqarishni
+// amalga oshirmaydi — bularning hammasi requires_human_approval'da.
 // ============================================================
 
 export const CANONICAL_AGENTS = Object.freeze([
   Object.freeze({
     id: 'reception',
-    name: 'Qabul va ro\'yxatga olish',
+    name: 'Reception Agent',
     status: 'active',
     mission:
-      'Bemorlarni ro\'yxatga olish, qabulga yozish va kartani to\'ldirishni avtomatlashtirish.',
-    data_scope: ['patients', 'appointments', 'doctor_schedules'],
-    actions: ['create_patient', 'book_appointment', 'update_patient_card'],
+      'Bemorlarni ro\'yxatga olish, qabulga yozish, kartani to\'ldirish va yo\'llanma (referral) bilan kelgan bemorlarni kuzatish.',
+    data_scope: ['patients', 'appointments', 'doctor_schedules', 'referrals', 'referral_partners'],
+    actions: ['create_patient', 'book_appointment', 'update_patient_card', 'track_referral'],
     requires_human_approval: ['merge_patients', 'delete_patient'],
-    mapped_agents: ['receptionist'],
-  }),
-  Object.freeze({
-    id: 'queue-schedule',
-    name: 'Navbat va qabul rejasi',
-    status: 'planned',
-    mission:
-      'Jonli navbat, qabul jadvali optimallashtirish va kechikishlarni boshqarish.',
-    data_scope: ['appointments', 'patient_queue', 'doctor_schedules'],
-    actions: ['reorder_queue', 'propose_slot', 'notify_delay'],
-    requires_human_approval: ['cancel_appointment', 'reassign_doctor'],
-    mapped_agents: [],
-  }),
-  Object.freeze({
-    id: 'scribe',
-    name: 'Klinik hujjatlar (scribe)',
-    status: 'active',
-    mission:
-      'Ovozdan tibbiy hujjat: qabul bayoni, epikriz, stasionar yozuvlar. RubaiSTT + LLM.',
-    data_scope: ['patient_consultations', 'medical_reports', 'admissions', 'daily_notes'],
-    actions: ['create_draft', 'generate_epicrisis'],
-    requires_human_approval: ['confirm_record'],
-    mapped_agents: [
-      'medical-scribe', 'visit-scribe', 'admission-scribe',
-      'obhod-scribe', 'epicrisis-writer',
-    ],
+    mapped_agents: ['receptionist', 'referral-agent', 'b2b-referral'],
   }),
   Object.freeze({
     id: 'doctor-copilot',
-    name: 'Shifokor kopilot',
+    name: 'Doctor Copilot',
     status: 'active',
     mission:
-      'Shifokorga taklif beradi (tashxis YO\'Q): ovoz buyruqlari, retsept/laboratoriya takliflari, dori tekshiruvi.',
-    data_scope: ['patient_consultations', 'prescriptions', 'lab_orders'],
-    actions: ['propose_action', 'medication_check', 'autofill_form'],
-    requires_human_approval: ['execute_any_proposal'],
+      'Shifokorga yordam beradi (o\'zi shifokor EMAS): ovoz buyruqlari, tashxis/triaj takliflari, dori tekshiruvi, vitallar anomaliyasi ogohlantirishi. Faqat TAKLIF darajasida.',
+    data_scope: ['patient_consultations', 'prescriptions', 'lab_orders', 'daily_notes'],
+    actions: ['propose_action', 'medication_check', 'autofill_form', 'suggest_diagnosis', 'triage', 'flag_vital_anomaly'],
+    requires_human_approval: ['execute_any_proposal', 'confirm_diagnosis'],
     mapped_agents: [
-      'doctor-copilot', 'voice-command', 'smart-autofill',
-      'medication-coach', 'drug-interaction',
+      'doctor-copilot', 'voice-command', 'smart-autofill', 'medication-coach',
+      'diagnosis-suggester', 'drug-interaction', 'triage-agent',
+      'vitals-anomaly', 'vital-anomaly',
     ],
   }),
   Object.freeze({
-    id: 'finance',
-    name: 'To\'lovlar va moliya',
-    status: 'planned',
-    mission:
-      'To\'lovlar, cheklar, qarzdorlik va kassa jarayonlarini nazorat qilish.',
-    data_scope: ['invoices', 'payment_transactions', 'financial_transactions'],
-    actions: ['create_receipt', 'flag_debt', 'propose_discount'],
-    requires_human_approval: ['refund_payment', 'write_off_debt'],
-    mapped_agents: [],
-  }),
-  Object.freeze({
-    id: 'inventory',
-    name: 'Ombor va dorixona',
+    id: 'patient-history',
+    name: 'Patient History Agent',
     status: 'active',
     mission:
-      'Zaxira hisobi, muddat nazorati va xarid takliflari.',
+      'Bemor tarixini yig\'adi: qabul bayonlari, yotqizish xulosalari va oldingi qabullar qisqachasini yagona timeline\'ga aylantiradi.',
+    data_scope: ['patient_consultations', 'admissions', 'medical_reports', 'patients'],
+    actions: ['summarize_history', 'create_visit_record', 'pre_visit_brief'],
+    requires_human_approval: ['confirm_record'],
+    mapped_agents: ['visit-scribe', 'admission-scribe', 'admission-summary'],
+  }),
+  Object.freeze({
+    id: 'document-ocr',
+    name: 'Document/OCR Agent',
+    status: 'partial',
+    mission:
+      'Klinik hujjatlar: diktantdan bayon, epikriz, stasionar yozuvlar. Keyingi bosqich — eski qog\'oz kartalarni OCR bilan raqamlashtirish (PR #8).',
+    data_scope: ['patient_consultations', 'medical_reports', 'daily_notes'],
+    actions: ['create_draft', 'generate_epicrisis', 'ocr_import'],
+    requires_human_approval: ['confirm_record'],
+    mapped_agents: ['medical-scribe', 'obhod-scribe', 'epicrisis-writer'],
+  }),
+  Object.freeze({
+    id: 'laboratory',
+    name: 'Laboratory Agent',
+    status: 'active',
+    mission:
+      'Laboratoriya jarayoni: natijalarni sharhlash (faqat taklif), kritik qiymat ogohlantirishi, tayyor natija haqida xabar.',
+    data_scope: ['lab_orders', 'medical_reports', 'patients'],
+    actions: ['interpret_lab', 'draft_conclusion', 'flag_critical_value', 'notify_result_ready'],
+    requires_human_approval: ['confirm_conclusion'],
+    mapped_agents: ['lab-conclusion-helper', 'lab-interpreter', 'lab-critical', 'lab-result-ready'],
+  }),
+  Object.freeze({
+    id: 'pharmacy-inventory',
+    name: 'Pharmacy and Inventory Agent',
+    status: 'active',
+    mission:
+      'Ombor va dorixona: zaxira, muddat nazorati, xarid takliflari. Hisobdan chiqarishni O\'ZI qilmaydi.',
     data_scope: ['inventory_items', 'inventory_batches', 'inventory_transactions'],
     actions: ['flag_low_stock', 'flag_expiry', 'propose_purchase'],
     requires_human_approval: ['confirm_purchase', 'write_off_stock'],
     mapped_agents: ['inventory-manager'],
   }),
   Object.freeze({
-    id: 'wards',
-    name: 'Shifoxona bo\'limlari',
-    status: 'active',
+    id: 'hr-attendance',
+    name: 'HR and Attendance Agent',
+    status: 'partial',
     mission:
-      'Yotoq boshqaruvi, yotqizish/kuzatish va holat monitoringi.',
-    data_scope: ['wards', 'beds', 'admissions', 'daily_notes', 'vitals'],
-    actions: ['propose_bed', 'flag_vital_anomaly', 'draft_daily_note'],
-    requires_human_approval: ['confirm_bed', 'confirm_discharge'],
-    mapped_agents: ['admission-summary', 'vitals-anomaly', 'vital-anomaly', 'lab-critical'],
+      'Xodim smenasi va davomati: kechikish/erta ketish hisoboti, zona signallari. Hozircha deterministik qoidalar (/api/workers) ishlaydi; AI-agent keyingi bosqichda.',
+    data_scope: ['staff_shifts', 'attendance_events', 'vision_events', 'vision_zone_rules'],
+    actions: ['daily_attendance_report', 'zone_alert', 'propose_correction'],
+    requires_human_approval: ['correct_attendance', 'any_penalty'],
+    mapped_agents: [],
   }),
   Object.freeze({
-    id: 'patient-comm',
-    name: 'Bemor bilan muloqot',
+    id: 'vision-security',
+    name: 'Vision Security Agent',
+    status: 'partial',
+    mission:
+      'Kamera hodisalarini tahlil qiladi: navbat, qarovsiz zona, ruxsatsiz kirish, kamera nosozligi. Raw video lokal qoladi; VPS\'ga faqat metadata. (falcon-vision-edge + /api/edge integratsiyasi tayyor.)',
+    data_scope: ['vision_events', 'edge_nodes', 'vision_zone_rules'],
+    actions: ['raise_security_alert', 'report_camera_fault'],
+    requires_human_approval: ['confirm_incident'],
+    mapped_agents: [],
+  }),
+  Object.freeze({
+    id: 'finance-anomaly',
+    name: 'Finance Anomaly Agent',
+    status: 'partial',
+    mission:
+      'Moliyaviy prognoz va anomaliya: daromad prognozi, xizmat rentabelligi, kutilmagan to\'lov/naqd farqlari signalini beradi.',
+    data_scope: ['invoices', 'payment_transactions', 'financial_transactions', 'usage_metering'],
+    actions: ['forecast_revenue', 'profitability_report', 'flag_anomaly'],
+    requires_human_approval: ['refund_payment', 'write_off_debt'],
+    mapped_agents: ['revenue-forecaster', 'service-profitability'],
+  }),
+  Object.freeze({
+    id: 'clinic-director',
+    name: 'Clinic Director Agent',
     status: 'active',
     mission:
-      'Eslatmalar, qabuldan keyingi kuzatuv, savol-javob va tayyorgarlik yo\'riqnomalari.',
+      'Direktor uchun umumiy tahlil: xodim samaradorligi KPI, bemor yo\'qotish xavfi, filial ko\'rsatkichlari va xavf xulosasi.',
+    data_scope: ['doctor_analytics', 'appointments', 'patients', 'usage_metering'],
+    actions: ['generate_report', 'churn_risk_report', 'staff_utilization_report'],
+    requires_human_approval: [],
+    mapped_agents: ['analytics-agent', 'churn-detector', 'staff-utilization'],
+  }),
+  Object.freeze({
+    id: 'compliance-audit',
+    name: 'Compliance and Audit Agent',
+    status: 'partial',
+    mission:
+      'Audit va muvofiqlik: agent ijrolari, kirish jurnallari va shubhali amallar bo\'yicha hisobot. (audit_logs va agent_executions tayyor; AI-tahlil keyingi bosqichda.)',
+    data_scope: ['audit_logs', 'agent_executions', 'usage_metering'],
+    actions: ['audit_report', 'flag_suspicious_access'],
+    requires_human_approval: ['disable_user'],
+    mapped_agents: [],
+  }),
+  Object.freeze({
+    id: 'patient-communication',
+    name: 'Patient Communication Agent',
+    status: 'active',
+    mission:
+      'Bemor bilan muloqot: eslatmalar, tayyorgarlik yo\'riqnomalari, kuzatuv, savol-javob. Tibbiy maslahat bermaydi.',
     data_scope: ['patients', 'appointments', 'telegram_users'],
-    actions: ['send_reminder', 'answer_faq', 'send_instructions'],
+    actions: ['send_reminder', 'send_instructions', 'answer_faq', 'schedule_follow_up'],
     requires_human_approval: ['send_medical_advice'],
     mapped_agents: [
       'patient-chatbot', 'symptom-checker', 'photo-triage',
-      'appointment-reminder', 'lab-result-ready',
-      'follow-up-scheduler', 'preparation-instructor',
+      'appointment-reminder', 'follow-up-scheduler', 'preparation-instructor',
     ],
-  }),
-  Object.freeze({
-    id: 'diagnostics',
-    name: 'Diagnostika yo\'nalishi',
-    status: 'partial',
-    mission:
-      'Triaj, tashxis takliflari va laboratoriya natijalarini sharhlash (faqat taklif).',
-    data_scope: ['lab_orders', 'medical_reports', 'patient_consultations'],
-    actions: ['suggest_diagnosis', 'interpret_lab', 'triage'],
-    requires_human_approval: ['confirm_diagnosis'],
-    mapped_agents: [
-      'triage-agent', 'diagnosis-suggester',
-      'lab-conclusion-helper', 'lab-interpreter',
-    ],
-  }),
-  Object.freeze({
-    id: 'analytics',
-    name: 'Analitika va prognoz',
-    status: 'active',
-    mission:
-      'Daromad prognozi, xodim samaradorligi, xizmat rentabelligi va mijoz yo\'qotish tahlili.',
-    data_scope: ['usage_metering', 'invoices', 'appointments', 'doctor_analytics'],
-    actions: ['generate_report', 'forecast_revenue', 'flag_anomaly'],
-    requires_human_approval: [],
-    mapped_agents: [
-      'analytics-agent', 'revenue-forecaster', 'staff-utilization',
-      'service-profitability', 'churn-detector',
-    ],
-  }),
-  Object.freeze({
-    id: 'marketing-referral',
-    name: 'Marketing va yo\'naltirish',
-    status: 'active',
-    mission:
-      'B2B yo\'naltirish hamkorlari va kampaniya takliflari.',
-    data_scope: ['referrals', 'referral_partners', 'b2b_contracts'],
-    actions: ['track_referral', 'propose_campaign'],
-    requires_human_approval: ['sign_contract', 'send_campaign'],
-    mapped_agents: ['referral-agent', 'b2b-referral'],
-  }),
-  Object.freeze({
-    id: 'platform-monitoring',
-    name: 'Platforma monitoring',
-    status: 'planned',
-    mission:
-      'Tizim salomatligi, xavfsizlik va agent aniqligi ko\'rsatkichlarini kuzatish.',
-    data_scope: ['agent_executions', 'usage_metering', 'audit_logs'],
-    actions: ['alert_degraded_service', 'report_accuracy'],
-    requires_human_approval: ['disable_agent'],
-    mapped_agents: [],
   }),
 ]);
 

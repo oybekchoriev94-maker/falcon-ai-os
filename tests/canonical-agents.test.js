@@ -20,6 +20,14 @@ describe('Kanonik agentlar xartiyasi', () => {
     expect(CANONICAL_AGENTS).toHaveLength(12);
   });
 
+  it('PLATFORM-ROADMAP.md "Asosiy AI agentlar" bo\'limidagi tartib bilan mos', () => {
+    expect(CANONICAL_AGENTS.map((a) => a.id)).toEqual([
+      'reception', 'doctor-copilot', 'patient-history', 'document-ocr',
+      'laboratory', 'pharmacy-inventory', 'hr-attendance', 'vision-security',
+      'finance-anomaly', 'clinic-director', 'compliance-audit', 'patient-communication',
+    ]);
+  });
+
   it('id lar unikal bo\'lishi kerak', () => {
     const ids = CANONICAL_AGENTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -48,13 +56,13 @@ describe('Kanonik agentlar xartiyasi', () => {
   });
 
   it('getCanonicalAgent topadi yoki null qaytaradi', () => {
-    expect(getCanonicalAgent('scribe')?.name).toBeTruthy();
+    expect(getCanonicalAgent('doctor-copilot')?.name).toBeTruthy();
     expect(getCanonicalAgent('yoq-agent')).toBeNull();
   });
 
   it('canonicalForAgent nomi orqali kanonikni topadi', () => {
-    expect(canonicalForAgent('visit-scribe')?.id).toBe('scribe');
-    expect(canonicalForAgent('revenue-forecaster')?.id).toBe('analytics');
+    expect(canonicalForAgent('visit-scribe')?.id).toBe('patient-history');
+    expect(canonicalForAgent('revenue-forecaster')?.id).toBe('finance-anomaly');
     expect(canonicalForAgent('umuman-notanish')).toBeNull();
   });
 
@@ -66,15 +74,15 @@ describe('Kanonik agentlar xartiyasi', () => {
   });
 
   it('coverage: qisman ro\'yxatda missing ko\'rinadi', () => {
-    const cov = getCanonicalCoverage(['receptionist']);
-    const reception = cov.agents.find((a) => a.id === 'reception');
-    expect(reception.coverage).toBe(100);
-    const scribe = cov.agents.find((a) => a.id === 'scribe');
-    expect(scribe.coverage).toBe(0);
-    expect(scribe.missing).toContain('visit-scribe');
-    // Mapped agenti yo\'q kanonik (planned) coverage=null
-    const finance = cov.agents.find((a) => a.id === 'finance');
-    expect(finance.coverage).toBeNull();
+    const cov = getCanonicalCoverage(['inventory-manager']);
+    const pharmacy = cov.agents.find((a) => a.id === 'pharmacy-inventory');
+    expect(pharmacy.coverage).toBe(100);
+    const history = cov.agents.find((a) => a.id === 'patient-history');
+    expect(history.coverage).toBe(0);
+    expect(history.missing).toContain('visit-scribe');
+    // Mapped agenti yo'q kanonik (hali agent yozilmagan) coverage=null
+    const hr = cov.agents.find((a) => a.id === 'hr-attendance');
+    expect(hr.coverage).toBeNull();
   });
 });
 
@@ -106,12 +114,12 @@ describe('Registry va runtime wiring', () => {
   it('executeAgent mapped nomdan canonical ni avtomatik topadi', async () => {
     let seen = null;
     registerAgent({
-      name: 'visit-scribe', // kanonik xartiyada 'scribe' ga bog'langan
+      name: 'visit-scribe', // kanonik xartiyada 'patient-history' ga bog'langan
       description: 'test override',
       handler: async (input, ctx) => { seen = ctx; return { ok: true }; },
     });
     await executeAgent('visit-scribe', {}, { tenantId: '00000000-0000-0000-0000-000000000000' });
-    expect(seen.canonical).toBe('scribe');
+    expect(seen.canonical).toBe('patient-history');
   });
 
   it('handler xatosi structured fail bo\'lib qaytadi', async () => {
