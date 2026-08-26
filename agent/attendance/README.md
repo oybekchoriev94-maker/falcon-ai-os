@@ -80,6 +80,21 @@ tanish ~85%, uchtada ~95%.
 > **Ism muhim.** Shifokorlar ro'yxatidagi "Ism Familiya" bilan bir xil
 > yozsangiz, davomat avtomatik shifokorga bog'lanadi.
 
+### Bemorlar (Face ID orqali qabul)
+
+Bemor yuzi uchun papka nomi `bemor_` bilan boshlanadi:
+
+```
+faces/
+  bemor_Alisher Karim/
+    1.jpg
+    2.jpg
+```
+
+Bemor tanilganda server uni bemorlar bazasidan qidiradi va bugungi
+qabulga yozilgan bo'lsa — **navbatga avtomatik qo'shadi** (check-in,
+manba: `face`).
+
 ```bash
 python enroll.py
 ```
@@ -119,7 +134,20 @@ Ishlagach oynasiz ishga tushiring:
 python agent.py
 ```
 
-## 7. Doimiy ishlashga qo'yish (Linux)
+## 7. Doimiy ishlashga qo'yish
+
+### Windows (klinika kompyuteri odatda Windows)
+
+Eng oddiy yo'l — agent oynasini ochiq qoldirish. Avtomatik ochilishi
+uchun: `Win+R` → `shell:startup` → papkaga `agent.lnk` yorlig'ini qo'ying:
+
+```
+C:\falcon\agent\attendance\venv\Scripts\pythonw.exe C:\falcon\agent\attendance\agent.py
+```
+
+(`pythonw.exe` qora konsola oynasini ko'rsatmaydi.)
+
+### Linux — systemd
 
 `/etc/systemd/system/falcon-attendance.service`:
 
@@ -192,10 +220,14 @@ Loglar: `data/agent.log` · Holat: `data/state.json` · Navbat: `data/queue.json
 
 # Cheklovlar — halol ro'yxat
 
-**Tiriklik tekshiruvi yo'q.** Bosib chiqarilgan surat yoki telefondagi rasm
-tizimni aldashi mumkin. Xodim boshqa xodim uchun belgilanishi (buddy
-punching) to'liq to'silmagan. Bu muhim bo'lsa — kamerani nazorat ostidagi
-joyga qo'ying yoki PIN qo'shing.
+**Jonlilik tekshiruvi (v2).** Agent kadr oynasida yuzning siljishi va
+o'lcham o'zgarishini o'lchaydi: qog'ozdagi/telefondagi foto deyarli harakatsiz
+bo'lgani uchun o'tmaydi (`liveness_threshold`, default 0.02). Server har
+hodisani qayta tekshirib, shubhalilarini *flag* bilan belgilaydi — hech
+narsa o'chirilmaydi (dalil doktrinasi). Ammo **3D-niqob kabi murakkab
+hujumlarga** bu himoya yetarli emas; xodim boshqa xodim uchun
+belgilanishini (buddy punching) kamerasi ko'rinadigan joyga qo'yish
+orqali kamaytiring.
 
 **Niqob va ko'zoynak.** Tibbiy niqob taqqan xodim ko'pincha tanilmaydi.
 Quyosh ko'zoynagi ham xalaqit beradi.
