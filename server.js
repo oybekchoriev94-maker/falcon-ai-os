@@ -60,6 +60,7 @@ import workerControlRoutes from './backend/routes/worker-control.js';
 import medplumRoutes from './backend/routes/medplum.js';
 import hrmsRoutes from './backend/routes/hrms.js';
 import erpnextRoutes from './backend/routes/erpnext.js';
+import taskRoutes from './backend/routes/tasks.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
 import scribeRoutes from './backend/routes/scribe.js';
@@ -410,6 +411,7 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use(`${API_PREFIX}/medplum`, medplumRoutes());
   targetApp.use(`${API_PREFIX}/hrms`, hrmsRoutes());
   targetApp.use(`${API_PREFIX}/erpnext`, erpnextRoutes());
+  targetApp.use(`${API_PREFIX}/tasks`, taskRoutes());
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
 
   // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.

@@ -55,6 +55,10 @@ export const PERMISSIONS = Object.freeze({
   'staff.read':   ['ceo', 'admin', 'doctor', 'receptionist'],
   'staff.manage': ['ceo', 'admin'],
 
+  // Xodim vazifalari: belgilash rahbarda, bajarib belgilash hamma xodimda
+  'tasks.read':  ['ceo', 'admin', 'doctor', 'receptionist'],
+  'tasks.write': ['ceo', 'admin', 'doctor', 'receptionist'],
+
   // Klinika sozlamalari
   'settings.manage': ['ceo', 'admin'],
 

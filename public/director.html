@@ -57,6 +57,7 @@
         <button class="btn-secondary tab-btn" data-tab="shifts" onclick="switchTab('shifts')">🗓 Smenalar</button>
         <button class="btn-secondary tab-btn" data-tab="zones" onclick="switchTab('zones')">📍 Zona qoidalari</button>
         <button class="btn-secondary tab-btn" data-tab="cameras" onclick="switchTab('cameras')">📷 Kameralar</button>
+        <button class="btn-secondary tab-btn" data-tab="tasks" onclick="switchTab('tasks')">✅ Vazifalar</button>
       </div>
 
       <div id="globalError" class="hidden text-red-400 text-sm"></div>
@@ -186,6 +187,34 @@
           </table>
         </div>
       </div>
+
+      <!-- ===== VAZIFALAR (tasks) ===== -->
+      <div id="tab-tasks" class="tab-panel hidden space-y-4">
+        <div class="card">
+          <h3 class="text-lg font-semibold mb-3">Vazifa belgilash</h3>
+          <form id="taskForm" class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <div><label class="block text-xs text-slate-400 mb-1">Xodim</label>
+              <select id="tkStaff" class="input-field" required></select></div>
+            <div class="col-span-2"><label class="block text-xs text-slate-400 mb-1">Vazifa</label>
+              <input id="tkTitle" class="input-field" placeholder="Ombor inventarizatsiyasi" required></div>
+            <div><label class="block text-xs text-slate-400 mb-1">Muddat</label>
+              <input type="datetime-local" id="tkDue" class="input-field"></div>
+            <button type="submit" class="btn-primary">+ Belgilash</button>
+          </form>
+          <div id="taskMsg" class="text-sm mt-2 hidden"></div>
+          <p class="text-slate-400 text-xs mt-2">Kechikkan vazifa — hisobotdagi dalil, avtomatik jazo yo'q.</p>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="taskSummary"></div>
+        <div class="card overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-slate-400 border-b border-slate-700">
+              <th class="py-2 pr-4">Xodim</th><th class="py-2 pr-4">Vazifa</th><th class="py-2 pr-4">Muddat</th>
+              <th class="py-2 pr-4">Holat</th><th class="py-2"></th>
+            </tr></thead>
+            <tbody id="taskRows"><tr><td colspan="5" class="py-4 text-slate-500">Yuklanmoqda...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -252,7 +281,7 @@
   }
 
   // ── Tabs ────────────────────────────────────────────────────────
-  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, cameras: false };
+  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, cameras: false, tasks: false };
   function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
     document.getElementById('tab-' + name).classList.remove('hidden');
@@ -260,7 +289,7 @@
       b.classList.toggle('btn-primary', b.dataset.tab === name);
       b.classList.toggle('btn-secondary', b.dataset.tab !== name);
     });
-    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, cameras: loadNodes }[name])(); }
+    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, cameras: loadNodes, tasks: loadTasks }[name])(); }
   }
 
   // ── Davomat ─────────────────────────────────────────────────────
@@ -449,6 +478,84 @@
     el.textContent = '❌ ' + text;
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('hidden'), 6000);
+  }
+
+  // ── Vazifalar ─────────────────────────────────────────────────────
+  const TASK_LABEL = { pending: 'Kutilmoqda', in_progress: 'Bajarilmoqda', done: 'Bajarildi' };
+  const TASK_COLOR = { pending: '#60a5fa', in_progress: '#f59e0b', done: '#22c55e' };
+
+  async function loadTasks() {
+    try {
+      // Xodim select'ini to'ldirish (HRMS reestridan)
+      const sr = await fetch(`${API}/api/hrms/staff?active=true`, { headers: authHeaders() });
+      const sd = await sr.json();
+      if (sr.ok && sd.success) {
+        document.getElementById('tkStaff').innerHTML = (sd.staff || [])
+          .map((s) => `<option value="${s.id}">${esc(s.full_name)}</option>`).join('')
+          || '<option value="">Xodim yo\'q (HRMS bo\'limidan qo\'shing)</option>';
+      }
+
+      const [tr, smr] = await Promise.all([
+        fetch(`${API}/api/tasks`, { headers: authHeaders() }),
+        fetch(`${API}/api/tasks/summary`, { headers: authHeaders() }),
+      ]);
+      const td = await tr.json();
+      if (!tr.ok || !td.success) throw new Error(td.error || 'Xatolik');
+
+      const s = await smr.json();
+      document.getElementById('taskSummary').innerHTML = [
+        ['Jami', s.total, '#60a5fa'], ['Kutilmoqda', s.pending, '#f59e0b'],
+        ['Bajarilmoqda', s.in_progress, '#60a5fa'], ['Bajarildi', s.done, '#22c55e'], ['Kechikkan', s.overdue, '#ef4444'],
+      ].map(([label, v, c]) => `<div class="stat-card border-l-4" style="border-color:${c}"><p class="text-slate-400 text-sm">${label}</p><p class="stat-value mt-1">${v ?? 0}</p></div>`).join('');
+
+      document.getElementById('taskRows').innerHTML = (td.tasks || []).map((t) => `
+        <tr class="border-b border-slate-800">
+          <td class="py-2 pr-4 font-medium">${esc(t.staff_name)}</td>
+          <td class="py-2 pr-4">${esc(t.title)}</td>
+          <td class="py-2 pr-4 text-slate-400">${t.due_at ? new Date(t.due_at).toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+          <td class="py-2 pr-4">
+            <span class="badge" style="background:${TASK_COLOR[t.status]}22;color:${TASK_COLOR[t.status]}">${TASK_LABEL[t.status] || t.status}</span>
+            ${t.overdue ? '<span class="badge ml-1" style="background:#ef444422;color:#ef4444">⏰ kechikkan</span>' : ''}
+          </td>
+          <td class="py-2 text-right whitespace-nowrap">
+            ${t.status !== 'done' ? `<button class="btn-secondary text-xs mr-1" onclick="setTaskStatus('${t.id}','done')">✔ Bajarildi</button>` : ''}
+            <button class="btn-secondary text-xs" onclick="deleteTask('${t.id}')">🗑</button>
+          </td>
+        </tr>`).join('')
+        || '<tr><td colspan="5" class="py-4 text-slate-500">Vazifalar yo\'q. Yuqoridagi formadan belgilang.</td></tr>';
+    } catch (e) { showError(e.message); }
+  }
+
+  document.getElementById('taskForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('taskMsg');
+    try {
+      const dueRaw = document.getElementById('tkDue').value;
+      const body = {
+        staff_member_id: Number(document.getElementById('tkStaff').value),
+        title: document.getElementById('tkTitle').value.trim(),
+      };
+      if (!body.staff_member_id) throw new Error('Xodim tanlanmagan');
+      if (dueRaw) body.due_at = new Date(dueRaw).toISOString();
+      const r = await fetch(`${API}/api/tasks`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      msg.textContent = '✅ Vazifa belgilandi'; msg.className = 'text-sm mt-2 text-green-400';
+      document.getElementById('tkTitle').value = '';
+      loadTasks();
+    } catch (err) { msg.textContent = '❌ ' + err.message; msg.className = 'text-sm mt-2 text-red-400'; }
+  });
+
+  async function setTaskStatus(id, status) {
+    const r = await fetch(`${API}/api/tasks/${id}/status`, {
+      method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ status }),
+    });
+    if (r.ok) loadTasks();
+  }
+
+  async function deleteTask(id) {
+    const r = await fetch(`${API}/api/tasks/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (r.ok) loadTasks();
   }
 
   showMain();
