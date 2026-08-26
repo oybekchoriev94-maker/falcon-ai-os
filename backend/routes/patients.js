@@ -57,7 +57,7 @@ export default function patientsRoutes(pool, authMiddleware) {
     next();
   };
 
-  const tenantOf = (req) => req.user?.tenant_id || req.tenant_id || 'default';
+  const tenantOf = (req) => req.user.tenant_id;
 
   // normalizePhone va generateMrn — services/patient-store.js dan (booking bilan bir xil)
   const normPhone = normalizePhone;
@@ -357,7 +357,10 @@ export default function patientsRoutes(pool, authMiddleware) {
          b.emergency_contact_relation || null,
          id, tenantId]
       );
-      const patient = await qGet(`SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1`, [id]);
+      const patient = await qGet(
+        `SELECT ${PATIENT_COLUMNS} FROM patients WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
       res.json({ success: true, patient });
     } catch (e) { safeError(res, e); }
   });

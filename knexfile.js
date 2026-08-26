@@ -1,14 +1,20 @@
 export default {
   development: {
     client: 'postgresql',
-    connection: process.env.DATABASE_URL || 'postgresql://falcon:falcon@localhost:5432/falcon_ai_os',
+    connection: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL,
     pool: { min: 2, max: 10 },
+    migrations: { tableName: 'knex_migrations' },
+  },
+  test: {
+    client: 'postgresql',
+    connection: process.env.MIGRATION_DATABASE_URL || process.env.TEST_DATABASE_URL || process.env.DATABASE_URL,
+    pool: { min: 0, max: 5 },
     migrations: { tableName: 'knex_migrations' },
   },
   production: {
     client: 'postgresql',
     connection: {
-      connectionString: process.env.DATABASE_URL,
+      connectionString: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL,
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     },
     pool: { min: 2, max: 25 },

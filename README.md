@@ -32,6 +32,7 @@
 | Modul | Tavsif |
 |-------|--------|
 | **Face ID** 🫵 | Yuz orqali identifikatsiya + liveness detection + davomat |
+| **Smart NVR Edge** 🎥 | Lokal kamera tahlili, HMAC event sync, replay himoyasi va tenant izolatsiyasi |
 | **AI Scribe** 🎙️ | Shifokor diktantini → tashxis, ICD-10, dori, vital signallar |
 | **AI Receptionist** 🤖 | 24/7 ovozli operator: grafik tekshirish, band qilish |
 | **Smart Inventory** 📦 | Ombor, batch (FEFO), normativlar, kam qoldiq xavfi |
@@ -45,6 +46,9 @@
 ---
 
 ## 🏗 Arxitektura
+
+Edge/NVR control-plane'ni productionga chiqarish va imzo protokoli:
+[docs/edge-vision-integration.md](docs/edge-vision-integration.md).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -358,24 +362,24 @@ Joriy test coverage:
 ### Docker
 
 ```bash
-docker compose up -d
+cp .env.example .env
+# .env ichidagi barcha majburiy secretlarni almashtiring
+./scripts/deploy.sh
 ```
 
-### PM2 (bare metal)
-
-```bash
-npm install -g pm2
-pm2 start ecosystem.config.js
-# yoki cluster mode:
-pm2 start ecosystem.config.cjs
-```
+Production uchun PM2/bare-metal yo'li qo'llab-quvvatlanmaydi. PostgreSQL
+migration, RLS role provisioning va health-gated startup kafolati uchun Docker
+Compose deploymentidan foydalaning.
 
 ### VPS
 
 ```bash
-# Caddy reverse proxy bilan
+# Eski nom ham xavfsiz Docker deploy scriptiga yo'naltiradi
 ./deploy-vps.sh
 ```
+
+Batafsil immutable image va rollback tartibi:
+[`docs/production-deployment.md`](docs/production-deployment.md).
 
 ### Public URL
 

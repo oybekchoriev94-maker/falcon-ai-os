@@ -3,6 +3,70 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
+import { unsafeQuery } from '../db.js';
+import { runWithTenantDbContext } from '../request-tenant-context.js';
+import { JWT_VERIFY_OPTIONS } from '../shared.js';
+
+const DEFAULT_REFRESH_WINDOW_DAYS = 7;
+
+export function refreshWindowSeconds(env = process.env) {
+  const configuredDays = Number(env.JWT_REFRESH_WINDOW_DAYS || DEFAULT_REFRESH_WINDOW_DAYS);
+  if (!Number.isInteger(configuredDays) || configuredDays < 1 || configuredDays > 30) {
+    throw new Error('JWT_REFRESH_WINDOW_DAYS 1 dan 30 gacha butun son bo\'lishi kerak');
+  }
+  return configuredDays * 24 * 60 * 60;
+}
+
+export function validateRefreshClaims(decoded, nowSeconds = Math.floor(Date.now() / 1000), windowSeconds = refreshWindowSeconds()) {
+  if (!decoded?.jti || !decoded?.id || !decoded?.tenant_id || !Number.isInteger(decoded?.iat)) {
+    throw new Error('Token majburiy session ma\'lumotlariga ega emas');
+  }
+  if (decoded.iat > nowSeconds + 60 || nowSeconds - decoded.iat > windowSeconds) {
+    throw new Error('Tokenni yangilash muddati tugagan');
+  }
+  return decoded.iat + windowSeconds;
+}
+
+const seedUsers = [
+  { username: 'ceo',          passwordEnv: 'SEED_CEO_PASSWORD',       role: 'ceo',          name: 'Bosh direktor' },
+  { username: 'admin',        passwordEnv: 'SEED_ADMIN_PASSWORD',     role: 'admin',        name: 'Admin' },
+  { username: 'receptionist', passwordEnv: 'SEED_RECEPTION_PASSWORD', role: 'receptionist', name: 'Reception xodimi' },
+  { username: 'doctor',       passwordEnv: 'SEED_DOCTOR_PASSWORD',    role: 'doctor',       name: 'Shifokor' },
+];
+
+/**
+ * Seed foydalanuvchilarini route yaratilishidan alohida ishga tushiramiz.
+ * Bu server startup va integration testlarida seed tugashini kutish imkonini
+ * beradi; avvalgi fire-and-forget chaqiruv login bilan poyga hosil qilardi.
+ */
+export async function seedDefaultUsers(pool) {
+  const tenantId = process.env.TENANT_ID || 'default';
+  const missingPasswordVars = seedUsers
+    .map(({ passwordEnv }) => passwordEnv)
+    .filter((passwordEnv) => !process.env[passwordEnv]);
+  if (missingPasswordVars.length) {
+    throw new Error(`Seed foydalanuvchilari uchun parollar sozlanmagan: ${missingPasswordVars.join(', ')}`);
+  }
+
+  await runWithTenantDbContext(tenantId, async () => {
+    for (const user of seedUsers) {
+      const existing = await pool.query(
+        'SELECT id FROM users WHERE username = $1 AND tenant_id = $2',
+        [user.username, tenantId]
+      );
+      if (existing.rows[0]) continue;
+
+      const password = process.env[user.passwordEnv];
+      const hashed = await bcrypt.hash(password, 10);
+      await pool.query(
+        `INSERT INTO users (id, tenant_id, username, password, role, name)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (username) DO NOTHING`,
+        [uuidv4(), tenantId, user.username, hashed, user.role, user.name]
+      );
+    }
+  });
+}
 
 export default function(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken) {
   const router = Router();
@@ -19,39 +83,32 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     return pool.query(sql, params);
   }
 
-  const seedUsers = [
-    { username: 'ceo',        password: process.env.SEED_CEO_PASSWORD        || 'ceo-change-me-now',        role: 'ceo',          name: 'Bosh direktor' },
-    { username: 'admin',      password: process.env.SEED_ADMIN_PASSWORD      || 'admin-change-me-now',      role: 'admin',        name: 'Admin' },
-    { username: 'receptionist', password: process.env.SEED_RECEPTION_PASSWORD || 'reception-change-me-now', role: 'receptionist', name: 'Reception xodimi' },
-    { username: 'doctor',     password: process.env.SEED_DOCTOR_PASSWORD     || 'doctor-change-me-now',     role: 'doctor',       name: 'Shifokor' },
-  ];
-
-  async function initSeed() {
-    const tenantId = process.env.TENANT_ID || 'default';
-    for (const u of seedUsers) {
-      const existing = await qGet("SELECT id FROM users WHERE username = $1", [u.username]);
-      if (!existing) {
-        const hashed = bcrypt.hashSync(u.password, 10);
-        await q("INSERT INTO users (id, tenant_id, username, password, role, name) VALUES ($1, $2, $3, $4, $5, $6)",
-          [uuidv4(), tenantId, u.username, hashed, u.role, u.name]);
-      }
-    }
-    console.log('[AUTH] Users seeded — 4 roles ready');
-  }
-  initSeed().catch(e => console.error('[AUTH] Seed error:', e.message));
-
   /**
    * `doctors` jadvali bo'yicha kirishga urinish.
+   *
+   * NEGA KERAK: shifokorlar `users` da EMAS, `doctors` jadvalida saqlanadi
+   * (username + password_hash o'sha yerda). Login sahifasi faqat /login ni
+   * chaqiradi, shuning uchun /login avval `users`ni, keyin shu yordamchi
+   * orqali `doctors`ni tekshiradi.
+   *
+   * unsafeQuery: login paytida hali sessiya yo'q — RLS tenant konteksti
+   * o'rnatilmagan, shuning uchun tenant-chegarali oddiy so'rov ishlamaydi.
+   * Tenant holati (t.status) va shifokor holati (d.status) shu yerda aniq
+   * tekshiriladi.
    *
    * @returns {null} shunday username umuman yo'q — chaqiruvchi o'zi hal qiladi
    * @returns {{status:number, body:object}} javob (muvaffaqiyat yoki xato)
    */
   async function tryDoctorLogin(username, password) {
-    const doctor = await qGet("SELECT * FROM doctors WHERE username = $1", [username]);
+    const doctor = await unsafeQuery.qGet(
+      `SELECT d.*, t.status AS tenant_status
+       FROM doctors d JOIN tenants t ON t.id = d.tenant_id
+       WHERE d.username = $1`,
+      [username]
+    );
     if (!doctor) return null;
-    if (!doctor.password_hash) {
-      // Login bor, lekin parol o'rnatilmagan. Umumiy xabar beramiz —
-      // qaysi loginlar mavjudligini oshkor qilmaslik uchun.
+    // Umumiy xabar beramiz — qaysi loginlar mavjudligini oshkor qilmaslik uchun.
+    if (doctor.status !== 'Faol' || doctor.tenant_status !== 'active' || !doctor.password_hash) {
       return { status: 401, body: { error: 'Login yoki parol noto\'g\'ri' } };
     }
 
@@ -63,7 +120,7 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
         const remaining = Math.ceil((lockTime - Date.now()) / 60000);
         return { status: 429, body: { error: `Hisob vaqtincha bloklangan. ${remaining} daqiqadan keyin urinib ko'ring.` } };
       }
-      await q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
+      await unsafeQuery.q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
       doctor.failed_attempts = 0;
     }
 
@@ -71,15 +128,15 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
     if (!valid) {
       const newAttempts = (doctor.failed_attempts || 0) + 1;
       if (newAttempts >= MAX_ATTEMPTS) {
-        await q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3",
+        await unsafeQuery.q("UPDATE doctors SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3",
           [newAttempts, LOCKOUT_MINUTES, doctor.id]);
       } else {
-        await q("UPDATE doctors SET failed_attempts = $1 WHERE id = $2", [newAttempts, doctor.id]);
+        await unsafeQuery.q("UPDATE doctors SET failed_attempts = $1 WHERE id = $2", [newAttempts, doctor.id]);
       }
       return { status: 401, body: { error: 'Login yoki parol noto\'g\'ri' } };
     }
 
-    await q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
+    await unsafeQuery.q("UPDATE doctors SET failed_attempts = 0, locked_until = NULL WHERE id = $1", [doctor.id]);
     return {
       status: 200,
       body: {
@@ -106,13 +163,19 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
    * parol to'g'ri bo'lsa ham "Login yoki parol noto'g'ri" chiqardi.
    * Shifokorlar uchun alohida login sahifasi ham yo'q edi.
    */
-  router.post('/login', async (req, res) => {
+  router.post('/login', validate(schemas.login), async (req, res) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) return res.status(400).json({ error: 'username va password talab qilinadi' });
 
-      const user = await qGet("SELECT * FROM users WHERE username = $1", [username]);
+      const user = await unsafeQuery.qGet(
+        `SELECT u.*, t.status AS tenant_status
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.username = $1`,
+        [username]
+      );
       if (user) {
+        if (user.tenant_status !== 'active') return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
         const token = signToken(user);
@@ -128,7 +191,7 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
 
   // Eski endpoint — orqaga moslik uchun saqlanadi (public/dashboard.html
   // va tashqi integratsiyalar shuni chaqirishi mumkin). Mantiq bir xil.
-  router.post('/doctor-login', async (req, res) => {
+  router.post('/doctor-login', validate(schemas.login), async (req, res) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) return res.status(400).json({ error: 'username va password talab qilinadi' });
@@ -144,26 +207,85 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
 
   router.post('/refresh', async (req, res) => {
     try {
-      const { token: oldToken } = req.body;
+      const bearer = req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.slice(7)
+        : null;
+      const oldToken = req.body?.token || bearer;
       if (!oldToken) return res.status(400).json({ success: false, error: 'Token talab qilinadi' });
       let decoded;
       try {
-        decoded = jwt.verify(oldToken, process.env.JWT_SECRET, { ignoreExpiration: true });
+        decoded = jwt.verify(oldToken, process.env.JWT_SECRET, {
+          ...JWT_VERIFY_OPTIONS,
+          ignoreExpiration: true,
+        });
       } catch (e) {
         return res.status(401).json({ success: false, error: 'Token yaroqsiz' });
       }
-      const blacklisted = await qGet("SELECT id FROM token_blacklist WHERE jti = $1", [decoded.jti]);
-      if (blacklisted) return res.status(401).json({ success: false, error: 'Token bekor qilingan' });
-      const newToken = signToken(decoded);
-      const freshUser = await qGet("SELECT id, username, role, name FROM users WHERE id = $1", [decoded.id]);
-      res.json({ success: true, token: newToken, user: freshUser || null, message: 'Token yangilandi' });
+      let refreshExpiresAt;
+      try {
+        refreshExpiresAt = validateRefreshClaims(decoded);
+      } catch (e) {
+        return res.status(401).json({ success: false, error: e.message });
+      }
+
+      let freshUser = await unsafeQuery.qGet(
+        `SELECT u.id, u.tenant_id, u.username, u.role, u.name
+         FROM users u JOIN tenants t ON t.id = u.tenant_id
+         WHERE u.id = $1 AND u.tenant_id = $2 AND t.status = 'active'`,
+        [decoded.id, decoded.tenant_id]
+      );
+      if (!freshUser) {
+        const doctor = await unsafeQuery.qGet(
+          `SELECT d.id, d.tenant_id, d.username, d.first_name, d.last_name,
+                  d.specialization, d.specialty
+           FROM doctors d JOIN tenants t ON t.id = d.tenant_id
+           WHERE d.id = $1 AND d.tenant_id = $2
+             AND d.status = 'Faol' AND t.status = 'active'`,
+          [decoded.id, decoded.tenant_id]
+        );
+        if (doctor) {
+          freshUser = {
+            ...doctor,
+            role: 'doctor',
+            doctor_id: doctor.id,
+            name: `${doctor.first_name} ${doctor.last_name || ''}`.trim(),
+          };
+        }
+      }
+      if (!freshUser) {
+        return res.status(401).json({ success: false, error: 'Foydalanuvchi faol emas yoki topilmadi' });
+      }
+
+      // Refresh token rotation: faqat birinchi parallel/replay so'rov eski JTI'ni
+      // atomik ravishda egallaydi. Qolganlari ON CONFLICT sabab rad etiladi.
+      const claimed = await unsafeQuery.qGet(
+        `INSERT INTO token_blacklist (jti, expires_at)
+         VALUES ($1, to_timestamp($2))
+         ON CONFLICT (jti) DO NOTHING
+         RETURNING id`,
+        [decoded.jti, refreshExpiresAt]
+      );
+      if (!claimed) return res.status(401).json({ success: false, error: 'Token allaqachon yangilangan yoki bekor qilingan' });
+
+      const newToken = signToken(freshUser);
+      res.json({
+        success: true,
+        token: newToken,
+        user: { id: freshUser.id, username: freshUser.username, role: freshUser.role, name: freshUser.name },
+        message: 'Token yangilandi',
+      });
     } catch (e) { safeError(res, e); }
   });
 
   router.post('/logout', authMiddleware, async (req, res) => {
     try {
-      await q("INSERT INTO token_blacklist (jti, expires_at) VALUES ($1, NOW() + INTERVAL '24 hours') ON CONFLICT (jti) DO NOTHING",
-        [req.user.jti]);
+      const refreshExpiresAt = validateRefreshClaims(req.user);
+      await q(
+        `INSERT INTO token_blacklist (jti, expires_at)
+         VALUES ($1, to_timestamp($2))
+         ON CONFLICT (jti) DO NOTHING`,
+        [req.user.jti, refreshExpiresAt]
+      );
       res.json({ success: true, message: 'Chiqish bajarildi' });
     } catch (e) { safeError(res, e); }
   });

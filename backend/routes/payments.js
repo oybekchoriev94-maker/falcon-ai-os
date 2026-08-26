@@ -15,10 +15,12 @@ import {
   handleClickWebhook,
   handleUzumWebhook,
   verifyPaymeAuth,
-  verifyClickSign
+  verifyClickSign,
+  verifyUzumAuth
 } from '../services/payment-gateway.js';
+import { runWithTenantDbContext } from '../request-tenant-context.js';
 
-export default function paymentRoutes(pool, authMiddleware, checkRole) {
+export default function paymentRoutes(pool, authMiddleware, checkRole, platformPool = pool) {
   const router = Router();
 
   // ─── DB helper ──────────────────────────────────────────
@@ -30,6 +32,120 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
     const r = await pool.query(sql, params);
     return r.rows[0] || null;
   };
+  const platformQGet = async (sql, params = []) => {
+    const r = await platformPool.query(sql, params);
+    return r.rows[0] || null;
+  };
+
+  const sameAmount = (expected, received) => {
+    if (received === null || received === undefined || received === '') return false;
+    return Math.round(Number(expected) * 100) === Math.round(Number(received) * 100);
+  };
+
+  async function finalizePaidTransaction(txn, result, provider, rawBody) {
+    return runWithTenantDbContext(txn.tenant_id, async () => {
+      if (!sameAmount(txn.amount, result.amount)) {
+        await pool.query(
+          `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
+           VALUES ($1, $2, $3, $4, 'amount_mismatch')`,
+          [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
+        );
+        return { applied: false, reason: 'amount_mismatch' };
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updated = await client.query(
+          `UPDATE payment_transactions
+           SET status = 'paid', paid_at = NOW(), provider_transaction_id = $1, raw_response = $2
+           WHERE id = $3 AND tenant_id = $4 AND status = 'pending'
+           RETURNING id`,
+          [result.transactionId || null, JSON.stringify(result.raw || rawBody || {}), txn.id, txn.tenant_id]
+        );
+
+        // Provider callback'ni takror yuborsa moliyaviy ta'sir qayta ishlamaydi.
+        if (updated.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return { applied: false, reason: 'duplicate' };
+        }
+
+        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron).
+        if (txn.appointment_id) {
+          await client.query(
+            "UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
+            [txn.appointment_id, txn.tenant_id]
+          );
+        }
+
+        if (txn.type === 'subscription_upgrade' || txn.type === 'subscription') {
+          const metadata = typeof txn.services_json === 'string'
+            ? JSON.parse(txn.services_json)
+            : (txn.services_json || {});
+          const cycle = metadata.billing_cycle === 'annual' ? 'annual' : 'monthly';
+          const plan = await client.query(
+            'SELECT id, code FROM subscription_plans WHERE id = $1 AND active = true',
+            [metadata.plan_id]
+          );
+          if (!plan.rows[0]) throw new Error('Subscription tarifi topilmadi');
+
+          await client.query(
+            `INSERT INTO subscriptions
+             (id, tenant_id, plan_id, billing_cycle, status, current_period_start, current_period_end, trial_ends_at, updated_at)
+             VALUES ($1, $2, $3, $4, 'active', NOW(),
+               CASE WHEN $4 = 'annual' THEN NOW() + INTERVAL '1 year' ELSE NOW() + INTERVAL '1 month' END,
+               NULL, NOW())
+             ON CONFLICT (tenant_id) DO UPDATE SET
+               plan_id = EXCLUDED.plan_id,
+               billing_cycle = EXCLUDED.billing_cycle,
+               status = 'active',
+               current_period_start = NOW(),
+               current_period_end = EXCLUDED.current_period_end,
+               trial_ends_at = NULL,
+               updated_at = NOW()`,
+            [uuidv4(), txn.tenant_id, plan.rows[0].id, cycle]
+          );
+          await client.query('UPDATE tenants SET plan = $1 WHERE id = $2', [plan.rows[0].code, txn.tenant_id]);
+        } else if (txn.patient_id) {
+          const cashbackPercent = 3.0;
+          const cashback = Math.round(Number(txn.amount) * cashbackPercent / 100);
+          if (cashback > 0) {
+            const patient = await client.query(
+              `UPDATE patients
+               SET cashback_balance = COALESCE(cashback_balance, 0) + $1
+               WHERE tenant_id = $2 AND id = $3
+               RETURNING cashback_balance`,
+              [cashback, txn.tenant_id, txn.patient_id]
+            );
+            if (patient.rows[0]) {
+              const balanceAfter = Number(patient.rows[0].cashback_balance);
+              await client.query(
+                `INSERT INTO loyalty_ledger
+                 (tenant_id, patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
+                 VALUES ($1, $2, $3, 'earned', $4, $5, $6, $7, NOW())`,
+                [txn.tenant_id, txn.patient_id, txn.patient_name || 'Bemor', cashback,
+                 balanceAfter - cashback, balanceAfter,
+                 `Cashback ${cashbackPercent}%: ${txn.description || 'To\'lov'} #${txn.id.substring(0, 8)}`]
+              );
+            }
+          }
+        }
+
+        await client.query(
+          `INSERT INTO payment_webhook_logs (tenant_id, provider, transaction_id, raw_json, status)
+           VALUES ($1, $2, $3, $4, 'paid')`,
+          [txn.tenant_id, provider, txn.id, JSON.stringify(rawBody)]
+        );
+        await client.query('COMMIT');
+        return { applied: true };
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    });
+  }
 
   // ─── Rate Limits ────────────────────────────────────────
   const payLimiter = rateLimit({
@@ -65,7 +181,7 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
   router.post('/payments/create', authMiddleware, payLimiter, async (req, res) => {
     try {
       const { patient_id, amount, description, provider, services } = req.body;
-      const tenantId = req.user?.tenant_id || 'default';
+      const tenantId = req.user.tenant_id;
 
       // Validatsiya
       if (!amount || amount <= 0) {
@@ -117,8 +233,8 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       }).then(async payment => {
         // Payment URL ni saqlaymiz
         if (payment.success && payment.paymentUrl) {
-          await q('UPDATE payment_transactions SET payment_url = $1, provider = $2 WHERE id = $3',
-            [payment.paymentUrl, payment.provider, orderId]);
+          await q('UPDATE payment_transactions SET payment_url = $1, provider = $2 WHERE id = $3 AND tenant_id = $4',
+            [payment.paymentUrl, payment.provider, orderId, tenantId]);
         }
       }).catch(e => {
         console.error('[PAYMENTS] Background payment yaratish xatosi:', e.message);
@@ -140,10 +256,12 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.get('/payments/pay/:orderId', async (req, res) => {
     try {
-      const txn = await qGet(
-        `SELECT pt.*, p.first_name, p.last_name, p.phone
+      const txn = await platformQGet(
+        `SELECT pt.id, pt.amount, pt.status, pt.paid_at, pt.description,
+                pt.provider, pt.payment_url, pt.created_at,
+                p.first_name, p.last_name
          FROM payment_transactions pt
-         LEFT JOIN patients p ON p.id = pt.patient_id
+         LEFT JOIN patients p ON p.id = pt.patient_id AND p.tenant_id = pt.tenant_id
          WHERE pt.id = $1`,
         [req.params.orderId]
       );
@@ -175,7 +293,6 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
         description: txn.description,
         provider: txn.provider,
         patient_name: txn.first_name ? `${txn.first_name} ${txn.last_name || ''}`.trim() : null,
-        patient_phone: txn.phone || null,
         payment_url: payUrl,
         created_at: txn.created_at
       });
@@ -195,7 +312,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.get('/payments/status/:orderId', authMiddleware, async (req, res) => {
     try {
-      const txn = await qGet('SELECT * FROM payment_transactions WHERE id = $1', [req.params.orderId]);
+      const txn = await qGet(
+        'SELECT * FROM payment_transactions WHERE id = $1 AND tenant_id = $2',
+        [req.params.orderId, req.user.tenant_id]
+      );
       if (!txn) {
         return res.status(404).json({ success: false, error: 'To\'lov topilmadi' });
       }
@@ -238,54 +358,20 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
       // Transaction ni topamiz
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
       if (!txn) {
-        // Noma'lum transaction — log ga yozamiz
-        await q('INSERT INTO payment_webhook_logs (provider, raw_json, status) VALUES ($1, $2, $3)',
-          ['payme', JSON.stringify(req.body), 'unknown_order']);
+        console.warn('[WEBHOOK:PAYME] Noma\'lum order:', result.orderId);
         return res.json({ success: true }); // Payme har doim 200 qaytarish kerak
       }
 
       if (result.status === 'paid') {
-        // To'lovni tasdiqlaymiz
-        await q(`UPDATE payment_transactions
-           SET status = 'paid', paid_at = NOW(),
-               provider_transaction_id = $1,
-               raw_response = $2
-           WHERE id = $3 AND status = 'pending'`,
-          [result.transactionId || null, JSON.stringify(result.raw || {}), txn.id]);
-
-        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
-        if (txn.appointment_id) {
-          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
-            [txn.appointment_id, txn.tenant_id]);
+        const finalized = await finalizePaidTransaction(txn, result, 'payme', req.body);
+        if (finalized.reason === 'amount_mismatch') {
+          return res.status(400).json({ success: false, error: 'To\'lov summasi mos emas' });
         }
-
-        // Bemorga cashback (3%)
-        if (txn.patient_id) {
-          const cashbackPercent = 3.0;
-          const cashback = Math.round(txn.amount * cashbackPercent / 100);
-          if (cashback > 0) {
-            await q("UPDATE patients SET cashback_balance = COALESCE(cashback_balance, 0) + $1 WHERE id = $2",
-              [cashback, txn.patient_id]);
-            await q(`INSERT INTO loyalty_ledger (tenant_id, patient_id, patient_name, type, amount, balance_before, balance_after, description, created_at)
-                     VALUES ($1, $2, $3, 'earned', $4,
-                       COALESCE((SELECT cashback_balance - $5 FROM patients WHERE id = $6), 0),
-                       COALESCE((SELECT cashback_balance FROM patients WHERE id = $7), 0),
-                       $8, NOW())`,
-              [txn.tenant_id, txn.patient_id, txn.patient_name || 'Bemor', cashback, cashback, txn.patient_id, txn.patient_id,
-               `Cashback ${cashbackPercent}%: ${txn.description || 'To\'lov'} #${txn.id.substring(0, 8)}`]);
-          }
-        }
-
-        console.log(`[PAYMENT] ✅ To'lov tasdiqlandi: ${txn.id} — ${txn.amount} so'm`);
       }
-
-      // Webhook log
-      await q('INSERT INTO payment_webhook_logs (provider, transaction_id, raw_json, status) VALUES ($1, $2, $3, $4)',
-        ['payme', txn.id, JSON.stringify(req.body), result.status]);
 
       // Payme doimo 200 qaytarish kerak
       res.json({ success: true });
@@ -318,43 +404,20 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
       }
 
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
       if (!txn) {
-        await q('INSERT INTO payment_webhook_logs (provider, raw_json, status) VALUES ($1, $2, $3)',
-          ['click', JSON.stringify(req.body), 'unknown_order']);
+        console.warn('[WEBHOOK:CLICK] Noma\'lum order:', result.orderId);
         return res.json({ success: true });
       }
 
       if (result.status === 'paid') {
-        await q(`UPDATE payment_transactions
-           SET status = 'paid', paid_at = NOW(),
-               provider_transaction_id = $1,
-               raw_response = $2
-           WHERE id = $3 AND status = 'pending'`,
-          [result.transactionId || null, JSON.stringify(result.raw || {}), txn.id]);
-
-        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
-        if (txn.appointment_id) {
-          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
-            [txn.appointment_id, txn.tenant_id]);
+        const finalized = await finalizePaidTransaction(txn, result, 'click', req.body);
+        if (finalized.reason === 'amount_mismatch') {
+          return res.status(400).json({ error: -2, error_note: 'AMOUNT MISMATCH' });
         }
-
-        // Bemorga cashback
-        if (txn.patient_id) {
-          const cashback = Math.round(txn.amount * 3 / 100);
-          if (cashback > 0) {
-            await q("UPDATE patients SET cashback_balance = COALESCE(cashback_balance, 0) + $1 WHERE id = $2",
-              [cashback, txn.patient_id]);
-          }
-        }
-
-        console.log(`[PAYMENT] ✅ Click to'lov: ${txn.id} — ${txn.amount} so'm`);
       }
-
-      await q('INSERT INTO payment_webhook_logs (provider, transaction_id, raw_json, status) VALUES ($1, $2, $3, $4)',
-        ['click', txn.id, JSON.stringify(req.body), result.status]);
 
       res.json({ success: true });
 
@@ -370,25 +433,27 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
 
   router.post('/payments/webhook/uzum', webhookLimiter, async (req, res) => {
     try {
+      if (!verifyUzumAuth(req)) {
+        return res.status(401).json({ success: false, error: 'SIGN CHECK FAILED' });
+      }
       const result = handleUzumWebhook(req.body);
       if (!result) return res.json({ success: true });
 
       const txn = result.orderId
-        ? await qGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
+        ? await platformQGet('SELECT * FROM payment_transactions WHERE id = $1', [result.orderId])
         : null;
 
-      if (txn && result.status === 'paid') {
-        await q(`UPDATE payment_transactions SET status = 'paid', paid_at = NOW(), provider_transaction_id = $1 WHERE id = $2`,
-          [result.transactionId || null, txn.id]);
-        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron)
-        if (txn.appointment_id) {
-          await q("UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
-            [txn.appointment_id, txn.tenant_id]);
-        }
+      if (!txn) {
+        console.warn('[WEBHOOK:UZUM] Noma\'lum order:', result.orderId);
+        return res.json({ success: true });
       }
 
-      await q('INSERT INTO payment_webhook_logs (provider, transaction_id, raw_json, status) VALUES ($1, $2, $3, $4)',
-        ['uzum', txn?.id || null, JSON.stringify(req.body), result.status]);
+      if (result.status === 'paid') {
+        const finalized = await finalizePaidTransaction(txn, result, 'uzum', req.body);
+        if (finalized.reason === 'amount_mismatch') {
+          return res.status(400).json({ success: false, error: 'AMOUNT MISMATCH' });
+        }
+      }
 
       res.json({ success: true });
 
@@ -572,7 +637,10 @@ export default function paymentRoutes(pool, authMiddleware, checkRole) {
    */
   router.get('/payments/qr/:orderId', async (req, res) => {
     try {
-      const txn = await qGet('SELECT * FROM payment_transactions WHERE id = $1', [req.params.orderId]);
+      const txn = await platformQGet(
+        'SELECT id, payment_url FROM payment_transactions WHERE id = $1',
+        [req.params.orderId]
+      );
       if (!txn) {
         return res.status(404).json({ success: false, error: 'To\'lov topilmadi' });
       }

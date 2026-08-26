@@ -5,24 +5,49 @@ import { verifyTelegramInitData } from '../shared.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
 import { generateMrn } from '../services/patient-store.js';
 import { listConsultations } from '../services/consultation-catalog.js';
+import { bindTenantDbContext } from '../request-tenant-context.js';
 
-// bookingCore — booking.js bilan BIR XIL bron yozish/vaqt hisoblash
-// mantig'i (backend/routes/booking.js: createBookingCore). Shu tufayli
-// Telegram orqali yozilgan bemor registratura va kiosk bilan bir xil
-// `appointments` jadvalida, bir xil navbatda ko'rinadi.
-// Bu bot HOZIRCHA faqat BITTA klinikaga xizmat qiladi. Yangi bemor hali
-// hech qanday tenantga bog'lanmagan bo'lsa, shu tenantga tushadi. Agar
-// kelajakda bir nechta klinika shu botdan foydalansa (har biri o'z tokeni
-// bilan emas), buni so'rov manbasidan aniqlashga o'tkazish kerak bo'ladi.
-const PATIENT_BOT_TENANT_ID = process.env.TMA_TENANT_ID || 'default';
-
-export default function tmaRoutes(pool, bookingCore) {
+// bookingCore - booking.js bilan BIR XIL bron yozish/vaqt hisoblash mantig'i
+// (backend/routes/booking.js: createBookingCore). Shu tufayli Telegram orqali
+// yozilgan bemor registratura va kiosk bilan bir xil `appointments`
+// jadvalida, bir xil navbatda ko'rinadi. Tenant esa har bir so'rovda
+// clinic code (start_param / x-clinic-code) orqali aniqlanadi -
+// quyidagi middleware qarang.
+export default function tmaRoutes(pool, bookingCore, platformPool = pool) {
   const router = Router();
   const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
 
   // Barcha TMA endpointlari uchun Telegram autentifikatsiyasi majburiy —
   // bemor identifikatori faqat imzolangan initData'dan olinadi (header/query orqali soxtalashtirib bo'lmaydi)
   router.use(verifyTelegramInitData);
+
+  // Klinikani Telegram deep-link start_param yoki oshkora clinic code orqali
+  // tanlaymiz. Bu qiymat vakolat bermaydi: keyingi har bir query bir vaqtning
+  // o'zida tenant_id va tasdiqlangan Telegram ID bilan cheklanadi.
+  router.use(async (req, res, next) => {
+    try {
+      const startParam = String(req.telegramStartParam || '').replace(/^clinic[_:-]/i, '');
+      const clinicRef = startParam || req.headers['x-clinic-code'];
+      const fallback = process.env.TMA_TENANT_ID || 'default';
+      const reference = clinicRef || fallback;
+      if (!reference) {
+        return res.status(400).json({ success: false, error: 'Klinika kodi talab qilinadi' });
+      }
+
+      const result = await platformPool.query(
+        `SELECT id, code FROM tenants
+         WHERE status = 'active' AND (LOWER(code) = LOWER($1) OR id = $1)
+         LIMIT 1`,
+        [String(reference)]
+      );
+      const tenant = result.rows[0];
+      if (!tenant) return res.status(404).json({ success: false, error: 'Klinika topilmadi' });
+
+      req.tenant_id = tenant.id;
+      res.setHeader('x-tenant-id', tenant.id);
+      return bindTenantDbContext(tenant.id, res, next);
+    } catch (e) { safeError(res, e); }
+  });
 
   async function q(sql, params = []) {
     const r = await pool.query(sql, params);
@@ -38,13 +63,11 @@ export default function tmaRoutes(pool, bookingCore) {
     return req.telegramUser?.id?.toString() || '';
   }
 
-  // tenant_id — telegram_users yozuvidan; hali sync bo'lmagan bo'lsa PATIENT_BOT_TENANT_ID
-  async function getTenantId(telegramId) {
-    const row = await qGet('SELECT tenant_id FROM telegram_users WHERE telegram_id = $1', [telegramId]);
-    return row?.tenant_id || PATIENT_BOT_TENANT_ID;
+  function getTenantId(req) {
+    return req.tenant_id;
   }
 
-  // Bemor kartasini telegram_id orqali topadi — check-in va navbat uchun kerak
+  // Bemor kartasini telegram_id orqali topadi - check-in va navbat uchun kerak.
   async function getPatientByTelegram(telegramId) {
     return qGet('SELECT id, tenant_id, first_name, last_name, phone FROM patients WHERE telegram_id = $1', [telegramId]);
   }
@@ -58,11 +81,10 @@ export default function tmaRoutes(pool, bookingCore) {
    * bo'sh, "Men keldim" 404, bron esa patient_id=NULL bilan yozilib, bemorning
    * o'z ro'yxatida umuman ko'rinmasdi.
    */
-  async function ensurePatient(telegramId, tgUser) {
+  async function ensurePatient(telegramId, tgUser, tenantId) {
     const found = await getPatientByTelegram(telegramId);
     if (found) return found;
 
-    const tenantId = await getTenantId(telegramId);
     const firstName = String(tgUser?.first_name || '').trim() || 'Bemor';
     const lastName = String(tgUser?.last_name || '').trim();
     const id = uuidv4();
@@ -80,7 +102,7 @@ export default function tmaRoutes(pool, bookingCore) {
         // Parallel so'rov shu telegram_id bilan kartani yaratib ulgurgan bo'lsa
         const dup = await getPatientByTelegram(telegramId);
         if (dup) return dup;
-        // MRN to'qnashuvi — qayta urinamiz
+        // MRN to'qnashuvi - qayta urinamiz
         if (e.code === '23505' && attempt < 2) continue;
         throw e;
       }
@@ -93,28 +115,24 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const { first_name, username, patient_name } = req.body;
       const telegram_id = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegram_id) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
-      const existing = await qGet("SELECT id, tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
+      const existing = await qGet(
+        "SELECT id, tenant_id FROM telegram_users WHERE tenant_id = $1 AND telegram_id = $2",
+        [tenantId, telegram_id]
+      );
       if (existing) {
-        await q("UPDATE telegram_users SET first_name = $1, username = $2 WHERE telegram_id = $3",
-          [first_name || '', username || '', telegram_id]);
+        await q("UPDATE telegram_users SET first_name = $1, username = $2 WHERE tenant_id = $3 AND telegram_id = $4",
+          [first_name || '', username || '', tenantId, telegram_id]);
         return res.json({ success: true, synced: true });
       }
 
-      // Telefon bo'yicha mavjud kartani topib, o'sha klinikaga bog'laymiz.
-      // DIQQAT: telefon BO'SH bo'lsa qidirmaymiz — aks holda `phone = ''`
-      // bo'lgan istalgan yozuvga tushib, foydalanuvchi BOSHQA klinikaga
-      // biriktirilib qolardi (va shifokor/xizmat ro'yxati bo'sh chiqardi).
-      let tenantId = PATIENT_BOT_TENANT_ID;
-      const syncPhone = String(req.body.phone || '').trim();
-      if (syncPhone) {
-        const patientByPhone = await qGet("SELECT tenant_id FROM patients WHERE phone = $1 LIMIT 1", [syncPhone]);
-        if (patientByPhone) tenantId = patientByPhone.tenant_id;
-      }
-
       await q(
-        "INSERT INTO telegram_users (tenant_id, telegram_id, first_name, username, chat_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (telegram_id) DO UPDATE SET first_name = EXCLUDED.first_name, username = EXCLUDED.username",
+        `INSERT INTO telegram_users (tenant_id, telegram_id, first_name, username, chat_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, telegram_id) DO UPDATE
+         SET first_name = EXCLUDED.first_name, username = EXCLUDED.username`,
         [tenantId, telegram_id, first_name || '', username || '', telegram_id]
       );
       res.json({ success: true, synced: true });
@@ -125,9 +143,13 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/my-data', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
-      const patient = await qGet("SELECT id, tenant_id, first_name, last_name, phone, birth_date, telegram_id, created_at FROM patients WHERE telegram_id = $1", [telegramId]);
+      const patient = await qGet(
+        "SELECT id, tenant_id, first_name, last_name, phone, birth_date, telegram_id, created_at FROM patients WHERE tenant_id = $1 AND telegram_id = $2",
+        [tenantId, telegramId]
+      );
       if (!patient) return res.json({ success: true, registered: false, patient: null });
 
       res.json({ success: true, registered: true, patient });
@@ -139,28 +161,39 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const { first_name, last_name, phone, birth_date } = req.body;
       const telegram_id = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegram_id || !first_name) {
         return res.status(400).json({ success: false, error: 'Telegram ID va ism talab qilinadi' });
       }
 
       // Find existing patient by telegram_id or phone
-      let patient = await qGet("SELECT id, tenant_id FROM patients WHERE telegram_id = $1", [telegram_id]);
+      let patient = await qGet(
+        "SELECT id, tenant_id FROM patients WHERE tenant_id = $1 AND telegram_id = $2",
+        [tenantId, telegram_id]
+      );
       if (patient) {
         return res.json({ success: true, registered: true, patient });
       }
 
       // Check if patient already exists by phone and link
       if (phone) {
-        patient = await qGet("SELECT id, tenant_id FROM patients WHERE phone = $1 LIMIT 1", [phone]);
+        patient = await qGet(
+          "SELECT id, tenant_id FROM patients WHERE tenant_id = $1 AND phone = $2 LIMIT 1",
+          [tenantId, phone]
+        );
         if (patient) {
-          await q("UPDATE patients SET telegram_id = $1 WHERE id = $2", [telegram_id, patient.id]);
+          await q("UPDATE patients SET telegram_id = $1 WHERE tenant_id = $2 AND id = $3", [telegram_id, tenantId, patient.id]);
           return res.json({ success: true, registered: true, patient });
         }
       }
 
-      // Verify telegram user exists or create one
-      let telegramUser = await qGet("SELECT tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
-      const tenantId = telegramUser?.tenant_id || req.headers['x-tenant-id'] || PATIENT_BOT_TENANT_ID;
+      // Telegram profil shu klinika kontekstida mavjud bo'lishini ta'minlaymiz.
+      await q(
+        `INSERT INTO telegram_users (tenant_id, telegram_id, first_name, chat_id)
+         VALUES ($1, $2, $3, $2)
+         ON CONFLICT (tenant_id, telegram_id) DO NOTHING`,
+        [tenantId, telegram_id, first_name]
+      );
 
       // Create new patient
       const id = uuidv4();
@@ -180,6 +213,7 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/my-queue', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
       const patient = await getPatientByTelegram(telegramId);
@@ -220,6 +254,7 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/consultations', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
       const patient = await getPatientByTelegram(telegramId);
@@ -247,6 +282,7 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/referrals', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
       const patient = await getPatientByTelegram(telegramId);
@@ -272,11 +308,12 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/reminders', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.json({ success: true, data: [], total: 0 });
 
       const reminders = await q(
-        "SELECT * FROM medication_reminders WHERE telegram_id = $1 AND status = 'active' ORDER BY reminder_time ASC",
-        [telegramId]
+        "SELECT * FROM medication_reminders WHERE tenant_id = $1 AND telegram_id = $2 AND status = 'active' ORDER BY reminder_time ASC",
+        [tenantId, telegramId]
       );
 
       res.json({ success: true, data: reminders, total: reminders.length });
@@ -287,12 +324,10 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const { medicine_name, dosage, reminder_time, notes } = req.body;
       const telegram_id = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegram_id || !medicine_name || !reminder_time) {
         return res.status(400).json({ success: false, error: 'Telegram ID, dori nomi va vaqt talab qilinadi' });
       }
-
-      const user = await qGet("SELECT tenant_id FROM telegram_users WHERE telegram_id = $1", [telegram_id]);
-      const tenantId = user?.tenant_id || PATIENT_BOT_TENANT_ID;
 
       const result = await q(
         "INSERT INTO medication_reminders (tenant_id, telegram_id, medicine_name, dosage, reminder_time) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -306,9 +341,13 @@ export default function tmaRoutes(pool, bookingCore) {
   router.delete('/reminders/:id', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
       // Faqat o'z eslatmasini o'chira oladi
-      await q("UPDATE medication_reminders SET status = 'deleted' WHERE id = $1 AND telegram_id = $2", [req.params.id, telegramId]);
+      await q(
+        "UPDATE medication_reminders SET status = 'deleted' WHERE id = $1 AND tenant_id = $2 AND telegram_id = $3",
+        [req.params.id, tenantId, telegramId]
+      );
       res.json({ success: true });
     } catch (e) { safeError(res, e); }
   });
@@ -318,9 +357,9 @@ export default function tmaRoutes(pool, bookingCore) {
   // shifokorlari ham aralashib chiqadi (bir bazada bir nechta klinika bor).
   router.get('/doctors', async (req, res) => {
     try {
-      const tenantId = await getTenantId(getTelegramId(req));
+      const tenantId = getTenantId(req);
       const docs = await q(
-        // status NULL bo'lgan shifokorlar ham faol hisoblanadi — booking.js
+        // status NULL bo'lgan shifokorlar ham faol hisoblanadi - booking.js
         // bilan bir xil shart, aks holda ular faqat Mini App'da yo'qolib qoladi
         "SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND (status IS NULL OR status = 'Faol') ORDER BY first_name",
         [tenantId]
@@ -332,7 +371,7 @@ export default function tmaRoutes(pool, bookingCore) {
   // ===== Services list for TMA (bron uchun xizmat tanlash) =====
   router.get('/services', async (req, res) => {
     try {
-      const tenantId = await getTenantId(getTelegramId(req));
+      const tenantId = getTenantId(req);
       const rows = await q(
         `SELECT id, name, category, specialty, price::float8 AS price, duration_min,
                 COALESCE(is_consultation, false) AS is_consultation
@@ -353,7 +392,7 @@ export default function tmaRoutes(pool, bookingCore) {
   // umuman ishlamas edi. Nom uchala kanalda bir xil saqlanadi.
   router.get('/consultation-catalog', async (req, res) => {
     try {
-      const tenantId = await getTenantId(getTelegramId(req));
+      const tenantId = getTenantId(req);
       const data = await listConsultations(pool, tenantId);
       res.json({ success: true, specialties: data.specialties });
     } catch (e) { safeError(res, e); }
@@ -362,7 +401,6 @@ export default function tmaRoutes(pool, bookingCore) {
   // ===== Available slots for TMA — booking.js bilan bir xil hisoblash =====
   router.get('/slots', async (req, res) => {
     try {
-      const telegramId = getTelegramId(req);
       const { doctor_id, date, service_id } = req.query;
       if (!doctor_id || !date) {
         return res.status(400).json({ success: false, error: 'doctor_id va date talab qilinadi' });
@@ -371,7 +409,7 @@ export default function tmaRoutes(pool, bookingCore) {
       if (isNaN(dateObj.getTime())) {
         return res.status(400).json({ success: false, error: 'Sana formati notogri. YYYY-MM-DD ishlating' });
       }
-      const tenantId = await getTenantId(telegramId);
+      const tenantId = getTenantId(req);
       const r = await bookingCore.computeSlots(tenantId, doctor_id, date, service_id ? [service_id] : []);
       const dayOfWeek = dateObj.getDay() || 7;
       res.status(r.status).json({ ...r.body, day_name: DAY_NAMES[dayOfWeek] });
@@ -383,6 +421,7 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const { doctor_id, service_id, patient_name, date, time, payment_method } = req.body;
       const telegram_id = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegram_id) return res.status(401).json({ success: false, error: 'Telegram ID topilmadi' });
       if (!doctor_id || !service_id || !patient_name || !date || !time) {
         return res.status(400).json({ success: false, error: 'doctor_id, service_id, patient_name, date va time talab qilinadi' });
@@ -393,12 +432,11 @@ export default function tmaRoutes(pool, bookingCore) {
         return res.status(400).json({ success: false, error: 'Sana yoki vaqt formati notogri' });
       }
 
-      const tenantId = await getTenantId(telegram_id);
       // Kartani MAJBURAN ta'minlaymiz: patient_id bo'lmasa bron
       // patient_id=NULL bilan yoziladi va bemorning o'z ro'yxatida ham,
       // "Men keldim"da ham ko'rinmay qoladi. Telefonga client kiritgan
-      // qiymatga ishonmaymiz — saqlangan kartadan olamiz.
-      const patient = await ensurePatient(telegram_id, req.telegramUser);
+      // qiymatga ishonmaymiz - saqlangan kartadan olamiz.
+      const patient = await ensurePatient(telegram_id, req.telegramUser, tenantId);
 
       await bookingCore.handleCreate(req, res, tenantId, {
         patient_name,
@@ -411,7 +449,12 @@ export default function tmaRoutes(pool, bookingCore) {
         source: 'telegram',
         telegram_id,
       });
-    } catch (e) { safeError(res, e); }
+    } catch (e) {
+      if (e?.code === '23505' && e?.constraint === 'bookings_active_slot_unique') {
+        return res.status(409).json({ success: false, error: 'Bu vaqt allaqachon band qilingan' });
+      }
+      safeError(res, e);
+    }
   });
 
   // ===== Men keldim — Telegram identifikatori orqali, kod kiritish shart emas =====
@@ -423,7 +466,7 @@ export default function tmaRoutes(pool, bookingCore) {
     try {
       const telegramId = getTelegramId(req);
       if (!telegramId) return res.status(401).json({ success: false, error: 'Telegram ID topilmadi' });
-      const patient = await ensurePatient(telegramId, req.telegramUser);
+      const patient = await ensurePatient(telegramId, req.telegramUser, req.tenant_id);
       if (!patient) return res.status(404).json({ success: false, error: 'Bemor kartasi topilmadi' });
 
       let appointmentId = req.body?.appointment_id || null;
@@ -457,6 +500,7 @@ export default function tmaRoutes(pool, bookingCore) {
   router.get('/my-appointments', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
+      const tenantId = getTenantId(req);
       if (!telegramId) return res.json({ success: true, appointments: [] });
 
       const patient = await getPatientByTelegram(telegramId);

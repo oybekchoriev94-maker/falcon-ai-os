@@ -2,18 +2,25 @@ import { Router } from 'express';
 import { generateReferralPassPdf } from '../services/pdfGenerator.js';
 import { safeError } from '../services/safe-error.js';
 
-export default function referralPassRoutes(pool, authMiddleware, checkRole) {
+export default function referralPassRoutes(pool, authMiddleware, checkRole, platformPool = pool) {
   const router = Router();
 
   async function qGet(sql, params = []) {
-    const result = await pool.query(sql, params);
+    // These endpoints are public capability links, so the tenant is discovered
+    // from the opaque referral identifier before a tenant context exists.
+    const result = await platformPool.query(sql, params);
     return result.rows[0] || null;
   }
 
   // GET /api/referrals/details/:id — Referral details
   router.get('/details/:id', async (req, res) => {
     try {
-      const ref = await qGet('SELECT * FROM referrals WHERE referral_id = $1 OR id = $2', [req.params.id, req.params.id]);
+      const ref = await qGet(
+        `SELECT id, referral_id, patient_name, service_required, referring_doctor,
+                receiver_clinic_id, sender_clinic_id, status, notes, created_at
+         FROM referrals WHERE referral_id = $1 OR id = $2`,
+        [req.params.id, req.params.id]
+      );
       if (!ref) return res.status(404).json({ error: 'Yo\'llanma topilmadi' });
 
       res.json({
@@ -39,7 +46,12 @@ export default function referralPassRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referrals/:id/download-pdf — Download referral pass PDF
   router.get('/:id/download-pdf', async (req, res) => {
     try {
-      const ref = await qGet('SELECT * FROM referrals WHERE referral_id = $1 OR id = $2', [req.params.id, req.params.id]);
+      const ref = await qGet(
+        `SELECT id, referral_id, patient_name, service_required, referring_doctor,
+                receiver_clinic_id, status
+         FROM referrals WHERE referral_id = $1 OR id = $2`,
+        [req.params.id, req.params.id]
+      );
       if (!ref) return res.status(404).json({ error: 'Yo\'llanma topilmadi' });
 
       const result = await generateReferralPassPdf(ref);
@@ -54,7 +66,10 @@ export default function referralPassRoutes(pool, authMiddleware, checkRole) {
   // GET /api/referrals/:id/qr — QR Base64
   router.get('/:id/qr', async (req, res) => {
     try {
-      const ref = await qGet('SELECT * FROM referrals WHERE referral_id = $1 OR id = $2', [req.params.id, req.params.id]);
+      const ref = await qGet(
+        'SELECT id, referral_id FROM referrals WHERE referral_id = $1 OR id = $2',
+        [req.params.id, req.params.id]
+      );
       if (!ref) return res.status(404).json({ error: 'Yo\'llanma topilmadi' });
 
       const QRCode = (await import('qrcode')).default;

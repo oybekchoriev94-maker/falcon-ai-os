@@ -4,9 +4,8 @@
 // SaaS'da eng xavfli xato — so'rovda tenant_id ni unutish (boshqa klinika
 // ma'lumoti ko'rinib qoladi). Bu modul shunday so'rovlarni aniqlaydi.
 //
-// Rejimlar:
-//   development/test → XATO tashlaydi (regressiya darhol ko'rinadi)
-//   production       → OGOHLANTIRISH loglaydi (ishlab turgan tizim to'xtamasin)
+// Standart rejim barcha muhitda bloklaydi. Favqulodda diagnostika uchun
+// TENANT_GUARD_MODE=warn vaqtincha faqat ogohlantirishga o'tkazishi mumkin.
 //
 // Ba'zi so'rovlar qonuniy ravishda tenantsiz bo'ladi (superadmin panel,
 // login, tarif rejalari) — ular unsafeQuery() bilan belgilanadi.
@@ -25,9 +24,14 @@ export const TENANT_SCOPED_TABLES = new Set([
   'telegram_users', 'wards', 'beds', 'admissions', 'daily_notes', 'prescriptions',
   'inpatient_services', 'discharges', 'usage_metering', 'subscriptions',
   'b2b_contracts', 'idempotency_keys', 'clinic_services', 'audit_logs',
+  'edge_nodes', 'edge_nonces', 'vision_events',
 ]);
 
-const TABLE_RE = /\b(?:from|join|into|update)\s+([a-z_][a-z0-9_]*)/gi;
+const TABLE_RE = /\b(?:from|join|into|update)\s+([a-z_][a-z0-9_]*)(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/gi;
+const SQL_KEYWORDS = new Set([
+  'where', 'set', 'values', 'on', 'inner', 'left', 'right', 'full', 'cross',
+  'join', 'order', 'group', 'limit', 'returning', 'using',
+]);
 
 export class TenantScopeError extends Error {
   constructor(table) {
@@ -43,16 +47,33 @@ export class TenantScopeError extends Error {
 /** So'rov tenant bo'yicha filtrlanmagan jadvalga tegsa — jadval nomini qaytaradi, aks holda null */
 export function findUnscopedTable(sql) {
   const lower = String(sql).toLowerCase();
-  if (lower.includes('tenant_id')) return null;
+
+  const insert = lower.match(/\binsert\s+into\s+([a-z_][a-z0-9_]*)\s*\(([^)]*)\)/i);
+  if (insert && TENANT_SCOPED_TABLES.has(insert[1])) {
+    const columns = insert[2].split(',').map((column) => column.trim().replace(/"/g, ''));
+    if (!columns.includes('tenant_id')) return insert[1];
+  }
+
+  const hasUnqualifiedTenantPredicate = /(?:^|[^.a-z0-9_])tenant_id\s*(?:=|in\s*\(|is\s+)/i.test(lower);
   TABLE_RE.lastIndex = 0;
   let m;
   while ((m = TABLE_RE.exec(lower)) !== null) {
-    if (TENANT_SCOPED_TABLES.has(m[1])) return m[1];
+    const table = m[1];
+    if (!TENANT_SCOPED_TABLES.has(table)) continue;
+    if (insert && insert[1] === table) continue;
+
+    const alias = m[2] && !SQL_KEYWORDS.has(m[2]) ? m[2] : null;
+    const aliasPredicate = alias
+      ? new RegExp(`\\b${alias}\\.tenant_id\\s*(?:=|in\\s*\\(|is\\s+)`, 'i').test(lower)
+      : false;
+    const tablePredicate = new RegExp(`\\b${table}\\.tenant_id\\s*(?:=|in\\s*\\(|is\\s+)`, 'i').test(lower);
+
+    if (!aliasPredicate && !tablePredicate && !hasUnqualifiedTenantPredicate) return table;
   }
   return null;
 }
 
-const STRICT = process.env.NODE_ENV !== 'production';
+const WARN_ONLY = process.env.TENANT_GUARD_MODE === 'warn';
 const warned = new Set();
 
 /**
@@ -65,7 +86,7 @@ export function assertTenantScoped(sql, allowUnscoped = false) {
   const table = findUnscopedTable(sql);
   if (!table) return;
 
-  if (STRICT) throw new TenantScopeError(table);
+  if (!WARN_ONLY) throw new TenantScopeError(table);
 
   // Productionda: bir xil so'rov uchun bir marta ogohlantiramiz (log toshib ketmasin)
   const key = String(sql).slice(0, 120);

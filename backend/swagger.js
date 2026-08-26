@@ -247,9 +247,10 @@ export const swaggerSpec = {
       post: {
         tags: ['Auth'],
         summary: 'Token muddatini uzaytirish',
+        description: 'Eski tokenni bir marta ishlatiladigan rotation orqali yangilaydi. Maksimal refresh oynasi odatda 7 kun; foydalanuvchi, doctor va klinika holati qayta tekshiriladi.',
         responses: {
           200: { description: 'Yangi token' },
-          401: { description: 'Auth zarur' }
+          401: { description: 'Token yaroqsiz, eskirgan, qayta ishlatilgan yoki account faol emas' }
         }
       }
     },

@@ -32,11 +32,13 @@ fi
 # --- Clone / Pull ---
 if [ ! -d "$REPO_DIR" ]; then
   echo "Cloning repository..."
-  git clone https://github.com/YOUR_USER/falcon-ai-os.git "$REPO_DIR"
+  git clone https://github.com/oybekchoriev94-maker/falcon-ai-os.git "$REPO_DIR"
 else
   echo "Pulling latest changes..."
   cd "$REPO_DIR"
-  git pull
+  git fetch origin main
+  git switch main
+  git merge --ff-only origin/main
 fi
 
 # --- .env check ---
@@ -50,10 +52,9 @@ fi
 set -a; source "$ENV_FILE"; set +a
 
 REQUIRED_VARS=(
-  "JWT_SECRET" "INTERNAL_SECRET" "ADMIN_PASSWORD"
-  "PAYME_MERCHANT_ID" "PAYME_SECRET_KEY"
-  "CLICK_MERCHANT_ID" "CLICK_SECRET_KEY"
-  "SMTP_HOST" "SMTP_USER" "SMTP_PASS"
+  "POSTGRES_PASSWORD" "APP_DATABASE_PASSWORD" "JWT_SECRET" "INTERNAL_SECRET" "ADMIN_PASSWORD"
+  "SEED_CEO_PASSWORD" "SEED_ADMIN_PASSWORD"
+  "SEED_RECEPTION_PASSWORD" "SEED_DOCTOR_PASSWORD"
 )
 
 MISSING=0
@@ -69,19 +70,53 @@ if [ "$MISSING" -eq 1 ]; then
   exit 1
 fi
 
+validate_min_length() {
+  local name="$1"
+  local minimum="$2"
+  local value="${!name}"
+  if [ "${#value}" -lt "$minimum" ]; then
+    echo "ERROR: $name kamida $minimum belgidan iborat bo'lishi kerak"
+    exit 1
+  fi
+}
+
+validate_url_safe_password() {
+  local name="$1"
+  local value="${!name}"
+  if [[ ! "$value" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+    echo "ERROR: $name PostgreSQL URL uchun faqat A-Z, a-z, 0-9, '.', '_', '~', '-' belgilaridan iborat bo'lishi kerak"
+    exit 1
+  fi
+}
+
+validate_min_length POSTGRES_PASSWORD 16
+validate_min_length APP_DATABASE_PASSWORD 16
+validate_min_length JWT_SECRET 32
+validate_min_length INTERNAL_SECRET 32
+validate_min_length ADMIN_PASSWORD 12
+validate_min_length SEED_CEO_PASSWORD 12
+validate_min_length SEED_ADMIN_PASSWORD 12
+validate_min_length SEED_RECEPTION_PASSWORD 12
+validate_min_length SEED_DOCTOR_PASSWORD 12
+validate_url_safe_password POSTGRES_PASSWORD
+validate_url_safe_password APP_DATABASE_PASSWORD
+
 # --- Deploy ---
 echo "Building and starting containers..."
 cd "$REPO_DIR"
 docker compose build --pull
-docker compose up -d --force-recreate
+docker compose up -d --force-recreate --remove-orphans --wait --wait-timeout 900
+docker compose ps
 
 # --- Cleanup ---
 docker image prune -f
 
 echo "=== Deploy complete ==="
-echo "App:      https://${PUBLIC_URL:-localhost}"
-echo "API:      https://${PUBLIC_URL:-localhost}/api/v1"
-echo "Health:   https://${PUBLIC_URL:-localhost}/api/health"
+APP_PUBLIC_URL="${PUBLIC_URL:-https://localhost}"
+APP_PUBLIC_URL="${APP_PUBLIC_URL%/}"
+echo "App:      ${APP_PUBLIC_URL}"
+echo "API:      ${APP_PUBLIC_URL}/api/v1"
+echo "Health:   ${APP_PUBLIC_URL}/api/health"
 echo ""
 echo "Don't forget to:"
 echo "  1. Configure DNS A record for your domain -> VPS IP"

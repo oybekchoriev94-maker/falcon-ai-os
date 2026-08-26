@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { q, qGet } from '../db.js';
+import { unsafeQuery } from '../db.js';
+
+const { q, qGet } = unsafeQuery;
 
 function requireSuperAdmin(req, res, next) {
   const role = req.user?.role || req.role;

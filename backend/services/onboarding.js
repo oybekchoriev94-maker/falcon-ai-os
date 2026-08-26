@@ -1,13 +1,13 @@
 import { q } from '../db.js';
 
-export async function afterRegistration(tenantId, userId, clinicName) {
-  await q(
-    `INSERT INTO clinic_settings (tenant_id, key, value, created_at, updated_at) VALUES
-     ($1, 'timezone', 'Asia/Tashkent', NOW(), NOW()),
-     ($1, 'language', 'uz', NOW(), NOW()),
-     ($1, 'currency', 'UZS', NOW(), NOW()),
-     ($1, 'patient_referral_percent', '10', NOW(), NOW()),
-     ($1, 'patient_campaign_mode', 'manual', NOW(), NOW()) ON CONFLICT (tenant_id, key) DO NOTHING`,
+export async function afterRegistration(tenantId, userId, clinicName, execute = q) {
+  await execute(
+    `INSERT INTO clinic_settings (tenant_id, key, value, updated_at) VALUES
+     ($1, 'timezone', 'Asia/Tashkent', NOW()),
+     ($1, 'language', 'uz', NOW()),
+     ($1, 'currency', 'UZS', NOW()),
+     ($1, 'patient_referral_percent', '10', NOW()),
+     ($1, 'patient_campaign_mode', 'manual', NOW()) ON CONFLICT (tenant_id, key) DO NOTHING`,
     [tenantId]
   );
 

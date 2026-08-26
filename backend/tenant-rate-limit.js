@@ -47,6 +47,8 @@ setInterval(cleanupExpired, 60000);
 
 export function tenantRateLimit(type = 'api') {
   return async (req, res, next) => {
+    if (process.env.NODE_ENV === 'test') return next();
+
     const tenantId = req.tenant_id || req.user?.tenant_id || 'default';
     const planCode = await resolvePlanCode(req);
     const limits = getLimits(planCode);

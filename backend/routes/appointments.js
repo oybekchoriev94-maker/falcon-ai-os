@@ -12,6 +12,7 @@ import {
 
 export default function appointmentRoutes(pool, authMiddleware) {
   const router = Router();
+  router.use(authMiddleware);
 
   async function q(sql, params = []) {
     const result = await pool.query(sql, params);
@@ -29,7 +30,11 @@ export default function appointmentRoutes(pool, authMiddleware) {
   // === GET /api/appointments/doctors — barcha shifokorlar (Mini App uchun) ===
   router.get('/doctors', async (req, res) => {
     try {
-      const docs = await q("SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE status = 'Faol' ORDER BY first_name");
+      const tenantId = req.user.tenant_id;
+      const docs = await q(
+        "SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND status = 'Faol' ORDER BY first_name",
+        [tenantId]
+      );
       res.json({ success: true, doctors: docs });
     } catch (e) { safeError(res, e); }
   });
@@ -38,6 +43,7 @@ export default function appointmentRoutes(pool, authMiddleware) {
   router.get('/slots', async (req, res) => {
     try {
       const { doctor_id, date } = req.query;
+      const tenantId = req.user.tenant_id;
       if (!doctor_id || !date) {
         return res.status(400).json({ success: false, error: 'doctor_id va date talab qilinadi' });
       }
@@ -50,13 +56,21 @@ export default function appointmentRoutes(pool, authMiddleware) {
       const dayOfWeek = dateObj.getDay() || 7; // 1=Dush ... 7=Yak
 
       // Shifokorning shu kundagi ish grafigi
-      const schedule = await qGet("SELECT * FROM doctor_schedules WHERE doctor_id = $1 AND day_of_week = $2", [doctor_id, dayOfWeek]);
+      const doctor = await qGet("SELECT id FROM doctors WHERE tenant_id = $1 AND id = $2", [tenantId, doctor_id]);
+      if (!doctor) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+      const schedule = await qGet(
+        "SELECT * FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 AND day_of_week = $3",
+        [tenantId, doctor_id, dayOfWeek]
+      );
       if (!schedule) {
         return res.json({ success: true, date, day_name: DAY_NAMES[dayOfWeek] || 'Noma\'lum', doctor_id, slots: [], message: 'Shifokor bu kuni ishlamaydi' });
       }
 
       // Band qilingan vaqtlar
-      const bookedSlots = await q("SELECT appointment_time FROM bookings WHERE doctor_id = $1 AND appointment_date = $2 AND status != 'Bekor qilingan'", [doctor_id, date]);
+      const bookedSlots = await q(
+        "SELECT appointment_time FROM bookings WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 AND status != 'Bekor qilingan'",
+        [tenantId, doctor_id, date]
+      );
       const bookedSet = new Set(bookedSlots.map(b => b.appointment_time));
 
       // Slot generatsiya
@@ -94,6 +108,7 @@ export default function appointmentRoutes(pool, authMiddleware) {
   router.post('/book', async (req, res) => {
     try {
       const { doctor_id, patient_name, telegram_id, date, time } = req.body;
+      const tenantId = req.user.tenant_id;
       if (!doctor_id || !patient_name || !date || !time) {
         return res.status(400).json({ success: false, error: 'doctor_id, patient_name, date va time talab qilinadi' });
       }
@@ -106,8 +121,8 @@ export default function appointmentRoutes(pool, authMiddleware) {
 
       // Double-booking tekshiruvi
       const existing = await qGet(
-        "SELECT id FROM bookings WHERE doctor_id = $1 AND appointment_date = $2 AND appointment_time = $3 AND status != 'Bekor qilingan'",
-        [doctor_id, date, time]
+        "SELECT id FROM bookings WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 AND appointment_time = $4 AND status != 'Bekor qilingan'",
+        [tenantId, doctor_id, date, time]
       );
       if (existing) {
         return res.status(409).json({ success: false, error: 'Bu vaqt allaqachon band qilingan' });
@@ -115,7 +130,15 @@ export default function appointmentRoutes(pool, authMiddleware) {
 
       // Ish grafigini tekshirish
       const dayOfWeek = dateObj.getDay() || 7;
-      const schedule = await qGet("SELECT * FROM doctor_schedules WHERE doctor_id = $1 AND day_of_week = $2", [doctor_id, dayOfWeek]);
+      const doctor = await qGet(
+        "SELECT id, first_name, last_name, specialty FROM doctors WHERE tenant_id = $1 AND id = $2",
+        [tenantId, doctor_id]
+      );
+      if (!doctor) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
+      const schedule = await qGet(
+        "SELECT * FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 AND day_of_week = $3",
+        [tenantId, doctor_id, dayOfWeek]
+      );
       if (!schedule) {
         return res.status(400).json({ success: false, error: 'Shifokor bu kuni ishlamaydi' });
       }
@@ -130,8 +153,8 @@ export default function appointmentRoutes(pool, authMiddleware) {
 
       // Band qilish — RETURNING id bilan PostgreSQL auto-increment ID olish
       const result = await q(
-        "INSERT INTO bookings (doctor_id, patient_name, telegram_id, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, 'Kutilmoqda') RETURNING id",
-        [doctor_id, patient_name, telegram_id || null, date, time]
+        "INSERT INTO bookings (tenant_id, doctor_id, patient_name, telegram_id, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, $6, 'Kutilmoqda') RETURNING id",
+        [tenantId, doctor_id, patient_name, telegram_id || null, date, time]
       );
 
       const bookingId = result.rows[0].id;
@@ -139,15 +162,19 @@ export default function appointmentRoutes(pool, authMiddleware) {
       // Telegram xabarnoma (agar telegram_id berilgan bo'lsa)
       if (telegram_id) {
         try {
-          const doctor = await qGet("SELECT first_name, last_name, specialty FROM doctors WHERE id = $1", [doctor_id]);
           const doctorName = doctor ? `${doctor.first_name} ${doctor.last_name || ''}`.trim() : 'Shifokor';
           const dateFormatted = new Date(date + 'T00:00:00').toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' });
           const msg = `✅ *Navbat tasdiqlandi!*\n\n👤 *Bemor:* ${patient_name}\n👨‍⚕️ *Shifokor:* ${doctorName}\n📅 *Sana:* ${dateFormatted}\n⏰ *Vaqt:* ${time}\n\n🆔 *Navbat raqami:* #${bookingId}\n\nIltimos, belgilangan vaqtda klinikaga yetib keling.`;
-          fetch(`${req.protocol}://${req.get('host')}/api/internal/send-telegram`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET || 'falcon-internal' },
-            body: JSON.stringify({ chat_id: telegram_id, text: msg, parse_mode: 'Markdown' })
-          }).catch(() => {});
+          const internalSecret = process.env.INTERNAL_SECRET;
+          if (internalSecret) {
+            fetch(`${req.protocol}://${req.get('host')}/api/internal/send-telegram`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
+              body: JSON.stringify({ chat_id: telegram_id, text: msg, parse_mode: 'Markdown' })
+            }).catch(() => {});
+          } else {
+            console.warn('[BOOK] INTERNAL_SECRET sozlanmagan, Telegram xabari yuborilmadi');
+          }
         } catch (botErr) { console.warn('[BOOK] Telegram xabarnoma xatosi:', botErr.message); }
       }
 
@@ -162,19 +189,31 @@ export default function appointmentRoutes(pool, authMiddleware) {
           status: 'Kutilmoqda'
         }
       });
-    } catch (e) { safeError(res, e); }
+    } catch (e) {
+      if (e?.code === '23505' && e?.constraint === 'bookings_active_slot_unique') {
+        return res.status(409).json({ success: false, error: 'Bu vaqt allaqachon band qilingan' });
+      }
+      safeError(res, e);
+    }
   });
 
   // === GET /api/appointments/queue?doctor_id=X&date=YYYY-MM-DD — Doctor dashboard uchun ===
   router.get('/queue', authMiddleware, async (req, res) => {
     try {
       const { doctor_id, date } = req.query;
+      const tenantId = req.user.tenant_id;
       const today = date || new Date().toISOString().slice(0, 10);
       let bookings;
       if (doctor_id) {
-        bookings = await q("SELECT * FROM bookings WHERE doctor_id = $1 AND appointment_date = $2 ORDER BY appointment_time ASC", [doctor_id, today]);
+        bookings = await q(
+          "SELECT * FROM bookings WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 ORDER BY appointment_time ASC",
+          [tenantId, doctor_id, today]
+        );
       } else {
-        bookings = await q("SELECT * FROM bookings WHERE appointment_date = $1 ORDER BY appointment_time ASC", [today]);
+        bookings = await q(
+          "SELECT * FROM bookings WHERE tenant_id = $1 AND appointment_date = $2 ORDER BY appointment_time ASC",
+          [tenantId, today]
+        );
       }
       res.json({ success: true, date: today, total: bookings.length, bookings });
     } catch (e) { safeError(res, e); }
@@ -184,20 +223,21 @@ export default function appointmentRoutes(pool, authMiddleware) {
   router.post('/cancel', authMiddleware, async (req, res) => {
     try {
       const { id, booking_id } = req.body;
+      const tenantId = req.user.tenant_id;
       // patient_queue dan bekor qilish
       if (id) {
-        const qItem = await qGet("SELECT id FROM patient_queue WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
+        const qItem = await qGet("SELECT id FROM patient_queue WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
         if (!qItem) return res.status(404).json({ success: false, error: 'Navbatdagi bemor topilmadi' });
-        await q("UPDATE patient_queue SET status = 'cancelled' WHERE id = $1", [id]);
+        await q("UPDATE patient_queue SET status = 'cancelled' WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
         return res.json({ success: true, message: 'Navbat bekor qilindi' });
       }
       if (!booking_id) return res.status(400).json({ success: false, error: 'id yoki booking_id talab qilinadi' });
-      const booking = await qGet("SELECT * FROM bookings WHERE id = $1", [booking_id]);
+      const booking = await qGet("SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2", [booking_id, tenantId]);
       if (!booking) return res.status(404).json({ success: false, error: 'Band topilmadi' });
       if (req.user.role !== 'admin' && booking.doctor_id !== req.user.doctor_id) {
         return res.status(403).json({ success: false, error: 'Siz faqat o\'z navbatingizni bekor qilishingiz mumkin' });
       }
-      await q("UPDATE bookings SET status = 'Bekor qilingan' WHERE id = $1", [booking_id]);
+      await q("UPDATE bookings SET status = 'Bekor qilingan' WHERE id = $1 AND tenant_id = $2", [booking_id, tenantId]);
       res.json({ success: true, message: 'Navbat bekor qilindi' });
     } catch (e) { safeError(res, e); }
   });
@@ -206,22 +246,26 @@ export default function appointmentRoutes(pool, authMiddleware) {
   router.post('/complete-status', authMiddleware, async (req, res) => {
     try {
       const { id, booking_id, total_price, referral_id, idempotency_key } = req.body;
+      const tenantId = req.user.tenant_id;
       // patient_queue dan yakunlash
       if (id) {
-        await q("UPDATE patient_queue SET status = 'completed' WHERE id = $1 AND tenant_id = $2", [id, req.tenant_id]);
+        await q("UPDATE patient_queue SET status = 'completed' WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
         return res.json({ success: true, message: 'Qabul yakunlandi' });
       }
       if (!booking_id) return res.status(400).json({ success: false, error: 'id yoki booking_id talab qilinadi' });
 
       // Idempotency key tekshirish
       if (idempotency_key) {
-        const existing = await qGet("SELECT response FROM idempotency_keys WHERE key = $1", [idempotency_key]);
+        const existing = await qGet(
+          "SELECT response FROM idempotency_keys WHERE tenant_id = $1 AND key = $2",
+          [tenantId, idempotency_key]
+        );
         if (existing) {
           return res.json({ ...JSON.parse(existing.response), idempotent: true });
         }
       }
 
-      const booking = await qGet("SELECT * FROM bookings WHERE id = $1", [booking_id]);
+      const booking = await qGet("SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2", [booking_id, tenantId]);
       if (!booking) return res.status(404).json({ success: false, error: 'Band topilmadi' });
       if (booking.status === 'Yakunlangan') return res.status(400).json({ success: false, error: 'Qabul allaqachon yakunlangan' });
 
@@ -247,7 +291,10 @@ export default function appointmentRoutes(pool, authMiddleware) {
           return result.rows[0] || null;
         };
 
-        await tq("UPDATE bookings SET status = 'Yakunlangan' WHERE id = $1 AND status != 'Yakunlangan'", [booking_id]);
+        await tq(
+          "UPDATE bookings SET status = 'Yakunlangan' WHERE id = $1 AND tenant_id = $2 AND status != 'Yakunlangan'",
+          [booking_id, tenantId]
+        );
 
         if (total_price && parseFloat(total_price) > 0) {
           const price = parseFloat(total_price);
@@ -259,10 +306,10 @@ export default function appointmentRoutes(pool, authMiddleware) {
           let oldBalance = 0;
 
           // Atomic balance deduction
-          const doc = await tqGet("SELECT id, balance FROM doctors WHERE id = $1", [execDocId]);
+          const doc = await tqGet("SELECT id, balance FROM doctors WHERE id = $1 AND tenant_id = $2", [execDocId, tenantId]);
           if (doc) {
             oldBalance = doc.balance || 0;
-            const enough = await deductDoctorBalance(pool, tq, execDocId, platformAmount);
+            const enough = await deductDoctorBalance(tq, tenantId, execDocId, platformAmount);
             if (!enough) {
               throw new Error('Shifokor balansida yetarli mablag\' mavjud emas');
             }
@@ -271,12 +318,18 @@ export default function appointmentRoutes(pool, authMiddleware) {
           let patientCashback = 0;
           let refPatientId = null;
           if (referral_id) {
-            const referral = await tqGet("SELECT * FROM referrals WHERE id = $1 OR referral_id = $2", [referral_id, referral_id]);
+            const referral = await tqGet(
+              "SELECT * FROM referrals WHERE tenant_id = $1 AND (id::text = $2 OR referral_id = $2)",
+              [tenantId, referral_id]
+            );
             if (referral) {
               const referringDoctor = referral.referring_doctor;
               let senderDoc = null;
               if (referringDoctor) {
-                senderDoc = await tqGet("SELECT id, referrer_bonus_percent FROM doctors WHERE (first_name || ' ' || last_name) LIKE $1", [`%${referringDoctor}%`]);
+                senderDoc = await tqGet(
+                  "SELECT id, referrer_bonus_percent FROM doctors WHERE tenant_id = $1 AND (first_name || ' ' || last_name) LIKE $2",
+                  [tenantId, `%${referringDoctor}%`]
+                );
               }
               if (senderDoc) {
                 referrerBonusPercent = senderDoc.referrer_bonus_percent || 10.0;
@@ -285,39 +338,45 @@ export default function appointmentRoutes(pool, authMiddleware) {
               clinicAmount = Math.round((price - platformAmount - referrerAmount) * 100) / 100;
 
               const newBalance = (doc ? (doc.balance || 0) - platformAmount : 0);
-              await recordPlatformLedger(tq, {
+              await recordPlatformLedger(tq, tenantId, {
                 booking_id, referral_id: referral.id, doctor_id: execDocId, total_amount: price,
                 platform_amount: platformAmount, referrer_id: senderDoc?.id || null, referrer_bonus_percent: referrerBonusPercent,
                 referrer_amount: referrerAmount, clinic_amount: clinicAmount, doctor_balance: newBalance
               });
 
-              await upsertFinancialTransaction(tq, tqGet, referral.id, price, referrerAmount, platformAmount);
+              await upsertFinancialTransaction(tq, tqGet, tenantId, referral.id, price, referrerAmount, platformAmount);
 
               refPatientId = referral.patient_id;
               if (refPatientId) {
-                const modeRow = await tqGet("SELECT value FROM clinic_settings WHERE key = 'patient_campaign_mode'");
+                const modeRow = await tqGet(
+                  "SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_campaign_mode'",
+                  [tenantId]
+                );
                 const campaignMode = modeRow ? modeRow.value : 'always';
                 let cashbackAllowed = campaignMode === 'always';
                 if (campaignMode === 'scheduled') {
                   cashbackAllowed = true;
                 }
                 if (cashbackAllowed) {
-                  const patRefPct = await tqGet("SELECT value FROM clinic_settings WHERE key = 'patient_referral_percent'");
+                  const patRefPct = await tqGet(
+                    "SELECT value FROM clinic_settings WHERE tenant_id = $1 AND key = 'patient_referral_percent'",
+                    [tenantId]
+                  );
                   const pct = patRefPct ? parseFloat(patRefPct.value) : 3.0;
                   patientCashback = calcCommission(price, pct);
-                  await accruePatientCashback(tq, refPatientId, patientCashback);
+                  await accruePatientCashback(tq, tenantId, refPatientId, patientCashback);
                 }
               }
             } else {
               const newBalance = (doc ? (doc.balance || 0) - platformAmount : 0);
-              await recordPlatformLedger(tq, {
+              await recordPlatformLedger(tq, tenantId, {
                 booking_id, doctor_id: execDocId, total_amount: price,
                 platform_amount: platformAmount, referrer_amount: 0, clinic_amount: clinicAmount, doctor_balance: newBalance
               });
             }
           } else {
             const newBalance = (doc ? (doc.balance || 0) - platformAmount : 0);
-            await recordPlatformLedger(tq, {
+            await recordPlatformLedger(tq, tenantId, {
               booking_id, doctor_id: execDocId, total_amount: price,
               platform_amount: platformAmount, referrer_amount: 0, clinic_amount: clinicAmount, doctor_balance: newBalance
             });
@@ -345,12 +404,12 @@ export default function appointmentRoutes(pool, authMiddleware) {
       }
 
       // KPI and idempotency key — outside the main transaction
-      await updateDoctorKPI(q, qGet, booking.doctor_id, 15);
+      await updateDoctorKPI(q, qGet, tenantId, booking.doctor_id, 15);
 
       if (idempotency_key) {
         await q(
-          "INSERT INTO idempotency_keys (key, response, created_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO NOTHING",
-          [idempotency_key, JSON.stringify({ success: true, message: 'Qabul yakunlandi', booking_id: parseInt(booking_id), split })]);
+          "INSERT INTO idempotency_keys (tenant_id, key, response, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (tenant_id, key) DO NOTHING",
+          [tenantId, idempotency_key, JSON.stringify({ success: true, message: 'Qabul yakunlandi', booking_id: parseInt(booking_id), split })]);
       }
 
       res.json({ success: true, message: 'Qabul yakunlandi', booking_id: parseInt(booking_id), split });

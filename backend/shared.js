@@ -2,10 +2,22 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { bindTenantDbContext } from './request-tenant-context.js';
 
 export const JWT_EXPIRES = '2h';
+export const JWT_ISSUER = 'falcon-ai-os';
+export const JWT_AUDIENCE = 'falcon-clinic-api';
+export const JWT_VERIFY_OPTIONS = Object.freeze({
+  algorithms: ['HS256'],
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+});
 
 export function signToken(user) {
+  const tenantId = user.tenant_id || user.clinic_id;
+  if (!tenantId && user.role !== 'superadmin') {
+    throw new Error('Token yaratish uchun tenant_id talab qilinadi');
+  }
   const jti = uuidv4();
   return jwt.sign({
     jti,
@@ -13,11 +25,16 @@ export function signToken(user) {
     username: user.username,
     role: user.role || 'doctor',
     name: user.name || user.first_name + ' ' + (user.last_name || ''),
-    tenant_id: user.tenant_id || user.clinic_id || 'default',
+    tenant_id: tenantId || 'default',
     specialization: user.specialization || null,
     doctor_id: user.doctor_id || user.id,
     patient_id: user.patient_id || null
-  }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  }, process.env.JWT_SECRET, {
+    algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+    expiresIn: JWT_EXPIRES,
+  });
 }
 
 export async function authMiddleware(req, res, next) {
@@ -26,7 +43,10 @@ export async function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Token talab qilinadi' });
   }
   try {
-    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
+    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET, JWT_VERIFY_OPTIONS);
+    if (!decoded.jti || !decoded.id || !decoded.tenant_id) {
+      return res.status(403).json({ error: 'Token tenant kontekstiga ega emas' });
+    }
     const pool = req.app?.locals?.pool || (await import('./db.js')).getPool();
     if (pool) {
       try {
@@ -34,11 +54,14 @@ export async function authMiddleware(req, res, next) {
         if (result.rows.length > 0) {
           return res.status(401).json({ error: 'Token bekor qilingan, qayta kirishingiz kerak' });
         }
-      } catch (_) {}
+      } catch (_) {
+        return res.status(503).json({ error: 'Session holatini tekshirib bo\'lmadi' });
+      }
     }
     req.user = decoded;
-    req.tenant_id = decoded.tenant_id || 'default';
-    next();
+    req.tenant_id = decoded.tenant_id;
+    res.setHeader('x-tenant-id', decoded.tenant_id);
+    return bindTenantDbContext(decoded.tenant_id, res, next);
   } catch (e) {
     if (e.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token muddati tugagan, qayta kiring', code: 'TOKEN_EXPIRED' });
@@ -206,12 +229,11 @@ export function verifyTelegramAuth(req, res, next) {
     req.telegramUser = tgUser;
     (async () => {
       try {
-        const pool = (await import('./db.js')).getPool();
-        const result = await pool.query(
-          "SELECT id, telegram_id, full_name, role, is_active FROM staff_members WHERE telegram_id = $1 AND is_active = true",
+        const { unsafeQuery } = await import('./db.js');
+        const staff = await unsafeQuery.qGet(
+          "SELECT id, tenant_id, telegram_id, full_name, role, is_active FROM staff_members WHERE telegram_id = $1 AND is_active = true",
           [tgUser.id]
         );
-        const staff = result.rows[0];
         if (!staff) {
           return res.status(403).json({ success: false, error: 'Siz tizimda ro\'yxatdan o\'tmagansiz. Iltimos, ma\'muriyat bilan bog\'laning.' });
         }
@@ -221,10 +243,10 @@ export function verifyTelegramAuth(req, res, next) {
           role: staff.role === 'CEO' ? 'ceo' : staff.role === 'DOCTOR' ? 'doctor' : 'admin',
           name: staff.full_name,
           staff_id: staff.id,
-          tenant_id: 'default',
+          tenant_id: staff.tenant_id,
         };
-        req.tenant_id = 'default';
-        return next();
+        req.tenant_id = staff.tenant_id;
+        return bindTenantDbContext(staff.tenant_id, res, next);
       } catch (e) {
         console.error('[TELEGRAM AUTH ERROR]', e.message);
         return res.status(403).json({ success: false, error: 'Avtorizatsiya xatosi' });
@@ -272,6 +294,7 @@ export function verifyTelegramInitData(req, res, next) {
     const userStr = fields.get('user');
     if (!userStr) return res.status(403).json({ success: false, error: 'Foydalanuvchi ma\'lumoti topilmadi' });
     req.telegramUser = JSON.parse(userStr);
+    req.telegramStartParam = fields.get('start_param') || null;
     return next();
   } catch (e) {
     console.error('[TMA AUTH] xato:', e.message);
@@ -288,12 +311,24 @@ export function telegramOrJwtAuth(...allowedRoles) {
   };
 }
 
+export function isValidInternalSecret(receivedSecret) {
+  const configuredSecret = process.env.INTERNAL_SECRET;
+  if (!configuredSecret || !receivedSecret) return false;
+
+  const received = Buffer.from(String(receivedSecret));
+  const configured = Buffer.from(configuredSecret);
+  return received.length === configured.length && crypto.timingSafeEqual(received, configured);
+}
+
 export function agentBypassOrAuth(...allowedRoles) {
   return (req, res, next) => {
     const internalSecret = req.headers['x-internal-secret'];
-    if (internalSecret === process.env.INTERNAL_SECRET) {
-      req.user = { role: 'admin', id: 'internal-agent', tenant_id: req.tenant_id || 'default' };
-      return next();
+    if (isValidInternalSecret(internalSecret)) {
+      const tenantId = req.headers['x-tenant-id'];
+      if (!tenantId) return res.status(400).json({ error: 'Internal so\'rov uchun x-tenant-id talab qilinadi' });
+      req.tenant_id = String(tenantId);
+      req.user = { role: 'admin', id: 'internal-agent', tenant_id: req.tenant_id };
+      return bindTenantDbContext(req.tenant_id, res, next);
     }
     authMiddleware(req, res, () => checkRole(...allowedRoles)(req, res, next));
   };
@@ -301,8 +336,11 @@ export function agentBypassOrAuth(...allowedRoles) {
 
 export const schemas = {
   login: z.object({
-    username: z.string().min(3).max(50),
-    password: z.string().min(8).max(128)
+    username: z.string().min(3).max(100),
+    // Login kuchsiz parolni oshkor qilmaydi; mavjud, noto'g'ri credential
+    // bcrypt tekshiruvidan keyin bir xil 401 javobini oladi. Parol kuchi
+    // registration/change oqimlarida alohida majburiy qilinadi.
+    password: z.string().min(1).max(128)
   }),
   inventoryAdd: z.object({
     name: z.string().min(2).max(255),
@@ -317,7 +355,7 @@ export const schemas = {
   }),
   inventoryConsume: z.object({
     procedure_name: z.string().min(2).max(255).optional(),
-    item_id: z.number().int().positive().optional(),
+    item_id: z.coerce.number().int().positive().optional(),
     requested_quantity: z.number().positive().optional(),
     doctor_id: z.string().optional(),
     performed_by: z.string().optional(),
@@ -325,12 +363,12 @@ export const schemas = {
   }),
   normsCreate: z.object({
     procedure_name: z.string().min(2).max(255),
-    item_id: z.number().int().positive(),
+    item_id: z.coerce.number().int().positive(),
     standard_quantity: z.number().positive()
   }),
   normsUpdate: z.object({
     procedure_name: z.string().min(2).max(255).optional(),
-    item_id: z.number().int().positive().optional(),
+    item_id: z.coerce.number().int().positive().optional(),
     standard_quantity: z.number().positive().optional()
   }),
   receptionConfirm: z.object({

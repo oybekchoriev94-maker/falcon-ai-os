@@ -14,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: falcon_ai_os
       POSTGRES_USER: falcon
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-falcon-secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,9 +25,10 @@ services:
 
   stt:
     <<: *common
+    image: ${STT_IMAGE:-falcon-ai-os-stt:local}
     build: ./stt-service
-    # PORT ATAYLAB CHIQARILMAGAN. Ilgari `ports: ["8081:8081"]` turgan va
-    # xizmatni INTERNETGA ochib qo'ygan edi: istalgan kishi klinika
+    # PORT ATAYLAB CHIQARILMAGAN. Ilgari 8081-port host'ga to'g'ridan-to'g'ri
+    # chiqarilgan edi va xizmatni INTERNETGA ochib qo'ygan edi: istalgan kishi klinika
     # protsessorida transkripsiya qildira olardi va 2 ta parallel slotni
     # band qilib, shifokorning o'z AI Scribe'ini ishlamay qo'ya olardi.
     # `app` unga Docker tarmog'i ichidan (http://stt:8081) murojaat qiladi —
@@ -94,18 +95,39 @@ services:
       retries: 3
       start_period: 120s
 
+  db-bootstrap:
+    <<: *common
+    image: ${BACKEND_IMAGE:-falcon-ai-os:local}
+    build: .
+    restart: "no"
+    command: ["sh", "-c", "node scripts/migrate.js && node scripts/provision-app-role.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      MIGRATION_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      PLATFORM_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD required}
+    depends_on:
+      db:
+        condition: service_healthy
+
   app:
     <<: *common
+    image: ${BACKEND_IMAGE:-falcon-ai-os:local}
     build: .
-    ports: ["3000:3000"]
+    expose: ["3000"]
     mem_limit: 700m
     environment:
       NODE_ENV: production
       PORT: 3000
       STT_LOCAL: "true"
-      DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:-falcon-secret}@db:5432/falcon_ai_os
+      DATABASE_URL: postgresql://falcon_app:${APP_DATABASE_PASSWORD:?APP_DATABASE_PASSWORD required}@db:5432/falcon_ai_os
+      PLATFORM_DATABASE_URL: postgresql://falcon:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@db:5432/falcon_ai_os
+      RLS_ENFORCE_APP_ROLE: "true"
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required}
       INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET required}
+      EDGE_INGEST_ENABLED: "${EDGE_INGEST_ENABLED:-false}"
+      EDGE_KEY_ENCRYPTION_KEY: ${EDGE_KEY_ENCRYPTION_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       TELEGRAM_TOKEN_PATIENT: ${TELEGRAM_TOKEN_PATIENT:-}
       TELEGRAM_TOKEN_REFERRAL: ${TELEGRAM_TOKEN_REFERRAL:-}
@@ -113,10 +135,10 @@ services:
       # tenants.id qiymati. Yangi Telegram bemor shu tenantga bog'lanadi.
       TMA_TENANT_ID: ${TMA_TENANT_ID:-default}
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
-      SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:-ceo-change-me-now}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin-change-me-now}
-      SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:-reception-change-me-now}
-      SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:-doctor-change-me-now}
+      SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:?SEED_CEO_PASSWORD required}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD required}
+      SEED_RECEPTION_PASSWORD: ${SEED_RECEPTION_PASSWORD:?SEED_RECEPTION_PASSWORD required}
+      SEED_DOCTOR_PASSWORD: ${SEED_DOCTOR_PASSWORD:?SEED_DOCTOR_PASSWORD required}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD required}
       SENTRY_DSN: ${SENTRY_DSN:-}
       # ─── To'lov provayderlari (bo'sh bo'lsa offline rejim) ───
@@ -169,24 +191,26 @@ services:
       # Muddati o'tganlari cron orqali o'chiriladi (VOICE_RETENTION_DAYS).
       - app-voice:/app/voice-recordings
     depends_on:
-      db:
-        condition: service_healthy
+      db-bootstrap:
+        condition: service_completed_successfully
       stt:
         condition: service_healthy
 
   frontend:
     <<: *common
+    image: ${FRONTEND_IMAGE:-falcon-ai-os-frontend:local}
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://falconmedai.uz
-    ports: ["3001:3001"]
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-https://falconmedai.uz}
+    expose: ["3001"]
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: https://falconmedai.uz
+      NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-https://falconmedai.uz}
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   caddy:
     <<: *common
@@ -200,6 +224,14 @@ services:
       - caddy-config:/config
     environment:
       APP_URL: http://app:3000
+      FRONTEND_URL: http://frontend:3001
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-falconmedai.uz}
+      SERVER_IP: ${SERVER_IP:-167.233.44.193}
+    depends_on:
+      app:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
 
 volumes:
   postgres-data:
