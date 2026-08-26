@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-store";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -80,6 +81,16 @@ interface Patient {
   medical_record_number?: string;
   notes?: string;
   created_at: string;
+  // Bosqich A — 003-forma
+  blood_group?: string;
+  rh_factor?: string;
+  allergies?: string;
+  occupation?: string;
+  workplace?: string;
+  disability_group?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relation?: string;
 }
 
 interface PatientFormData {
@@ -98,6 +109,16 @@ interface PatientFormData {
   order_number: string;
   medical_record_number: string;
   notes: string;
+  // Bosqich A
+  blood_group: string;
+  rh_factor: string;
+  allergies: string;
+  occupation: string;
+  workplace: string;
+  disability_group: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relation: string;
 }
 
 const container = {
@@ -129,6 +150,15 @@ const emptyForm: PatientFormData = {
   order_number: "",
   medical_record_number: "",
   notes: "",
+  blood_group: "",
+  rh_factor: "",
+  allergies: "",
+  occupation: "",
+  workplace: "",
+  disability_group: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  emergency_contact_relation: "",
 };
 
 function getInitials(first: string, last: string): string {
@@ -162,6 +192,7 @@ function genderLabel(g: string): string {
 
 export default function PatientsPage() {
   useAuth();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -286,6 +317,15 @@ export default function PatientsPage() {
       order_number: patient.order_number || "",
       medical_record_number: patient.medical_record_number || "",
       notes: patient.notes || "",
+      blood_group: patient.blood_group || "",
+      rh_factor: patient.rh_factor || "",
+      allergies: patient.allergies || "",
+      occupation: patient.occupation || "",
+      workplace: patient.workplace || "",
+      disability_group: patient.disability_group || "",
+      emergency_contact_name: patient.emergency_contact_name || "",
+      emergency_contact_phone: patient.emergency_contact_phone || "",
+      emergency_contact_relation: patient.emergency_contact_relation || "",
     });
     setFormOpen(true);
   }
@@ -357,7 +397,7 @@ export default function PatientsPage() {
             <PatientCard
               key={patient.id}
               patient={patient}
-              onView={() => openDetail(patient)}
+              onView={() => router.push(`/patients/${patient.id}`)}
               onEdit={() => openEditForm(patient)}
               onDelete={() => confirmDelete(patient)}
             />
@@ -553,6 +593,90 @@ export default function PatientsPage() {
                 <div className="space-y-1.5">
                   <Label htmlFor="medical_record_number">Tibbiy varaqa raqami</Label>
                   <Input id="medical_record_number" placeholder="Tibbiy varaqa raqami" value={formData.medical_record_number} onChange={(e) => setFormField("medical_record_number", e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Tibbiy ma&apos;lumot</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="blood_group">Qon guruhi</Label>
+                  <Select value={formData.blood_group || undefined} onValueChange={(v) => v && setFormField("blood_group", v)}>
+                    <SelectTrigger id="blood_group"><SelectValue placeholder="Tanlang" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="O">O (I)</SelectItem>
+                      <SelectItem value="A">A (II)</SelectItem>
+                      <SelectItem value="B">B (III)</SelectItem>
+                      <SelectItem value="AB">AB (IV)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rh_factor">Rh</Label>
+                  <Select value={formData.rh_factor || undefined} onValueChange={(v) => v && setFormField("rh_factor", v)}>
+                    <SelectTrigger id="rh_factor"><SelectValue placeholder="Tanlang" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="+">Musbat (+)</SelectItem>
+                      <SelectItem value="-">Manfiy (−)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="disability_group">Nogironlik guruhi</Label>
+                  <Select value={formData.disability_group || undefined} onValueChange={(v) => v && setFormField("disability_group", v)}>
+                    <SelectTrigger id="disability_group"><SelectValue placeholder="Yo'q" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="I">I guruh</SelectItem>
+                      <SelectItem value="II">II guruh</SelectItem>
+                      <SelectItem value="III">III guruh</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="allergies">Allergiya (dori-darmon va boshqa)</Label>
+                <Textarea id="allergies" placeholder="Masalan: penitsillin, sitrus, chang..." value={formData.allergies} onChange={(e) => setFormField("allergies", e.target.value)} rows={2} />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Ish va yaqin kishilar</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="occupation">Kasbi / lavozimi</Label>
+                  <Input id="occupation" placeholder="Kasbi" value={formData.occupation} onChange={(e) => setFormField("occupation", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="workplace">Ish joyi</Label>
+                  <Input id="workplace" placeholder="Ish joyi" value={formData.workplace} onChange={(e) => setFormField("workplace", e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec_name">Yaqin qarindosh F.I.O</Label>
+                  <Input id="ec_name" placeholder="Ism familiya" value={formData.emergency_contact_name} onChange={(e) => setFormField("emergency_contact_name", e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec_relation">Kimligi</Label>
+                  <Select value={formData.emergency_contact_relation || undefined} onValueChange={(v) => v && setFormField("emergency_contact_relation", v)}>
+                    <SelectTrigger id="ec_relation"><SelectValue placeholder="Kimligi" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ota">Ota</SelectItem>
+                      <SelectItem value="ona">Ona</SelectItem>
+                      <SelectItem value="er">Er</SelectItem>
+                      <SelectItem value="xotin">Xotin</SelectItem>
+                      <SelectItem value="ogli">O&apos;g&apos;li</SelectItem>
+                      <SelectItem value="qizi">Qizi</SelectItem>
+                      <SelectItem value="aka">Aka/uka</SelectItem>
+                      <SelectItem value="opa">Opa/singil</SelectItem>
+                      <SelectItem value="boshqa">Boshqa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ec_phone">Telefon</Label>
+                  <Input id="ec_phone" type="tel" placeholder="+998 XX XXX XX XX" value={formData.emergency_contact_phone} onChange={(e) => setFormField("emergency_contact_phone", e.target.value)} />
                 </div>
               </div>
             </div>

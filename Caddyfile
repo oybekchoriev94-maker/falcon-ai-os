@@ -1,6 +1,9 @@
 {$PUBLIC_DOMAIN:falconmedai.uz} {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
-    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
+    # DIQQAT: bu ro'yxatda bo'lmagan har qanday yo'l Next.js frontendga
+    # ketadi va 404 qaytaradi. Express (app) beradigan yangi statik fayl
+    # qo'shsangiz — uni SHU YERGA ham qo'shish shart.
+    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /reception-booking.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /telegram-webapp.js /models/*
     handle @api {
         reverse_proxy {$APP_URL:http://app:3000}
     }
@@ -21,7 +24,7 @@
 
 http://{$SERVER_IP:167.233.44.193} {
     @api path /api/* /metrics /healthz /readyz /livez /api-docs
-    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /models/*
+    @tma path /tma.html /scribe.html /dashboard.html /admin-tma.html /reception-booking.html /qr-pay.html /qr-pay-kiosk.html /face_id.html /face-kiosk.html /mini-app.html /referral_portal.html /face-capture.js /face-capture.css /telegram-webapp.js /models/*
     handle @api {
         reverse_proxy {$APP_URL:http://app:3000}
     }

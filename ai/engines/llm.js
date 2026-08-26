@@ -3,7 +3,12 @@
 // RTX 5070 12GB → Qwen 2.5 7B (Q8_0) @ http://localhost:11434
 // ============================================================
 
-const OLLAMA_URL = 'http://localhost:11434';
+// DIQQAT: konteyner ichida `localhost` — konteynerning O'ZI, host emas.
+// Ilgari bu manzil qattiq yozib qo'yilgan edi, ya'ni Docker'da lokal LLM
+// hech qachon topilmasdi (Ollama boshqa konteyner yoki host'da bo'lsa ham).
+// Endi sozlash mumkin: masalan http://ollama:11434 yoki
+// http://host.docker.internal:11434.
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:7b';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -35,6 +40,8 @@ export async function llm(systemPrompt, userText, options = {}) {
       if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
       const data = await res.json();
       const content = data.message?.content || '';
+      // Bo'sh javobni MUVAFFAQIYAT deb qaytarmaymiz — pastdagi izohga qarang.
+      if (!content.trim()) throw new Error('Ollama bo\'sh javob qaytardi');
 
       // JSON extract (agentlar JSON formatda qaytaradi)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -69,7 +76,21 @@ export async function llm(systemPrompt, userText, options = {}) {
       })
     });
     const data = await res.json();
+
+    // XATONI YASHIRMAYMIZ. Ilgari bu yerda faqat
+    //   data.choices?.[0]?.message?.content || ''
+    // turardi: kalit yaroqsiz bo'lsa, model iste'moldan chiqarilgan bo'lsa
+    // yoki limit tugasa, `choices` umuman bo'lmaydi va funksiya BO'SH SATR
+    // qaytarardi. Chaqiruvchi kod buni "muvaffaqiyatli, matn bo'sh" deb
+    // qabul qilardi — natijada reception-voice diktant matnini bo'sh satr
+    // bilan almashtirib yubordi va "Ma'lumot to'ldirildi" deb xabar berdi.
+    // Xato obyekt sifatida qaytsa, chaqiruvchi buni ANIQ ajrata oladi.
+    if (!res.ok || data.error) {
+      return { error: `Cloud LLM xatosi: ${data.error?.message || `HTTP ${res.status}`}` };
+    }
     const content = data.choices?.[0]?.message?.content || '';
+    if (!content.trim()) return { error: 'Cloud LLM bo\'sh javob qaytardi' };
+
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
     return content;

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hujjatlar — ko'chirildi</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; align-items: center;
+           justify-content: center; min-height: 100vh; margin: 0; background: #0f1117; color: #e5e7eb; }
+    .box { text-align: center; max-width: 420px; padding: 2rem; }
+    h1 { font-size: 1.1rem; margin-bottom: .5rem; }
+    p { color: #9ca3af; font-size: .9rem; line-height: 1.5; }
+    a { color: #7c8cf8; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Hujjat elektronlashtirish ko'chirildi</h1>
+    <p>
+      Bu sahifa yagona Falcon AI OS dashboard'ga birlashtirildi.
+      Iltimos <a href="/hujjatlar.html">yangi Hujjatlar sahifasini</a> oching —
+      2 soniyadan so'ng avtomatik yo'naltirilasiz.
+    </p>
+  </div>
+  <script>
+    if (!sessionStorage.getItem("hujjatlar_redirected")) {
+      sessionStorage.setItem("hujjatlar_redirected", "1");
+      setTimeout(() => { location.replace("/hujjatlar.html"); }, 2000);
+    }
+  </script>
+</body>
+</html>

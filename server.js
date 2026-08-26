@@ -12,7 +12,7 @@ import cron from 'node-cron';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import helmet from 'helmet';
 import compression from 'compression';
 import { z } from 'zod';
@@ -37,7 +37,9 @@ import { logger, pinoHttpMiddleware } from './backend/logger.js';
 import { metricsMiddleware, metricsEndpoint, trackAiRequest, setActiveTenants } from './backend/metrics.js';
 
 import * as orchestrator from './ai/orchestrator.js';
-import { llm, transcribe, speak, isLLMReady } from './ai/orchestrator.js';
+import { llm, transcribe, speak, isLLMReady, isSTTReady, isTTSReady } from './ai/orchestrator.js';
+import { isOCRReady } from './ai/engines/ocr.js';
+import { parseBackupStatus, backupHealth, aggregateHealth } from './backend/services/system-health.js';
 
 import authRoutes, { seedDefaultUsers } from './backend/routes/auth.js';
 import paymentRoutes from './backend/routes/payments.js';
@@ -45,6 +47,8 @@ import inventoryRoutes from './backend/routes/inventory.js';
 import aiRoutes from './backend/routes/ai.js';
 import doctorRoutes from './backend/routes/doctors.js';
 import inpatientRoutes from './backend/routes/inpatient.js';
+import labsRoutes from './backend/routes/labs.js';
+import legalRoutes from './backend/routes/legal.js';
 import referralAgentRoutes from './backend/routes/referral.js';
 import referralPassRoutes from './backend/routes/referrals.js';
 import patientRoutes from './backend/routes/patient.js';
@@ -53,11 +57,31 @@ import appointmentRoutes from './backend/routes/appointments.js';
 import billingRoutes from './backend/routes/billing.js';
 import subscriptionRoutes from './backend/routes/subscription.js';
 import tenantRoutes from './backend/routes/tenants.js';
+import clinicRoutes from './backend/routes/clinics.js';
+import workerControlRoutes from './backend/routes/worker-control.js';
+import medplumRoutes from './backend/routes/medplum.js';
+import hrmsRoutes from './backend/routes/hrms.js';
+import erpnextRoutes from './backend/routes/erpnext.js';
+import taskRoutes from './backend/routes/tasks.js';
+import ocrRoutes from './backend/routes/ocr.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
 import scribeRoutes from './backend/routes/scribe.js';
 import doctorViewRoutes from './backend/routes/doctor.js';
 import b2bRoutes from './backend/routes/b2b.js';
+import servicesRoutes from './backend/routes/services.js';
+import bookingRoutes, { createBookingCore } from './backend/routes/booking.js';
+import cashierRoutes from './backend/routes/cashier.js';
+import alertsRoutes from './backend/routes/alerts.js';
+import insightsRoutes from './backend/routes/insights.js';
+import copilotRoutes from './backend/routes/copilot.js';
+import patientBotRoutes from './backend/routes/patient-bot.js';
+import kioskRoutes from './backend/routes/kiosk.js';
+import attendanceRoutes from './backend/routes/attendance.js';
+import webhookRoutes from './backend/routes/webhooks.js';
+import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
+import { startQueueNotifyCron } from './backend/cron/queue-notify.js';
+import { startVoicePurgeCron } from './backend/services/voice-store.js';
 import { createEdgeAdminRoutes, createEdgeIngestRoutes } from './backend/routes/edge.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
 
@@ -136,9 +160,18 @@ if (IS_PROD) {
   });
 }
 
+// Umumiy so'rov cheklovi — qo'pol suiiste'mol to'sig'i.
+//
+// 300 -> 3000. Sabab: klinika xodimlari bitta internet ulanishi orqali
+// ishlaydi, ya'ni bu limit AMALDA butun klinikaga birgalikda tegishli.
+// Interfeys esa muntazam so'rov yuboradi: shifokor sahifasi navbatni
+// 20s, statistikani 60s, yo'llanmalarni 30s da yangilaydi — bu BITTA
+// shifokor uchun 15 daqiqada ~90 so'rov. Uch shifokor, registratura,
+// kassa va kiosk bilan 300 chegarasi oddiy ish kunida oshib ketardi
+// va tizim sababsiz "Juda ko'p so'rov" deb rad qilardi.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 3000,
   message: { error: 'Juda ko\'p so\'rov, keyin urinib ko\'ring' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -147,7 +180,38 @@ const limiter = rateLimit({
 });
 app.use([`/api`, API_PREFIX], limiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: IS_PROD ? 10 : 1000, message: { error: 'Login urinishlar soni oshib ketdi. 15 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
+/**
+ * Login cheklovi - LOGIN NOMI bo'yicha, IP bo'yicha EMAS.
+ *
+ * NEGA: klinikaning barcha xodimlari bitta internet ulanishi orqali
+ * ishlaydi, ya'ni tashqi IP hammada BIR XIL. IP bo'yicha cheklansa,
+ * bitta xodim parolni bir necha marta xato tersa - registratura,
+ * shifokorlar va kassa BIRDANIGA 15 daqiqaga tizimdan chiqib qoladi.
+ * Aynan shu production'da sodir bo'ldi: hech kim kira olmay qoldi.
+ *
+ * Login nomi bo'yicha cheklash to'g'riroq: hujum aniq hisobga qaratiladi
+ * va boshqa xodimlarga tegmaydi. Bemor kartasi darajasidagi himoya
+ * bazada ham bor (doctors.failed_attempts / locked_until).
+ *
+ * skipSuccessfulRequests - muvaffaqiyatli kirish limitni yemaydi.
+ * Aks holda kun davomida qayta-qayta kirgan xodim o'zini bloklardi.
+ */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_PROD ? 10 : 1000,
+  keyGenerator: (req) => {
+    const uname = String(req.body?.username || '').toLowerCase().trim();
+    // Login nomi yo'q so'rovlar (refresh, logout) - IP bo'yicha.
+    // ipKeyGenerator IPv6 manzillarni to'g'ri guruhlaydi.
+    return uname ? `user:${uname}` : `ip:${ipKeyGenerator(req.ip)}`;
+  },
+  skipSuccessfulRequests: true,
+  skip: () => IS_TEST,
+  message: { error: 'Bu hisob uchun urinishlar soni oshib ketdi. 15 daqiqa kuting.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+});
 const bookingLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Navbat so\'rovi limiti. 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
 const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'AI so\'rovlar soni cheklangan, 1 daqiqa kuting.' }, standardHeaders: true, legacyHeaders: false, skip: () => IS_TEST, validate: { trustProxy: false } });
 
@@ -196,6 +260,22 @@ app.get('/', (req, res) => res.redirect('/login.html'));
 // ============================================================
 let patientBot = null, referralBot = null;
 
+// Klinika nomini bazadan olamiz — kodga yozib qo'yilsa, har bir klinika
+// uchun alohida o'zgartirish kerak bo'lardi (bu SaaS, bitta klinika emas).
+// Bir marta o'qib keshlaymiz: /start har safar bazaga bormasin.
+let _clinicNameCache = null;
+async function getClinicName() {
+  if (_clinicNameCache) return _clinicNameCache;
+  try {
+    const tenantId = process.env.TMA_TENANT_ID || 'default';
+    const row = await qGet('SELECT name FROM tenants WHERE id = $1', [tenantId]);
+    _clinicNameCache = row?.name || 'Klinika';
+  } catch {
+    _clinicNameCache = 'Klinika';
+  }
+  return _clinicNameCache;
+}
+
 function initBots() {
   const tokenP = process.env.TELEGRAM_TOKEN_PATIENT;
   const tokenR = process.env.TELEGRAM_TOKEN_REFERRAL;
@@ -204,6 +284,9 @@ function initBots() {
   if (tokenP && tokenP.length > 10) {
     try {
       patientBot = new Telegraf(tokenP);
+      // booking.js va boshqa routelar req.app.locals.patientBot orqali
+      // xabar yuboradi — shu yerda o'rnatilmasa, ular jim ishlamay qoladi.
+      app.locals.patientBot = patientBot;
       patientBot.start(async (ctx) => {
         const userId = ctx.from?.id;
         const staff = userId ? await unsafeQuery.qGet(
@@ -228,7 +311,8 @@ function initBots() {
             ])
           );
         } else if (patientUrl) {
-          ctx.reply('Assalomu alaykum! Klinika Hayot botiga xush kelibsiz.',
+          const clinicName = await getClinicName();
+          ctx.reply(`Assalomu alaykum! ${clinicName} botiga xush kelibsiz.`,
             Markup.inlineKeyboard([Markup.button.webApp('Bemor kabineti', patientUrl)])
           );
         } else {
@@ -291,6 +375,58 @@ app.get('/api/health/ready', async (req, res) => {
 });
 app.get('/api/health/live', (req, res) => res.status(200).end('alive'));
 
+// Chuqur tekshiruv (PR #15): DB kechikishi, AI dvigatellar, backup
+// yangiligi. Faqat super-admin — tashqi muhit holati sir hisoblanadi.
+app.get('/api/health/deep', authMiddleware, checkRole('superadmin'), async (req, res) => {
+  const started = Date.now();
+
+  // DB — kritik komponent: javob vaqti bilan birga tekshiriladi
+  let dbOk = false;
+  let dbMs = null;
+  try {
+    const t0 = Date.now();
+    await qGet('SELECT 1');
+    dbMs = Date.now() - t0;
+    dbOk = true;
+  } catch { /* pastda degraded ko'rinadi */ }
+
+  // Backup holati: konteynerda /backup (compose: ./backups:/backup)
+  const backupDir = process.env.BACKUP_DIR || '/backup';
+  let backupText = null;
+  try {
+    backupText = fs.readFileSync(path.join(backupDir, 'last-backup.json'), 'utf8');
+  } catch { /* fayl yo'q = backup hali sozlanmagan */ }
+  const backup = backupHealth(parseBackupStatus(backupText));
+
+  const engines = {
+    llm: isLLMReady(),
+    stt: isSTTReady(),
+    tts: isTTSReady(),
+    ocr: isOCRReady(),
+  };
+
+  const checks = [
+    { name: 'database', ok: dbOk, critical: true },
+    { name: 'backup', ok: backup.state === 'ok' },
+    { name: 'llm', ok: engines.llm },
+    { name: 'stt', ok: engines.stt },
+    { name: 'tts', ok: engines.tts },
+    { name: 'ocr', ok: engines.ocr },
+  ];
+  const { overall, problems } = aggregateHealth(checks);
+
+  res.status(overall === 'down' ? 503 : 200).json({
+    overall,
+    problems,
+    database: { ok: dbOk, latency_ms: dbMs },
+    backup,
+    engines,
+    uptime_sec: Math.round(process.uptime()),
+    checked_in_ms: Date.now() - started,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Metrics endpoint for Prometheus (faqat super-admin)
 app.get('/metrics', authMiddleware, checkRole('superadmin'), metricsEndpoint);
 
@@ -322,16 +458,27 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
 
   targetApp.use(`${API_PREFIX}/auth`, authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
   targetApp.use('/api/auth', authLimiter, authRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, signToken));
-  targetApp.use(`${API_PREFIX}/subscription`, subscriptionRoutes());
-  targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes());
+  targetApp.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
+  targetApp.use('/webhooks', webhookRoutes());
+  targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes(upload));
+  targetApp.use(`${API_PREFIX}/clinics`, clinicRoutes());
+  // Testlar va eski frontend /api prefiksini ishlatadi — ikkala manzilda ham ochiq
+  targetApp.use('/api/clinics', clinicRoutes());
+  targetApp.use(`${API_PREFIX}/workers`, workerControlRoutes());
+  targetApp.use(`${API_PREFIX}/medplum`, medplumRoutes());
+  targetApp.use(`${API_PREFIX}/hrms`, hrmsRoutes());
+  targetApp.use(`${API_PREFIX}/erpnext`, erpnextRoutes());
+  targetApp.use(`${API_PREFIX}/tasks`, taskRoutes());
+  // PR #8: hujjat elektronlashtirish (OCR/STT/AI) — LLM limiti himoyasi bilan
+  targetApp.use(`${API_PREFIX}/ocr`, tenantRateLimit('ai'), ocrRoutes(upload));
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
 
   // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.
-  targetApp.use('/api/scribe', authMiddleware, tenantRateLimit('ai'), checkSubscription, checkAiLimit,
+  targetApp.use('/api/scribe', authMiddleware, checkSubscription, tenantRateLimit('ai'), checkAiLimit,
     scribeRoutes(pool, authMiddleware, checkRole, upload, serverError, logger));
-  targetApp.use('/api/doctor', doctorViewRoutes(pool, authMiddleware, checkRole, serverError));
+  targetApp.use('/api/doctor', doctorViewRoutes(pool, authMiddleware, checkRole, upload));
   targetApp.use('/api/b2b', b2bRoutes(pool, authMiddleware, checkRole, validate, schemas, serverError, getPlatformPool()));
-  targetApp.use('/api/tma', tmaRoutes(pool, getPlatformPool()));
+  targetApp.use('/api/tma', tmaRoutes(pool, createBookingCore(pool, serverError), getPlatformPool()));
 
   function mountRoutes(prefix) {
     const p = prefix || '';
@@ -343,9 +490,23 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
     targetApp.use(`${p}`, tenantRateLimit('api'), inventoryRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, agentBypassOrAuth, upload));
     targetApp.use(`${p}/ai`, aiLimiter, tenantRateLimit('ai'), aiRoutes(pool, authMiddleware, checkRole, validate, schemas, orchestrator));
     targetApp.use(`${p}`, doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload));
-    targetApp.use(`${p}`, inpatientRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}`, inpatientRoutes(pool, authMiddleware, checkRole, upload));
     targetApp.use(`${p}/appointments`, appointmentRoutes(pool, authMiddleware));
     targetApp.use(`${p}/billing`, authMiddleware, billingRoutes(pool, authMiddleware, validate, schemas));
+    targetApp.use(`${p}/labs`, labsRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/legal`, legalRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/services`, tenantRateLimit('api'), servicesRoutes(pool, authMiddleware, checkRole, serverError));
+    targetApp.use(`${p}/booking`, tenantRateLimit('api'), bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, serverError));
+    targetApp.use(`${p}/cashier`, tenantRateLimit('api'), cashierRoutes(pool, authMiddleware, checkRole, serverError));
+    targetApp.use(`${p}/alerts`, tenantRateLimit('api'), alertsRoutes(pool, authMiddleware));
+    targetApp.use(`${p}/insights`, tenantRateLimit('api'), insightsRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/copilot`, tenantRateLimit('ai'), copilotRoutes(pool, authMiddleware, checkRole, upload));
+    // Bemor Telegram bot webhook - auth yo'q (Telegram Server -> Falcon), secret bilan himoyalangan
+    targetApp.use(`${p}/patient-bot`, patientBotRoutes(pool));
+    // Kiosk - qurilma tokeni bilan himoyalangan (X-Kiosk-Token sarlavhasi).
+    targetApp.use(`${p}/kiosk`, tenantRateLimit('api'), kioskRoutes(pool, authMiddleware, checkRole));
+    // Xodimlar davomati - agent qurilma tokeni bilan hodisa yuboradi, hisobotlar JWT bilan o'qiladi.
+    targetApp.use(`${p}/attendance`, tenantRateLimit('api'), attendanceRoutes(pool, authMiddleware, checkRole));
   }
 
   mountRoutes('/api');
@@ -473,6 +634,15 @@ function startServer(port) {
     console.log(`Swagger:  http://localhost:${port}/api-docs`);
     console.log(`DB:       PostgreSQL (${process.env.DATABASE_URL ? 'connected' : 'not configured'})`);
     console.log(`========================================\n`);
+    // Bemor xabarnomalari cron loop (24h reminder, 7d follow-up, no-show
+    // belgilash). No-show qismi Telegram tokenidan mustaqil ishlashi kerak,
+    // shuning uchun token sozlanmagan bo'lsa ham ishga tushadi — bildirishnoma
+    // qismlari ichkarida token yo'qligini o'zi tekshiradi (jim o'tkazib yuboradi).
+    startPatientReminderCron();
+    startQueueNotifyCron();
+    // Muddati o'tgan ovozli diktantlarni tozalaydi. Transkripsiya matni
+    // bazada QOLADI — o'chadigan narsa faqat audio fayl (disk + maxfiylik).
+    startVoicePurgeCron(getPool());
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port >= MAX_PORT) { console.error(`Port ${PORT}-${MAX_PORT} band`); process.exit(1); }
@@ -497,7 +667,7 @@ async function main() {
 
     await mountApiRoutes(app, getPool());
     finalizeApp(app);
-    console.log('[AUTH] Users seeded — 4 roles ready');
+    console.log('[AUTH] Users seeded - 4 roles ready');
 
     if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12) {
       console.error('[INIT] ADMIN_PASSWORD .env da kamida 12 belgi qilib sozlanishi kerak!');

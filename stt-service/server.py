@@ -4,19 +4,51 @@ import asyncio
 import tempfile
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import hmac
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.responses import JSONResponse
 from faster_whisper import WhisperModel
 
-MODEL_NAME = os.getenv("MODEL_NAME", "hostmepanda/whisper-large-v3-turbo-uzbek-ct2")
+# SUKUT BO'YICHA MODEL — nega aynan shu qiymat.
+#
+# Ilgari bu yerda `hostmepanda/whisper-large-v3-turbo-uzbek-ct2` (HuggingFace
+# repo nomi) turardi. U model NAFAQAGA CHIQARILDI: production'da ham,
+# klinika kompyuterida ham rubaiSTT v2 medium ishlaydi. Eski qiymatni
+# qoldirish xavfli edi — MODEL_NAME muhit o'zgaruvchisi biror sababdan
+# yo'qolsa (compose fayli almashtirildi, `docker run` qo'lda yozildi),
+# xizmat JIM-JITLIK bilan eski modelni HuggingFace'dan tortib olib ishga
+# tushardi va hech kim buni sezmasdi — bemor kartasiga boshqa model yozgan
+# matn tushardi.
+#
+# Nima uchun HuggingFace repo nomi EMAS (masalan islomov/rubaistt_v2_medium):
+# u xom transformers checkpoint, server.py uni CT2'ga o'girishga urinadi va
+# bu PyTorch orqali ~3GB+ xotira talab qiladi. VPS'da jami ~3.7GB RAM bor —
+# butun server OOM bilan qulaydi (docker-compose.yml dagi izohga q.).
+#
+# Nima uchun aynan bu YO'L: /models/rubaistt-v2-medium-ct2 ikkala joyda ham
+# bir xil — VPS'da ./stt-models bind-mount orqali, klinika GPU kompyuterida
+# esa scripts/stt-compare/04-serve-gpu.sh ayni shu yo'lni ulaydi. Ya'ni
+# sukut qiymati ikkala muhitda ham TO'G'RI ishlaydi.
+#
+# Papka bo'lmasa/bo'sh bo'lsa — download_model() ichidagi model.bin tekshiruvi
+# darhol aniq xato beradi. Bu "jim ishlab ketgan noto'g'ri model" dan
+# ancha yaxshi: noto'g'ri model sezilmaydi, ishga tushmagan xizmat darhol
+# seziladi.
+MODEL_NAME = os.getenv("MODEL_NAME", "/models/rubaistt-v2-medium-ct2")
 MODEL_DIR = os.getenv("MODEL_DIR", "/cache")
 DEVICE = os.getenv("DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "int8")
 BEAM_SIZE = int(os.getenv("BEAM_SIZE", "3"))
-# DIQQAT: bu fine-tuned model initial_prompt bilan ishlamaydi — prompt berilsa
-# chiqish buziladi (bo'sh matn yoki "zg zg z" kabi takrorlanish). Production'da
-# tekshirilgan. Shuning uchun sukut bo'yicha o'chirilgan; boshqa model
-# ishlatilsa STT_USE_PROMPT=true bilan yoqish mumkin.
+# DIQQAT — bu cheklov ESKI model uchun aniqlangan, yangisida TEKSHIRILMAGAN.
+# Nafaqaga chiqarilgan `hostmepanda/whisper-large-v3-turbo-uzbek-ct2` modeli
+# initial_prompt bilan ishlamasdi: prompt berilsa chiqish buzilardi (bo'sh
+# matn yoki "zg zg z" kabi takrorlanish). Bu production'da tasdiqlangan edi.
+# Hozirgi model — rubaiSTT v2 medium — promptni ko'tara oladimi, HALI
+# O'LCHANMAGAN. Shuning uchun sukut bo'yicha hamon o'chirib qo'yilgan
+# (ehtiyotkorlik: buzilsa bemor kartasiga axlat matn tushadi).
+# Sinash: scripts/stt-compare/03-compare.sh uz prompt — natija ijobiy
+# bo'lsa STT_USE_PROMPT=true qilib yoqish mumkin.
 USE_PROMPT = os.getenv("STT_USE_PROMPT", "false").lower() == "true"
 # Til siyosati: klinika faqat o'zbek va rus tillarida ishlaydi.
 # Boshqa til so'ralsa rad etamiz (model uni "o'zbekcha" deb axlat matn chiqaradi).
@@ -27,28 +59,139 @@ MAX_CONCURRENCY = int(os.getenv("STT_CONCURRENCY", "2"))
 # Audio hajmi chegarasi (OOM/DoS himoyasi)
 MAX_AUDIO_MB = int(os.getenv("MAX_AUDIO_MB", "25"))
 
+# Autentifikatsiya.
+# Docker tarmog'i ichida (VPS'dagi holat) kerak emas — xizmat tashqariga
+# chiqmaydi. LEKIN klinika kompyuteridagi STT Cloudflare Tunnel orqali
+# internetga ochilsa, himoyasiz qolsa istalgan kishi bemor audiosini
+# yuborib, klinika GPU'sidan foydalana oladi.
+# Shuning uchun: STT_AUTH_TOKEN o'rnatilgan bo'lsa — majburiy tekshiriladi.
+AUTH_TOKEN = os.getenv("STT_AUTH_TOKEN", "").strip()
+
+
+def _check_auth(authorization: str | None):
+    """Token o'rnatilmagan bo'lsa tekshirmaymiz (lokal Docker tarmog'i).
+    O'rnatilgan bo'lsa — Bearer mos kelishi shart."""
+    if not AUTH_TOKEN:
+        return
+    supplied = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        supplied = authorization[7:].strip()
+    # compare_digest — vaqt bo'yicha hujumga qarshi
+    if not hmac.compare_digest(supplied, AUTH_TOKEN):
+        raise HTTPException(401, "Ruxsat yo'q")
+
 model: WhisperModel | None = None
 _sem: asyncio.Semaphore | None = None
 
 
+def _convert_to_ct2(repo_id: str, out_dir: str):
+    """Xom (transformers/safetensors) Whisper checkpointini CTranslate2
+    formatiga o'giradi — faster-whisper faqat shu formatni tushunadi.
+
+    NEGA KERAK: ko'p Whisper fine-tune'lari (masalan rubaiSTT) HuggingFace'da
+    faqat transformers formatida e'lon qilinadi, CT2 versiyasi yo'q. Buni
+    ilgari qo'lda, klinika kompyuterida `scripts/stt-compare/02-convert-model.sh`
+    orqali qilingan edi va natija faqat o'sha kompyuterda qolgan edi — VPS
+    boshqa model kerak bo'lganda hech narsaga tayana olmasdi. Endi xizmat
+    o'zi birinchi ishga tushishda o'giradi va natijani keshlaydi (MODEL_DIR),
+    keyingi qayta ishga tushirishlar bir zumda bo'ladi.
+    """
+    import subprocess
+    import shutil
+    from transformers import WhisperTokenizerFast, WhisperProcessor
+
+    print(f"'{repo_id}' CT2 formatida emas — birinchi marta o'girilmoqda "
+          f"(bir necha daqiqa davom etishi mumkin)...", flush=True)
+
+    tokdir = tempfile.mkdtemp()
+    try:
+        # Ko'p fine-tune repolarda tokenizer.json yo'q (faqat vocab.json +
+        # merges.txt) — CTranslate2 esa aynan tokenizer.json'ni kutadi.
+        WhisperTokenizerFast.from_pretrained(repo_id).save_pretrained(tokdir)
+        WhisperProcessor.from_pretrained(repo_id).save_pretrained(tokdir)
+
+        # CPU'da int8, GPU'da float16 — DEVICE ga qarab (RAM/VRAM tejash).
+        quant = "int8" if DEVICE == "cpu" else "float16"
+        subprocess.run(
+            [
+                "ct2-transformers-converter", "--model", repo_id,
+                "--output_dir", out_dir, "--quantization", quant, "--force",
+                "--copy_files", "preprocessor_config.json",
+                "tokenizer_config.json", "special_tokens_map.json",
+            ],
+            check=True,
+        )
+        for f in ("tokenizer.json", "preprocessor_config.json"):
+            src = os.path.join(tokdir, f)
+            if os.path.exists(src):
+                shutil.copy(src, out_dir)
+    finally:
+        shutil.rmtree(tokdir, ignore_errors=True)
+
+    print(f"O'girish tugadi: {out_dir}", flush=True)
+
+
 def download_model():
-    from huggingface_hub import snapshot_download
-    dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
-    if os.path.exists(os.path.join(dest, "model.bin")):
-        print(f"Model already cached at {dest}", flush=True)
-        return dest
-    print(f"Downloading {MODEL_NAME} to {dest}...", flush=True)
+    # MODEL_NAME allaqachon lokal papka bo'lsa — yuklab olish shart emas.
+    # Busiz `/models/rubaistt-...` kabi yo'l HuggingFace repo nomi deb
+    # qabul qilinib, xizmat ishga tushmasdan yiqilardi. Aynan shu sababdan
+    # klinika kompyuterida server.py qo'lda tuzatilgan va git'dan uzilib
+    # qolgan edi (u yerdagi versiyada endpoint nomi ham boshqacha edi).
+    if os.path.isdir(MODEL_NAME):
+        # DIQQAT: agar bu Docker bind-mount bo'lsa (masalan ./stt-models),
+        # host papkasi mavjud bo'lmasa Docker uni BO'SH holda avtomatik
+        # yaratadi — `os.path.isdir()` bunda ham True qaytaradi (scp
+        # hali bajarilmagan yoki uzilib qolgan holatga to'g'ri keladi).
+        # Tekshirmasdan qaytarsak, WhisperModel() lifespan() ichida
+        # tushunarsiz xato bilan yiqiladi va bu SOG'LIQ TEKSHIRUVINI
+        # abadiy "loading" holatida ushlab qoladi — `app` esa `stt`
+        # sog'lom bo'lishini kutgani uchun BUTUN KLINIKA (registratura,
+        # kassa, hammasi) ishga tushmay qoladi, faqat ovoz emas.
+        # Shuning uchun aniq xato bilan DARHOL to'xtaymiz.
+        if not os.path.exists(os.path.join(MODEL_NAME, "model.bin")):
+            raise RuntimeError(
+                f"MODEL_NAME papka sifatida berilgan ({MODEL_NAME}), lekin "
+                f"ichida model.bin yo'q — model hali ko'chirilmagan yoki "
+                f"ko'chirish uzilib qolgan. `docker compose up` dan oldin "
+                f"scp orqali to'liq model papkasi joylashtirilganini tekshiring."
+            )
+        print(f"Using local model directory: {MODEL_NAME}", flush=True)
+        return MODEL_NAME
+
     os.makedirs(MODEL_DIR, exist_ok=True)
-    path = snapshot_download(
-        MODEL_NAME,
-        cache_dir=MODEL_DIR,
-        local_dir=dest,
-        local_dir_use_symlinks=False,
-        resume_download=True,
-        ignore_patterns=["*.h5", "*.ot"],
-    )
-    print(f"Model downloaded to {path}", flush=True)
-    return path
+    dest = os.path.join(MODEL_DIR, MODEL_NAME.replace("/", "--"))
+    ct2_dest = dest + "-ct2"
+
+    # Avvalgi ishga tushirishda o'girilgan bo'lsa — qayta o'girmaymiz.
+    if os.path.exists(os.path.join(ct2_dest, "model.bin")):
+        print(f"CT2 model keshdan olindi: {ct2_dest}", flush=True)
+        return ct2_dest
+    if os.path.exists(os.path.join(dest, "model.bin")):
+        print(f"Model keshdan olindi: {dest}", flush=True)
+        return dest
+
+    # Ba'zi repolar allaqachon CT2 formatida e'lon qilinadi (model.bin bor) —
+    # avval shuni tekshiramiz, aks holda bitta modelni ikki marta
+    # (xom + o'girilgan) yuklab olib, joy va vaqtni isrof qilardik.
+    from huggingface_hub import HfApi, snapshot_download
+    try:
+        files = {f.rfilename for f in HfApi().model_info(MODEL_NAME).siblings}
+    except Exception as e:
+        raise RuntimeError(f"HuggingFace'dan '{MODEL_NAME}' haqida ma'lumot olib bo'lmadi: {e}")
+
+    if "model.bin" in files:
+        print(f"Downloading {MODEL_NAME} (CT2) to {dest}...", flush=True)
+        path = snapshot_download(
+            MODEL_NAME, cache_dir=MODEL_DIR, local_dir=dest,
+            local_dir_use_symlinks=False, resume_download=True,
+            ignore_patterns=["*.h5", "*.ot"],
+        )
+        print(f"Model downloaded to {path}", flush=True)
+        return path
+
+    # Xom (transformers) checkpoint — CT2'ga o'giramiz.
+    _convert_to_ct2(MODEL_NAME, ct2_dest)
+    return ct2_dest
 
 
 @asynccontextmanager
@@ -95,14 +238,24 @@ def _run_transcribe(tmp_path: str, language: str, temperature: float, prompt: st
     return " ".join(s.text for s in segments).strip()
 
 
+# Ikkita yo'l bir xil ishlovchiga boradi:
+#   /v1/audio/transcriptions — asosiy (OpenAI API bilan mos, ilova shuni ishlatadi)
+#   /transcribe              — eski nom. README va 04-serve-gpu.sh shuni yozgan,
+#                              klinikadagi qo'lda tuzatilgan versiyada ham shu edi.
+# Faqat bittasini qoldirsak, ikki tomondan biri 404 oladi — bu allaqachon
+# production'da sodir bo'lgan (ilova /v1/... yuborardi, klinika /transcribe kutardi).
 @app.post("/v1/audio/transcriptions")
+@app.post("/transcribe")
 async def transcribe(
     file: UploadFile = File(...),
     response_format: str = Form("json"),
     language: str = Form(None),
     temperature: float = Form(0.0),
     prompt: str = Form(""),
+    authorization: str | None = Header(default=None),
 ):
+    _check_auth(authorization)
+
     if model is None:
         raise HTTPException(503, "Model hali yuklanmagan")
 

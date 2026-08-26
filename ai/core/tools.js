@@ -142,3 +142,14 @@ export async function llmJson(systemPrompt, userText, opts = {}) {
 export function isLLMConfigured() {
   return !!groqKey() || useLocalLLM();
 }
+
+/**
+ * Erkin matn LLM chaqiruvi (JSON emas — insho, epikriz, xulosa uchun).
+ */
+export async function llmText(systemPrompt, userText = '', opts = {}) {
+  const messages = userText
+    ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
+    : [{ role: 'user', content: systemPrompt }];
+  const reply = await chat(messages, null, opts);
+  return (reply?.content || '').trim();
+}

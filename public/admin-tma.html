@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/telegram-webapp.js"></script>
 <title>Falcon AI OS — Admin panel</title>
 <style>
 :root{--bg:#0d1117;--card:#161b22;--text:#e6edf3;--text-muted:#8b949e;--border:#30363d;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
@@ -61,7 +61,7 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.5)}
 <div class="header">
   <h1>⚙️ Admin panel</h1>
   <div><span class="role-badge" id="roleBadge">—</span></div>
-  <p id="userNameDisplay">Klinika Hayot boshqaruv tizimi</p>
+  <p id="userNameDisplay">Oqtosh Klinikasi boshqaruv tizimi</p>
 </div>
 
 <div class="tabs" id="tabBar"></div>
@@ -106,6 +106,51 @@ td{padding:8px 6px;border-bottom:1px solid rgba(48,54,61,.5)}
 </div>
 
 <!-- Doctor Limit Monitor Tab -->
+<!-- Xizmatlar (narxlar) -->
+<div id="tab-services" class="tab-content">
+  <div class="card">
+    <div class="card-title">💰 Xizmatlar va narxlar</div>
+    <p class="text-muted mb-4">Klinika ko'rsatadigan xizmatlar ro'yxati. Reception va kassa shu narxlardan foydalanadi.</p>
+
+    <div class="card" style="background:rgba(88,166,255,.06);border-color:rgba(88,166,255,.25);padding:12px">
+      <div style="font-weight:700;margin-bottom:8px">➕ Yangi xizmat qo'shish</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="svcName" class="input" style="padding:8px;border-radius:6px;grid-column:1/-1" placeholder="Xizmat nomi (masalan: Terapevt qabuli)">
+        <input id="svcCategory" class="input" style="padding:8px;border-radius:6px" placeholder="Turkum (masalan: Konsultatsiya)">
+        <select id="svcSpecialty" class="input" style="padding:8px;border-radius:6px">
+          <option value="">Yo'nalish (ixtiyoriy)</option>
+          <option value="terapevt">Terapevt</option>
+          <option value="kardiolog">Kardiolog</option>
+          <option value="ginekolog">Ginekolog</option>
+          <option value="pediatr">Pediatr</option>
+          <option value="stomatolog">Stomatolog</option>
+          <option value="nevrolog">Nevrolog</option>
+          <option value="oftalmolog">Oftalmolog</option>
+          <option value="endokrinolog">Endokrinolog</option>
+          <option value="urolog">Urolog</option>
+          <option value="fizioterapevt">Fizioterapevt</option>
+          <option value="uzi">UZI</option>
+          <option value="laborant">Laborant</option>
+          <option value="rentgen">Rentgen</option>
+          <option value="ekg">EKG</option>
+        </select>
+        <input id="svcPrice" type="number" min="0" step="1000" class="input" style="padding:8px;border-radius:6px" placeholder="Narx (so'm)">
+        <input id="svcDuration" type="number" min="1" max="480" class="input" style="padding:8px;border-radius:6px" placeholder="Davomiyligi (daqiqa)" value="15">
+        <input id="svcIcon" maxlength="4" class="input" style="padding:8px;border-radius:6px;grid-column:1/-1" placeholder="Ikonka (emoji, ixtiyoriy)">
+      </div>
+      <button class="btn btn-accent mt-2" onclick="createService()">✅ Qo'shish</button>
+      <div id="svcAlert" class="mt-2"></div>
+    </div>
+
+    <div id="servicesLoading" class="loading" style="padding:20px"><div class="spinner"></div>Yuklanmoqda...</div>
+    <div id="servicesContent" class="hidden">
+      <table><thead><tr><th>Nomi</th><th>Yo'nalish</th><th class="text-right">Narx</th><th class="text-right">Davom.</th><th></th></tr></thead>
+        <tbody id="servicesBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div id="tab-limits" class="tab-content">
   <div id="limitsLoading" class="loading"><div class="spinner"></div>Yuklanmoqda...</div>
   <div id="limitsContent" class="hidden">
@@ -157,7 +202,7 @@ async function initApp() {
   window.currentUserId = d.user.id || d.user.telegram_id || 'admin';
 
   document.getElementById('roleBadge').textContent = roleLabel(d.user.role);
-  document.getElementById('userNameDisplay').textContent = d.user.name || 'Klinika Hayot';
+  document.getElementById('userNameDisplay').textContent = d.user.name || 'Oqtosh Klinikasi';
 
   const tabBar = document.getElementById('tabBar');
   tabBar.innerHTML = '';
@@ -168,6 +213,9 @@ async function initApp() {
   }
   if (d.user.role === 'ceo' || d.user.role === 'admin') {
     tabs.push({ id:'voice', icon:'📦', label:'Ovozli Kirim' });
+  }
+  if (d.user.role === 'ceo' || d.user.role === 'admin') {
+    tabs.push({ id:'services', icon:'💰', label:'Xizmatlar' });
   }
   if (d.user.role === 'doctor' || d.user.role === 'ceo') {
     tabs.push({ id:'limits', icon:'🥼', label:'Limit Nazorati' });
@@ -207,6 +255,7 @@ function switchTab(tabId) {
   if (tabBtn) tabBtn.classList.add('active');
   if (tabId === 'ceo') loadCeoPanel();
   if (tabId === 'limits') loadLimits();
+  if (tabId === 'services') loadServices();
 }
 
 // ---- CEO: Waste Report ----
@@ -363,6 +412,83 @@ function renderLimits(data) {
     tr.innerHTML = '<td>' + (doc.doctor_name || 'Noma\'lum') + '</td><td>' + limit.toLocaleString() + '</td><td>' + used.toLocaleString() + '</td><td>' + remaining.toLocaleString() + '</td><td>' + status + '</td>';
     tbody.appendChild(tr);
   });
+}
+
+// ---- Xizmatlar (narxlar) ----
+async function apiPut(path, body) {
+  const headers = { 'Content-Type':'application/json' };
+  if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+  const r = await fetch(path, { method:'PUT', headers, body: JSON.stringify(body) });
+  return r.json();
+}
+async function apiDelete(path) {
+  const headers = {};
+  if (WebApp?.initData) headers['x-telegram-init-data'] = WebApp.initData;
+  const r = await fetch(path, { method:'DELETE', headers });
+  return r.json();
+}
+
+const fmtSum = (n) => (Number(n) || 0).toLocaleString('uz-UZ') + " so'm";
+
+async function loadServices() {
+  document.getElementById('servicesLoading').classList.remove('hidden');
+  document.getElementById('servicesContent').classList.add('hidden');
+  const d = await apiGet('/api/services');
+  document.getElementById('servicesLoading').classList.add('hidden');
+  document.getElementById('servicesContent').classList.remove('hidden');
+  const tbody = document.getElementById('servicesBody');
+  tbody.innerHTML = '';
+  if (!d.success) { tbody.innerHTML = '<tr><td colspan="5" class="text-red">Xatolik: ' + (d.error||'') + '</td></tr>'; return; }
+  if (!d.services.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">Xizmat qo\'shilmagan</td></tr>'; return; }
+  d.services.forEach(s => {
+    const tr = document.createElement('tr');
+    const nameCell = (s.icon ? s.icon + ' ' : '') + escapeHtml(s.name) +
+      (s.active ? '' : ' <span class="text-muted" style="font-size:11px">(o\'chirilgan)</span>');
+    tr.innerHTML =
+      '<td>' + nameCell + (s.category ? '<div class="text-muted" style="font-size:11px">'+escapeHtml(s.category)+'</div>' : '') + '</td>' +
+      '<td>' + (s.specialty ? escapeHtml(s.specialty) : '-') + '</td>' +
+      '<td class="text-right font-bold">' + fmtSum(s.price) + '</td>' +
+      '<td class="text-right">' + (s.duration_min||15) + ' daq</td>' +
+      '<td class="text-right"><button class="btn btn-red" style="width:auto;padding:6px 10px;font-size:12px" onclick="deleteService(\''+s.id+'\', \''+escapeAttr(s.name)+'\')">🗑️</button></td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s||'').replace(/'/g, "\\'"); }
+
+async function createService() {
+  const name = document.getElementById('svcName').value.trim();
+  const price = document.getElementById('svcPrice').value.trim();
+  const alertBox = document.getElementById('svcAlert');
+  alertBox.innerHTML = '';
+  if (!name) { alertBox.innerHTML = '<div class="alert-red">Nomini kiriting</div>'; return; }
+  if (!price || Number(price) < 0) { alertBox.innerHTML = '<div class="alert-red">Narxni kiriting</div>'; return; }
+  const body = {
+    name,
+    category: document.getElementById('svcCategory').value.trim() || null,
+    specialty: document.getElementById('svcSpecialty').value || null,
+    price: Number(price),
+    duration_min: Number(document.getElementById('svcDuration').value) || 15,
+    icon: document.getElementById('svcIcon').value.trim() || null,
+  };
+  const d = await apiPost('/api/services', body);
+  if (!d.success) { alertBox.innerHTML = '<div class="alert-red">❌ ' + (d.error||'Xatolik') + '</div>'; return; }
+  alertBox.innerHTML = '<div class="alert-green">✅ Qo\'shildi</div>';
+  document.getElementById('svcName').value = '';
+  document.getElementById('svcCategory').value = '';
+  document.getElementById('svcSpecialty').value = '';
+  document.getElementById('svcPrice').value = '';
+  document.getElementById('svcDuration').value = '15';
+  document.getElementById('svcIcon').value = '';
+  await loadServices();
+}
+
+async function deleteService(id, name) {
+  if (!confirm("'" + name + "' xizmatini o'chirasizmi?")) return;
+  const d = await apiDelete('/api/services/' + id);
+  if (!d.success) { alert('❌ ' + (d.error||'Xatolik')); return; }
+  await loadServices();
 }
 
 // ---- Init ----

@@ -1,3 +1,5 @@
+import { qGet } from './db.js';
+
 const tenantCounters = new Map();
 
 const PLAN_LIMITS = {
@@ -11,6 +13,30 @@ function getLimits(planCode) {
   return PLAN_LIMITS[planCode] || PLAN_LIMITS.free;
 }
 
+// Tarifni req.subscription'dan olamiz. Agar u o'rnatilmagan bo'lsa (masalan
+// tenantRateLimit checkSubscription'dan oldin ishlasa — middleware tartibi),
+// tarifni o'zimiz aniqlaymiz va 60s kesh qilamiz. Aks holda Enterprise tenant
+// ham xato "free" (10/kun) deb bloklanardi.
+const planCache = new Map(); // tenantId -> { plan, expiresAt }
+async function resolvePlanCode(req) {
+  if (req.subscription?.plan_code) return req.subscription.plan_code;
+  const tenantId = req.tenant_id || req.user?.tenant_id || 'default';
+  const cached = planCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.plan;
+  let plan = 'free';
+  try {
+    const row = await qGet(
+      `SELECT sp.code AS plan_code FROM subscriptions s
+       JOIN subscription_plans sp ON sp.id = s.plan_id
+       WHERE s.tenant_id = $1 AND s.status = 'active' LIMIT 1`,
+      [tenantId]
+    );
+    if (row?.plan_code) plan = row.plan_code;
+  } catch { /* DB xatosida free — konservativ */ }
+  planCache.set(tenantId, { plan, expiresAt: Date.now() + 60000 });
+  return plan;
+}
+
 function cleanupExpired() {
   const now = Date.now();
   for (const [key, entry] of tenantCounters) {
@@ -20,11 +46,11 @@ function cleanupExpired() {
 setInterval(cleanupExpired, 60000);
 
 export function tenantRateLimit(type = 'api') {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (process.env.NODE_ENV === 'test') return next();
 
-    const tenantId = req.tenant_id || 'default';
-    const planCode = req.subscription?.plan_code || 'free';
+    const tenantId = req.tenant_id || req.user?.tenant_id || 'default';
+    const planCode = await resolvePlanCode(req);
     const limits = getLimits(planCode);
 
     const limit = type === 'ai' ? limits.ai_rpd : limits.rpm;

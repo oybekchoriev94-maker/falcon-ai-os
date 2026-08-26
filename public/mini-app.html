@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/telegram-webapp.js"></script>
 <title>Falcon AI OS — Bemor kabineti</title>
 <style>
 :root{--bg:#f8fafc;--card:#ffffff;--primary:#1e3a5f;--primary-light:#3b82f6;--text:#0f172a;--text-secondary:#64748b;--border:#e2e8f0;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--orange:#ea580c;--accent:#2563eb;--ref-bg:#0d1117;--ref-card:#161b22;--ref-neon:#58a6ff;--ref-text:#e6edf3;--ref-muted:#8b949e;--ref-border:#30363d;--ref-green:#3fb950;--ref-gold:#d29922}
@@ -218,6 +218,14 @@ if (Telegram) { Telegram.expand(); Telegram.enableClosingConfirmation?.(); Teleg
 
 const params = new URLSearchParams(window.location.search);
 const reportId = params.get('report_id');
+// Klinika kodi — ko'p klinikali (SaaS) rejim uchun. Havola: /mini-app.html?clinic=KOD
+// Telegram start_param orqali ham kelishi mumkin (t.me/bot?startapp=KOD).
+const clinicCode = params.get('clinic') || (window.Telegram?.WebApp?.initDataUnsafe?.start_param || '').trim();
+/** Public API'ga klinika kodini qo'shadi — busiz barcha bemor 'default' ga tushadi */
+function withClinic(url) {
+  if (!clinicCode) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'clinic=' + encodeURIComponent(clinicCode);
+}
 
 // Detect startapp from Telegram WebApp or URL
 let referralId = null;
@@ -229,12 +237,17 @@ if (startParam.startsWith('ref_')) {
 let reportData = null;
 let bookingState = {
   doctors: [],
+  services: [],
   selectedDoctor: null,
+  selectedService: null,
   selectedDate: null,
   selectedTime: null,
+  selectedSlotIso: null,
+  payMethod: 'cashier',
   slots: [],
   days: []
 };
+const fmtSum = (n) => (Number(n)||0).toLocaleString('uz-UZ') + " so'm";
 
 const specIcons = { uzi:'🔬', laborant:'🧪', terapevt:'🩺', ginekolog:'🤰', kardiolog:'🫀', stomatolog:'🦷', nevrolog:'🧠', pediatr:'👶', oftalmolog:'👁️', endokrinolog:'🏥' };
 const specLabels = { uzi:'UZI', laborant:'Laboratoriya', terapevt:'Terapevt', ginekolog:'Ginekolog', kardiolog:'Kardiolog', stomatolog:'Stomatolog', nevrolog:'Nevrolog', pediatr:'Pediatr', oftalmolog:'Oftalmolog', endokrinolog:'Endokrinolog' };
@@ -575,10 +588,14 @@ function switchTab(tab) {
 // ============================================================
 async function initBooking(report) {
   try {
-    const resp = await fetch('/api/appointments/doctors');
-    const data = await resp.json();
-    if (!data.success) throw new Error(data.error);
-    bookingState.doctors = data.doctors;
+    // Yangi to'qnashuvsiz + to'lovli oqim (appointments jadvali — reception bilan bir xil)
+    const [docs, svcs] = await Promise.all([
+      fetch(withClinic('/api/booking/public/doctors')).then(r => r.json()),
+      fetch(withClinic('/api/booking/public/services')).then(r => r.json()),
+    ]);
+    if (!docs.success) throw new Error(docs.error || 'Shifokorlar yuklanmadi');
+    bookingState.doctors = docs.doctors;
+    bookingState.services = svcs.success ? svcs.services : [];
     renderBooking();
   } catch (e) {
     document.getElementById('bookingLoading').style.display = 'none';
@@ -627,6 +644,17 @@ function renderBooking() {
   }
   html += '</select></div>';
 
+  // Xizmat (narx bilan)
+  html += '<div class="card"><div class="card-title">💰 Xizmatni tanlang</div>';
+  html += '<select class="doc-select" id="svcSelect" onchange="onServiceChange(this.value)">';
+  html += '<option value="">— Xizmatni tanlang —</option>';
+  for (const s of bookingState.services) {
+    html += '<option value="' + s.id + '">' + (s.icon ? s.icon + ' ' : '') + s.name + ' — ' + fmtSum(s.price) + '</option>';
+  }
+  html += '</select>';
+  if (!bookingState.services.length) html += '<p class="placeholder" style="padding:8px;font-size:12px">Klinika hali xizmat narxlarini qo\'shmagan</p>';
+  html += '</div>';
+
   // Days
   html += '<div class="card"><div class="card-title">📅 Kunni tanlang</div>';
   html += '<div class="days-scroll" id="daysScroll"></div></div>';
@@ -635,8 +663,15 @@ function renderBooking() {
   html += '<div class="card"><div class="card-title">⏰ Vaqtni tanlang</div>';
   html += '<div id="slotsContainer"><p class="placeholder" style="padding:20px">Avval shifokor va kunni tanlang</p></div></div>';
 
+  // To'lov turi
+  html += '<div class="card"><div class="card-title">💳 To\'lov turi</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  html += '<div class="pay-opt sel" data-pm="cashier" onclick="setBookPay(\'cashier\')" style="padding:12px;border-radius:10px;text-align:center;cursor:pointer;background:var(--card2,#1c2230);border:2px solid var(--accent,#58a6ff)"><div style="font-size:22px">💵</div>Kassada</div>';
+  html += '<div class="pay-opt" data-pm="online" onclick="setBookPay(\'online\')" style="padding:12px;border-radius:10px;text-align:center;cursor:pointer;background:var(--card2,#1c2230);border:2px solid var(--border,#30363d)"><div style="font-size:22px">💳</div>Online</div>';
+  html += '</div></div>';
+
   // Footer button (fixed)
-  html += '<div class="book-footer"><button class="book-btn bg-green" id="confirmBookBtn" disabled onclick="confirmBooking()">📋 Qabul vaqtini tasdiqlash</button></div>';
+  html += '<div class="book-footer"><button class="book-btn bg-green" id="confirmBookBtn" disabled onclick="confirmBooking()">📋 Bron qilish</button></div>';
 
   container.innerHTML = html;
 
@@ -646,12 +681,36 @@ function renderBooking() {
   }
 }
 
+function onServiceChange(id) {
+  bookingState.selectedService = bookingState.services.find(s => s.id === id) || null;
+  bookingState.selectedSlotIso = null;
+  bookingState.selectedTime = null;
+  if (bookingState.selectedDoctor && bookingState.selectedDate) selectDay(bookingState.selectedDate, document.querySelector('.day-btn.active') || document.querySelector('.day-btn'));
+  updateConfirmState();
+}
+
+function setBookPay(m) {
+  bookingState.payMethod = m;
+  document.querySelectorAll('.pay-opt').forEach(o => {
+    const on = o.dataset.pm === m;
+    o.classList.toggle('sel', on);
+    o.style.borderColor = on ? 'var(--accent,#58a6ff)' : 'var(--border,#30363d)';
+  });
+}
+
+function updateConfirmState() {
+  const btn = document.getElementById('confirmBookBtn');
+  if (!btn) return;
+  btn.disabled = !(bookingState.selectedDoctor && bookingState.selectedService && bookingState.selectedSlotIso);
+}
+
 function onDoctorChange(doctorId) {
   bookingState.selectedDoctor = doctorId || null;
   bookingState.selectedDate = null;
   bookingState.selectedTime = null;
+  bookingState.selectedSlotIso = null;
   bookingState.slots = [];
-  document.getElementById('confirmBookBtn').disabled = true;
+  updateConfirmState();
   if (doctorId) generateDays();
 }
 
@@ -697,22 +756,24 @@ async function selectDay(dateStr, el) {
   el.classList.add('active');
   bookingState.selectedDate = dateStr;
   bookingState.selectedTime = null;
-  document.getElementById('confirmBookBtn').disabled = true;
+  bookingState.selectedSlotIso = null;
+  updateConfirmState();
 
   if (!bookingState.selectedDoctor) return;
 
   try {
-    const resp = await fetch('/api/appointments/slots?doctor_id=' + encodeURIComponent(bookingState.selectedDoctor) + '&date=' + encodeURIComponent(dateStr));
+    let url = '/api/booking/public/slots?doctor_id=' + encodeURIComponent(bookingState.selectedDoctor) + '&date=' + encodeURIComponent(dateStr);
+    if (bookingState.selectedService) url += '&service_id=' + encodeURIComponent(bookingState.selectedService.id);
+    const resp = await fetch(withClinic(url));
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
 
     bookingState.slots = data.slots || [];
     const container = document.getElementById('slotsContainer');
     if (!bookingState.slots.length) {
-      container.innerHTML = '<p class="placeholder" style="padding:16px;color:var(--orange)">Bu kunda bo\'sh vaqt yo\'q</p>';
+      container.innerHTML = '<p class="placeholder" style="padding:16px;color:var(--orange)">' + (data.reason || 'Bu kunda bo\'sh vaqt yo\'q') + '</p>';
       return;
     }
-
     const availableCount = bookingState.slots.filter(s => s.available).length;
     if (!availableCount) {
       container.innerHTML = '<p class="placeholder" style="padding:16px;color:var(--orange)">Barcha vaqtlar band qilingan</p>';
@@ -722,7 +783,7 @@ async function selectDay(dateStr, el) {
     let html = '<div class="slots-grid">';
     bookingState.slots.forEach(s => {
       const cls = 'slot-btn' + (s.available ? '' : ' unavailable');
-      html += '<div class="' + cls + '" data-time="' + s.time + '" onclick="selectTime(\'' + s.time + '\', this' + (s.available ? '' : ', true') + ')">' + s.time + '</div>';
+      html += '<div class="' + cls + '" data-time="' + s.time + '" data-iso="' + s.scheduled_at + '" onclick="selectTime(\'' + s.time + '\', this' + (s.available ? '' : ', true') + ')">' + s.time + '</div>';
     });
     html += '</div>';
     container.innerHTML = html;
@@ -736,49 +797,72 @@ function selectTime(time, el, isUnavailable) {
   document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
   el.classList.add('selected');
   bookingState.selectedTime = time;
-  document.getElementById('confirmBookBtn').disabled = false;
+  bookingState.selectedSlotIso = el.dataset.iso;
+  updateConfirmState();
 }
 
 async function confirmBooking() {
-  if (!bookingState.selectedDoctor || !bookingState.selectedDate || !bookingState.selectedTime) return;
+  if (!bookingState.selectedDoctor || !bookingState.selectedService || !bookingState.selectedSlotIso) return;
   const btn = document.getElementById('confirmBookBtn');
   btn.disabled = true;
-  btn.innerHTML = '⏳ Band qilinmoqda...';
+  btn.innerHTML = '⏳ Bron qilinmoqda...';
 
   const doctor = bookingState.doctors.find(d => d.id === bookingState.selectedDoctor);
-  const patientName = reportData?.report?.patient_name || 'Bemor';
-  const telegramId = params.get('telegram_id') || null;
+  // Bemor ismi: hisobotdan yoki Telegram foydalanuvchi ismidan yoki so'raymiz
+  let patientName = reportData?.report?.patient_name || '';
+  if (!patientName && Telegram?.initDataUnsafe?.user) {
+    const u = Telegram.initDataUnsafe.user;
+    patientName = ((u.first_name || '') + ' ' + (u.last_name || '')).trim();
+  }
+  if (!patientName) patientName = prompt('Ismingizni kiriting:') || '';
+  if (!patientName.trim()) { btn.disabled = false; btn.innerHTML = '📋 Bron qilish'; return; }
+  const telegramId = Telegram?.initDataUnsafe?.user?.id || params.get('telegram_id') || null;
 
   try {
-    const resp = await fetch('/api/appointments/book', {
+    const resp = await fetch(withClinic('/api/booking/public/create'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        patient_name: patientName.trim(),
         doctor_id: bookingState.selectedDoctor,
-        patient_name: patientName,
-        telegram_id: telegramId,
-        date: bookingState.selectedDate,
-        time: bookingState.selectedTime
+        service_id: bookingState.selectedService.id,
+        scheduled_at: bookingState.selectedSlotIso,
+        payment_method: bookingState.payMethod,
+        telegram_id: telegramId ? String(telegramId) : null,
       })
     });
     const data = await resp.json();
-    if (!data.success) throw new Error(data.error);
+    if (!data.success) {
+      if (data.code === 'SLOT_TAKEN') {
+        alert('⚠️ Bu vaqt endi band. Boshqa vaqt tanlang.');
+        selectDay(bookingState.selectedDate, document.querySelector('.day-btn.active'));
+        btn.disabled = false; btn.innerHTML = '📋 Bron qilish';
+        return;
+      }
+      throw new Error(data.error || 'Xatolik');
+    }
 
-    // Success modal
-    const doctorName = doctor ? (doctor.first_name + ' ' + (doctor.last_name || '')) : 'Shifokor';
-    const dateFormatted = new Date(bookingState.selectedDate + 'T00:00:00').toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' });
-    document.getElementById('modalDetail').innerHTML =
+    const a = data.appointment;
+    const doctorName = a.doctor_name || (doctor ? (doctor.first_name + ' ' + (doctor.last_name || '')) : 'Shifokor');
+    const dtStr = new Date(a.scheduled_at).toLocaleString('uz-UZ', { dateStyle: 'long', timeStyle: 'short' });
+    let detail =
       '👤 Bemor: ' + patientName + '<br>' +
       '👨‍⚕️ Shifokor: ' + doctorName + '<br>' +
-      '📅 Sana: ' + dateFormatted + '<br>' +
-      '⏰ Vaqt: ' + bookingState.selectedTime;
+      '🩺 Xizmat: ' + a.service_name + '<br>' +
+      '📅 ' + dtStr + '<br>' +
+      '💰 ' + fmtSum(a.amount);
+    if (a.payment_method === 'online' && data.payment?.payment_url) {
+      detail += '<br><br><a href="' + data.payment.payment_url + '" target="_blank" style="display:inline-block;margin-top:8px;padding:12px 20px;background:var(--accent,#2563eb);color:#fff;border-radius:10px;text-decoration:none;font-weight:600">💳 Onlayn to\'lash</a>';
+    } else {
+      detail += '<br><br><div style="margin-top:8px;font-size:12px;opacity:.7">Kassa uchun kod</div><div style="font-size:30px;font-weight:800;letter-spacing:4px;color:var(--accent,#58a6ff);font-family:monospace">' + a.access_code + '</div><div style="font-size:12px;opacity:.7">Klinikaga kelib shu kodni ayting</div>';
+    }
+    document.getElementById('modalDetail').innerHTML = detail;
     document.getElementById('successModal').classList.add('show');
-
-    btn.innerHTML = '✅ Band qilindi';
+    btn.innerHTML = '✅ Bron qilindi';
     btn.style.background = 'var(--green)';
   } catch (e) {
     btn.disabled = false;
-    btn.innerHTML = '📋 Qabul vaqtini tasdiqlash';
+    btn.innerHTML = '📋 Bron qilish';
     alert('❌ ' + e.message);
   }
 }

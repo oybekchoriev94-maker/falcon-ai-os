@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { safeError } from '../services/safe-error.js';
+import { buildLiveQueue } from '../services/queue-service.js';
 import {
   calcPlatformFee, calcCommission, deductDoctorBalance, accruePatientCashback,
   updateDoctorKPI, recordPlatformLedger, upsertFinancialTransaction
@@ -413,6 +414,32 @@ export default function appointmentRoutes(pool, authMiddleware) {
       }
 
       res.json({ success: true, message: 'Qabul yakunlandi', booking_id: parseInt(booking_id), split });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // === GET /api/appointments/queue/live — jonli navbat (roadmap PR #6) ===
+  // Ikki manba birlashtiriladi: bugun "keldi" belgilangan bronlar va
+  // registratura/kiosk navbati. Dublikatlar tozalanadi, kutish vaqti hisoblanadi.
+  router.get('/queue/live', async (req, res) => {
+    try {
+      const tenantId = req.user.tenant_id;
+      const arrived = await q(
+        `SELECT id, patient_name, phone, doctor_name, status, arrived_at
+           FROM appointments
+          WHERE tenant_id = $1
+            AND scheduled_at::date = CURRENT_DATE
+            AND arrived_at IS NOT NULL
+            AND status IN ('scheduled', 'confirmed', 'in_progress')`,
+        [tenantId]
+      );
+      const queueRows = await q(
+        `SELECT id, patient_name, phone, doctor, status, created_at
+           FROM patient_queue
+          WHERE tenant_id = $1 AND status IN ('waiting', 'in_progress')`,
+        [tenantId]
+      );
+      const result = buildLiveQueue(arrived, queueRows, new Date());
+      res.json({ success: true, ...result });
     } catch (e) { safeError(res, e); }
   });
 

@@ -5,7 +5,12 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <title>Bemor Kabineti</title>
-<script src="https://telegram.org/js/telegram-webapp.js"></script>
+<!-- O'zimizda joylashtirilgan — telegram.org domeni ba'zi provayderlarda
+     bloklangan bo'lishi mumkin (Telegram ilovasining o'zi ishlaydi, lekin
+     oddiy https://telegram.org sayti yopiq bo'lishi mumkin). Shu skript
+     bo'lmasa window.Telegram.WebApp umuman yaratilmaydi va initData
+     yo'qolib, HAMMA so'rov 401 bilan qaytadi. -->
+<script src="/telegram-webapp.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <style>
@@ -227,6 +232,7 @@ button:disabled{opacity:0.6;cursor:not-allowed}
         <div class="fs-24 fw-700">Sizning navbatingiz</div>
         <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Klinikadagi hozirgi holatingiz</div>
       </section>
+      <div id="checkinBox" class="d-none"></div>
       <div id="queueList" class="space-y-4"></div>
     </div>
 
@@ -237,9 +243,21 @@ button:disabled{opacity:0.6;cursor:not-allowed}
         <div class="fs-14" style="color:var(--on-surface-variant);margin-top:4px">Yangi vaqt band qilish</div>
       </section>
       <div class="d-flex flex-col space-y-4" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <!-- Shifokor qabuli — kiosk va registratura bilan bitta manbadan
+             (/api/tma/consultation-catalog). Yo'nalish tanlanadi, keyin
+             shifokor; qabul xizmati o'zi tanlanadi. -->
+        <div class="space-y-2" id="consultBlock" style="display:none">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Shifokor qabuli</div>
+          <div id="consultSpecs" class="d-flex" style="flex-wrap:wrap;gap:8px"></div>
+          <div id="consultDoctors" class="space-y-2" style="margin-top:8px"></div>
+        </div>
         <div class="space-y-2">
           <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Shifokor</div>
           <select id="bookDoctor" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Shifokorni tanlang</option></select>
+        </div>
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Xizmat</div>
+          <select id="bookService" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Xizmatni tanlang</option></select>
         </div>
         <div class="space-y-2">
           <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Sana</div>
@@ -248,6 +266,17 @@ button:disabled{opacity:0.6;cursor:not-allowed}
         <div class="space-y-2">
           <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">Vaqt</div>
           <select id="bookSlot" style="width:100%;padding:14px 36px 14px 16px;background:var(--surface-container-low);border:1px solid rgba(115,118,134,0.2);border-radius:12px;font-size:14px;color:var(--on-surface)"><option value="">Vaqtni tanlang</option></select>
+        </div>
+        <div class="space-y-2">
+          <div class="fs-12 fw-600 ls-02" style="color:var(--on-surface-variant);margin-left:4px">To'lov turi</div>
+          <div class="d-grid grid-cols-2 gap-3" id="bookPayWrap">
+            <button type="button" class="active-tap pay-opt" data-pay="cashier" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:12px;border:2px solid var(--primary);background:rgba(0,74,198,0.06);color:var(--primary);font-size:14px;font-weight:600;cursor:pointer">
+              <span class="material-symbols-outlined" style="font-size:18px">payments</span> Kassada
+            </button>
+            <button type="button" class="active-tap pay-opt" data-pay="online" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 0;border-radius:12px;border:2px solid rgba(115,118,134,0.2);background:transparent;color:var(--on-surface-variant);font-size:14px;font-weight:600;cursor:pointer">
+              <span class="material-symbols-outlined" style="font-size:18px">credit_card</span> Onlayn
+            </button>
+          </div>
         </div>
         <button class="active-tap" id="bookBtn" style="width:100%;background:var(--primary-container);color:#fff;padding:16px 0;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.1);transition:all .2s">
           <span class="material-symbols-outlined" style="vertical-align:middle;margin-right:4px">event_available</span> Yozilish
@@ -345,13 +374,34 @@ clinicCode=(initData?.start_param||urlParams.get('clinic')||'').replace(/^clinic
 if(!telegramId)telegramId=urlParams.get('telegram_id')||'';
 if(!telegramId)telegramId='demo_user';
 
+// Yuqorida ko'rinadigan doimiy ogohlantirish — autentifikatsiya buzilganda
+// ilova "bo'sh" bo'lib ko'rinmasin, sabab aniq aytilsin.
+function showFatal(msg){
+  let el=document.getElementById('fatalBar');
+  if(!el){
+    el=document.createElement('div');el.id='fatalBar';
+    el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--error);color:#fff;font-size:13px;font-weight:600;padding:10px 16px;text-align:center';
+    document.body.prepend(el);
+  }
+  el.textContent=msg;
+}
+
 async function api(method,path,body){
   const opts={method,headers:{}};
   if(initDataRaw)opts.headers['x-telegram-init-data']=initDataRaw;
   opts.headers['x-telegram-id']=telegramId;
   if(clinicCode)opts.headers['x-clinic-code']=clinicCode;
   if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
-  const r=await fetch(API+path,opts);return r.json()
+  const r=await fetch(API+path,opts);
+  // MUHIM: ilgari status tekshirilmasdi — 401/403 javob tanasi oddiy
+  // ma'lumot kabi oqib o'tib, har bir ro'yxat "bo'sh" bo'lib chizilardi
+  // va ekranda hech qanday xato ko'rinmasdi.
+  if(r.status===401||r.status===403){
+    showFatal(window.Telegram?.WebApp
+      ? 'Telegram autentifikatsiyasi ishlamadi. Ilovani yopib qayta oching.'
+      : 'Bu sahifani Telegram ilovasi ichida oching.');
+  }
+  return r.json()
 }
 
 async function init(){
@@ -362,7 +412,7 @@ async function init(){
       const data=await api('GET','/api/tma/my-data');
       if(data?.registered&&data?.patient){registered=true;patientData=data.patient;document.getElementById('greetingLabel').textContent='Xush kelibsiz,'}
     }catch(e){console.warn('Sync error:',e)}
-    showScreen('main');loadDashboard();loadDoctors();
+    showScreen('main');loadDashboard();loadDoctors();loadServices();loadConsultCatalog();
   }catch(e){showToast('Xatolik: '+e.message,'error')}
   hideSplash()
 }
@@ -386,7 +436,7 @@ function switchTab(tab){
     if(target)target.style.display='block';
     const nav=document.querySelector(`.nav-tab[data-tab="${tab}"]`);
     if(nav){nav.style.background='var(--secondary-container)';nav.style.color='var(--primary)'}
-    if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors();const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt)}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
+    if(tab==='dashboard')loadDashboard();else if(tab==='queue')loadQueue();else if(tab==='appointments'){loadAppointments();loadDoctors();loadConsultCatalog();const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt)}else if(tab==='consultations')loadConsultations();else if(tab==='reminders')loadReminders()
   }catch(e){console.error('switchTab error:',e)}
 }
 
@@ -394,26 +444,40 @@ async function loadDashboard(){
   try{
     const[qD,aD,cD]=await Promise.all([api('GET','/api/tma/my-queue'),api('GET','/api/tma/my-appointments'),api('GET','/api/tma/consultations')]);
     const queue=qD?.queue||[],apps=aD?.appointments||[],cons=cD?.consultations||[];
-    document.getElementById('statQueue').textContent=queue.filter(q=>q.status==='waiting'||q.status==='active'||q.status==='in_progress').length;
-    document.getElementById('statAppointments').textContent=apps.filter(a=>a.status!=='Yakunlangan'&&a.status!=='Bekor qilingan').length;
+    document.getElementById('statQueue').textContent=queue.filter(q=>q.status==='waiting'||q.status==='active').length;
+    document.getElementById('statAppointments').textContent=apps.filter(a=>!['completed','cancelled','no_show'].includes(a.status)).length;
     document.getElementById('dashboardGreeting').textContent=`${patientData?.first_name||userName}, o'zingizni bugun qanday his qilyapsiz?`;
     const tq=document.getElementById('todayQueue');
     if(queue.length===0)tq.innerHTML='<div class="d-flex items-center justify-between w-full"><div><div class="fs-12 fw-600 ls-02 ttu" style="color:var(--on-secondary-container);opacity:0.7">Sizning navbatingiz</div><div class="fs-14" style="color:var(--on-secondary-container);opacity:0.8">Hozircha navbat yo\'q</div></div><div class="d-flex items-center justify-center" style="width:56px;height:56px;background:#fff;border-radius:1rem;box-shadow:inset 0 2px 4px rgba(0,0,0,.06)"><span class="material-symbols-outlined" style="color:var(--primary);font-size:28px">diversity_3</span></div></div>';
-    else{const q=queue[0];tq.innerHTML=`<div class="d-flex items-center justify-between w-full"><div><div class="fs-12 fw-600 ls-02 ttu" style="color:var(--on-secondary-container);opacity:0.7">Sizning navbatingiz</div><div class="d-flex items-baseline gap-1"><span style="font-size:40px;font-weight:700;color:var(--on-secondary-container)">${q.queue_number||'—'}</span><span class="fs-14" style="color:var(--on-secondary-container);opacity:0.8">/ ${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div><div class="d-flex items-center gap-2" style="margin-top:8px"><span class="material-symbols-outlined" style="color:var(--primary);font-size:18px">schedule</span><span class="fs-12 fw-600">${q.doctor_name||q.department||'Qabul'}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</span></div></div><div class="d-flex items-center justify-center" style="width:56px;height:56px;background:#fff;border-radius:1rem;box-shadow:inset 0 2px 4px rgba(0,0,0,.06)"><span class="material-symbols-outlined" style="color:var(--primary);font-size:28px">diversity_3</span></div></div>`}
+    else{const q=queue[0];const st=queueStatusLabel(q);tq.innerHTML=`<div class="d-flex items-center justify-between w-full"><div><div class="fs-12 fw-600 ls-02 ttu" style="color:var(--on-secondary-container);opacity:0.7">Sizning navbatingiz</div><div class="d-flex items-baseline gap-1"><span style="font-size:32px;font-weight:700;color:var(--on-secondary-container)">${q.access_code||'—'}</span><span class="fs-14" style="color:var(--on-secondary-container);opacity:0.8">/ ${st.label}</span></div><div class="d-flex items-center gap-2" style="margin-top:8px"><span class="material-symbols-outlined" style="color:var(--primary);font-size:18px">schedule</span><span class="fs-12 fw-600">${q.doctor_name||q.department||'Qabul'}${q.appointment_time?' · '+q.appointment_time:''}</span></div></div><div class="d-flex items-center justify-center" style="width:56px;height:56px;background:#fff;border-radius:1rem;box-shadow:inset 0 2px 4px rgba(0,0,0,.06)"><span class="material-symbols-outlined" style="color:var(--primary);font-size:28px">diversity_3</span></div></div>`}
     const rc=document.getElementById('recentConsultations');
     if(cons.length===0)rc.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><div class="fs-14" style="color:var(--on-surface-variant)">Hali tashxislar yo\'q</div></div>';
     else rc.innerHTML=cons.slice(0,3).map((c,i)=>{const d=tryParseJson(c.data_json);const diag=d?.diagnosis||d?.tashxis||'';return`<div class="d-flex items-start gap-4 active-tap cursor-pointer anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.08}s;box-shadow:0 1px 3px rgba(0,0,0,.06)" onclick="switchTab(\'consultations\')"><div class="d-flex items-center justify-center" style="width:56px;height:56px;border-radius:1rem;background:var(--surface-container);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary);font-size:24px">stethoscope</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-16 fw-700 truncate">${c.doctor_name||'Shifokor'}</div><span class="fs-10" style="color:var(--on-surface-variant);background:var(--surface-container);padding:2px 8px;border-radius:9999px;margin-left:8px;white-space:nowrap;flex-shrink:0">${fmtDate(c.created_at)}</span></div>${diag?'<div class="fs-14" style="color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+diag+'</div>':'<div class="fs-14" style="color:var(--on-surface-variant);opacity:0.5;margin-top:2px">Tahlil qilingan</div>'}</div></div>`}).join('')
   }catch(e){document.getElementById('statQueue').textContent='0';document.getElementById('statAppointments').textContent='0'}
 }
 
+function queueStatusLabel(q){
+  if(q.status==='active')return{icon:'hearing',label:'Qabulda',badge:'status-active'};
+  if(q.arrived)return{icon:'hourglass_empty',label:'Kutilmoqda',badge:'status-pending'};
+  return{icon:'directions_walk',label:'Hali kelmadingiz',badge:'status-cancelled'};
+}
+function renderCheckinBox(items){
+  const box=document.getElementById('checkinBox');if(!box)return;
+  const pending=items.find(q=>!q.arrived&&q.status!=='active');
+  if(!pending){box.className='d-none';box.innerHTML='';return}
+  box.className='';
+  box.innerHTML=`<div class="d-flex items-center justify-between" style="background:var(--secondary-container);padding:20px;border-radius:1.5rem;border:1px solid var(--secondary-fixed)"><div><div class="fs-14 fw-600" style="color:var(--on-secondary-container)">Klinikaga yetib keldingizmi?</div><div class="fs-12" style="color:var(--on-secondary-container);opacity:0.75;margin-top:2px">${pending.doctor_name||'Qabul'}${pending.appointment_time?' · '+pending.appointment_time:''}</div></div><button class="active-tap" onclick="doCheckin()" style="background:var(--primary);color:#fff;border:none;border-radius:999px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Men keldim</button></div>`;
+}
 async function loadQueue(){
   try{
     const data=await api('GET','/api/tma/my-queue');const items=data?.queue||[];
+    renderCheckinBox(items);
     const el=document.getElementById('queueList');
-    if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">format_list_numbered</span><div class="fs-14" style="color:var(--on-surface-variant)">Navbatda turgan bemorlar yo\'q</div></div>';return}
+    if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">format_list_numbered</span><div class="fs-14" style="color:var(--on-surface-variant)">Bugunga navbatingiz yo\'q</div></div>';return}
     el.innerHTML=items.map((q,i)=>{
-      if(i===0)return`<div style="background:var(--primary);padding:24px;border-radius:2rem;color:#fff;position:relative;overflow:hidden;animation:pulse-soft 3s ease-in-out infinite"><div class="absolute" style="top:0;right:0;margin-right:-48px;margin-top:-48px;width:192px;height:192px;background:rgba(255,255,255,0.1);border-radius:50%;filter:blur(64px)"></div><div class="absolute" style="bottom:0;left:0;margin-left:-32px;margin-bottom:-32px;width:128px;height:128px;background:rgba(206,238,147,0.2);border-radius:50%;filter:blur(40px)"></div><div class="relative d-flex flex-col items-center text-center" style="z-index:10"><div class="fs-12 fw-600 ls-02 ttu" style="letter-spacing:0.1em;opacity:0.8;margin-bottom:8px">Navbatdagi o\'rni</div><div style="font-size:80px;font-weight:700;line-height:1;margin-bottom:8px">${q.queue_number||'—'}</div><div class="d-inline-flex items-center gap-2" style="background:rgba(255,255,255,0.2);border-radius:9999px;padding:6px 16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)"><span class="material-symbols-outlined" style="font-size:18px">${q.status==='waiting'?'hourglass_empty':q.status==='in_progress'||q.status==='active'?'hearing':'check_circle'}</span><span class="fs-12 fw-600">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':'Yakunlangan'}</span></div></div></div>`;
-      return`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:12px;background:${q.status==='completed'?'var(--secondary-container)':'var(--primary-fixed)'};flex-shrink:0"><span class="material-symbols-outlined" style="font-size:14px;color:${q.status==='completed'?'var(--on-secondary-container)':'var(--primary)'}">${q.status==='completed'?'check':q.status==='cancelled'?'close':'schedule'}</span></div><div class="flex-1 min-w-0"><div class="fs-14 fw-600">${q.department||'Qabul'}</div><div class="fs-12" style="color:var(--on-surface-variant)">${q.doctor_name||''}${q.appointment_time?' · '+q.appointment_time.slice(0,5):''}</div></div><span class="status-badge ${q.status==='waiting'?'status-pending':q.status==='in_progress'||q.status==='active'?'status-active':q.status==='completed'?'status-completed':'status-cancelled'}">${q.status==='waiting'?'Kutilmoqda':q.status==='in_progress'||q.status==='active'?'Qabulda':q.status==='completed'?'Yakunlangan':'Bekor qilingan'}</span></div>`
+      const st=queueStatusLabel(q);
+      if(i===0)return`<div style="background:var(--primary);padding:24px;border-radius:2rem;color:#fff;position:relative;overflow:hidden;animation:pulse-soft 3s ease-in-out infinite"><div class="absolute" style="top:0;right:0;margin-right:-48px;margin-top:-48px;width:192px;height:192px;background:rgba(255,255,255,0.1);border-radius:50%;filter:blur(64px)"></div><div class="absolute" style="bottom:0;left:0;margin-left:-32px;margin-bottom:-32px;width:128px;height:128px;background:rgba(206,238,147,0.2);border-radius:50%;filter:blur(40px)"></div><div class="relative d-flex flex-col items-center text-center" style="z-index:10"><div class="fs-12 fw-600 ls-02 ttu" style="letter-spacing:0.1em;opacity:0.8;margin-bottom:8px">${q.doctor_name||'Qabul'}${q.appointment_time?' · '+q.appointment_time:''}</div><div style="font-size:40px;font-weight:700;line-height:1;margin-bottom:8px">${q.access_code||'—'}</div><div class="d-inline-flex items-center gap-2" style="background:rgba(255,255,255,0.2);border-radius:9999px;padding:6px 16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)"><span class="material-symbols-outlined" style="font-size:18px">${st.icon}</span><span class="fs-12 fw-600">${st.label}</span></div></div></div>`;
+      return`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:20px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:40px;height:40px;border-radius:12px;background:var(--primary-fixed);flex-shrink:0"><span class="material-symbols-outlined" style="font-size:14px;color:var(--primary)">${st.icon}</span></div><div class="flex-1 min-w-0"><div class="fs-14 fw-600">${q.department||'Qabul'}</div><div class="fs-12" style="color:var(--on-surface-variant)">${q.doctor_name||''}${q.appointment_time?' · '+q.appointment_time:''}</div></div><span class="status-badge ${st.badge}">${st.label}</span></div>`
     }).join('')
   }catch(e){document.getElementById('queueList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
@@ -421,23 +485,124 @@ async function loadQueue(){
 async function loadDoctors(){
   try{const data=await api('GET','/api/tma/doctors');const sel=document.getElementById('bookDoctor');if(!sel)return;sel.innerHTML='<option value="">Shifokorni tanlang</option>'+(data?.doctors||[]).map(d=>`<option value="${d.id}">${d.first_name+' '+(d.last_name||'')} — ${d.specialty||d.specialization||''}</option>`).join('')}catch(e){console.error('loadDoctors error:',e)}
 }
-function tryLoadSlots(){const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt)}
-['bookDoctor','bookDate'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('input',tryLoadSlots);el.addEventListener('change',tryLoadSlots)}});
-const bs=document.getElementById('bookSlot');if(bs)bs.addEventListener('focus',tryLoadSlots);
-async function loadSlots(doctorId,date){
-  try{const data=await api('GET',`/api/tma/slots?doctor_id=${doctorId}&date=${date}`);const sel=document.getElementById('bookSlot');if(!sel)return;const avail=(data?.slots||[]).filter(s=>s.available);sel.innerHTML=avail.length?'<option value="">Vaqtni tanlang</option>'+avail.map(s=>`<option value="${s.time}">${s.time}</option>`).join(''):'<option value="">Bo\'sh vaqtlar mavjud emas</option>'}catch(e){console.error('loadSlots error:',e)}
+async function loadServices(){
+  // Qabul xizmatlari BU RO'YXATDA YO'Q — ular yuqoridagi "Shifokor qabuli"
+  // bo'limida. Aks holda bitta narsa ikki joyda chiqib chalkashtirardi.
+  try{const data=await api('GET','/api/tma/services');const sel=document.getElementById('bookService');if(!sel)return;const list=(data?.services||[]).filter(s=>!s.is_consultation);sel.innerHTML='<option value="">Xizmatni tanlang</option>'+list.map(s=>`<option value="${s.id}">${s.name} — ${Number(s.price||0).toLocaleString('uz-UZ')} so'm</option>`).join('')}catch(e){console.error('loadServices error:',e)}
 }
+
+/* ── "Shifokor qabuli" bo'limi ──
+   Kiosk va registratura bilan AYNAN bir xil ro'yxat. Yo'nalish tanlanadi,
+   shifokor bosiladi — shifokor va qabul xizmati bir vaqtda tanlanadi. */
+let consultSpecs=[],activeSpec=null;
+function sumFmt(n){return Number(n||0).toLocaleString('uz-UZ')+" so'm"}
+// NOMI NEGA "Catalog": bu faylda `loadConsultations` ALLAQACHON bor —
+// u bemorning O'TGAN tibbiy yozuvlarini yuklaydi. JS'da keyingi e'lon
+// oldingisini bekor qiladi, ya'ni bir xil nom qo'yilsa ikkalasidan biri
+// jimgina ishlamay qolardi.
+async function loadConsultCatalog(){
+  try{
+    const data=await api('GET','/api/tma/consultation-catalog');
+    consultSpecs=data?.specialties||[];
+    const block=document.getElementById('consultBlock');
+    if(!block)return;
+    if(!consultSpecs.length){block.style.display='none';return}
+    block.style.display='';
+    renderConsultSpecs();
+  }catch(e){console.error('loadConsultations error:',e)}
+}
+function renderConsultSpecs(){
+  const wrap=document.getElementById('consultSpecs');if(!wrap)return;
+  wrap.innerHTML=consultSpecs.map(sp=>{
+    const on=activeSpec===sp.key;
+    return `<button type="button" class="active-tap consult-spec" data-key="${sp.key}" style="padding:8px 14px;border-radius:999px;border:1px solid ${on?'var(--primary)':'rgba(115,118,134,0.25)'};background:${on?'rgba(0,74,198,0.08)':'transparent'};color:${on?'var(--primary)':'var(--on-surface-variant)'};font-size:13px;font-weight:600;cursor:pointer">${sp.label} · ${sumFmt(sp.from_price)}dan</button>`;
+  }).join('');
+  renderConsultDoctors();
+}
+function renderConsultDoctors(){
+  const box=document.getElementById('consultDoctors');if(!box)return;
+  const sp=consultSpecs.find(x=>x.key===activeSpec);
+  if(!sp){box.innerHTML='';return}
+  const rows=[];
+  for(const doc of sp.doctors)for(const svc of sp.services){
+    const on=document.getElementById('bookDoctor')?.value===doc.id&&document.getElementById('bookService')?.value===svc.id;
+    rows.push(`<button type="button" class="active-tap consult-doc" data-doctor="${doc.id}" data-service="${svc.id}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid ${on?'var(--primary)':'rgba(115,118,134,0.2)'};background:${on?'rgba(0,74,198,0.06)':'var(--surface-container-low)'};cursor:pointer;text-align:left">
+      <span style="min-width:0"><span style="display:block;font-size:14px;font-weight:600;color:var(--on-surface)">${doc.name}</span><span style="display:block;font-size:12px;color:var(--on-surface-variant)">${svc.name}</span></span>
+      <span style="flex:none;font-size:13px;font-weight:600;color:var(--on-surface)">${sumFmt(svc.price)}</span>
+    </button>`);
+  }
+  box.innerHTML=rows.join('');
+}
+document.getElementById('consultSpecs')?.addEventListener('click',function(e){
+  const btn=e.target.closest('.consult-spec');if(!btn)return;
+  activeSpec=activeSpec===btn.dataset.key?null:btn.dataset.key;
+  renderConsultSpecs();
+});
+document.getElementById('consultDoctors')?.addEventListener('click',function(e){
+  const btn=e.target.closest('.consult-doc');if(!btn)return;
+  const dsel=document.getElementById('bookDoctor'),ssel=document.getElementById('bookService');
+  // Qabul xizmati `bookService` ro'yxatida YO'Q (u yerdan chiqarilgan),
+  // shuning uchun tanlanadigan variantni o'zimiz qo'shamiz.
+  if(ssel&&!ssel.querySelector(`option[value="${btn.dataset.service}"]`)){
+    const sp=consultSpecs.find(x=>x.key===activeSpec);
+    const svc=sp?.services.find(x=>x.id===btn.dataset.service);
+    const o=document.createElement('option');
+    o.value=btn.dataset.service;o.textContent=(svc?svc.name+' — '+sumFmt(svc.price):'Qabul');
+    ssel.appendChild(o);
+  }
+  if(dsel)dsel.value=btn.dataset.doctor;
+  if(ssel)ssel.value=btn.dataset.service;
+  renderConsultDoctors();
+  tryLoadSlots();
+});
+function tryLoadSlots(){const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value,sv=document.getElementById('bookService')?.value;if(dr&&dt)loadSlots(dr,dt,sv)}
+['bookDoctor','bookDate','bookService'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('input',tryLoadSlots);el.addEventListener('change',tryLoadSlots)}});
+const bs=document.getElementById('bookSlot');if(bs)bs.addEventListener('focus',tryLoadSlots);
+async function loadSlots(doctorId,date,serviceId){
+  try{let url=`/api/tma/slots?doctor_id=${doctorId}&date=${date}`;if(serviceId)url+=`&service_id=${serviceId}`;const data=await api('GET',url);const sel=document.getElementById('bookSlot');if(!sel)return;const avail=(data?.slots||[]).filter(s=>s.available);sel.innerHTML=avail.length?'<option value="">Vaqtni tanlang</option>'+avail.map(s=>`<option value="${s.time}">${s.time}</option>`).join(''):'<option value="">Bo\'sh vaqtlar mavjud emas</option>'}catch(e){console.error('loadSlots error:',e)}
+}
+let bookPayMethod='cashier';
+document.getElementById('bookPayWrap')?.addEventListener('click',function(e){
+  const btn=e.target.closest('.pay-opt');if(!btn)return;
+  bookPayMethod=btn.dataset.pay;
+  document.querySelectorAll('.pay-opt').forEach(b=>{
+    const on=b.dataset.pay===bookPayMethod;
+    b.style.borderColor=on?'var(--primary)':'rgba(115,118,134,0.2)';
+    b.style.background=on?'rgba(0,74,198,0.06)':'transparent';
+    b.style.color=on?'var(--primary)':'var(--on-surface-variant)';
+  });
+});
 async function bookAppointment(){
   try{
-    const dr=document.getElementById('bookDoctor').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
-    if(!dr)return showToast('Shifokorni tanlang','error');if(!dt)return showToast('Sanani tanlang','error');if(!tm)return showToast('Vaqtni tanlang','error');
-    const data=await api('POST','/api/tma/book',{doctor_id:dr,patient_name:`${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,telegram_id:telegramId,date:dt,time:tm});
-    if(data?.success){showToast('Navbat tasdiqlandi!');const dr=document.getElementById('bookDoctor')?.value,dt=document.getElementById('bookDate')?.value;if(dr&&dt)loadSlots(dr,dt);loadAppointments()}else showToast(data?.error||'Xatolik','error')
+    const dr=document.getElementById('bookDoctor').value,sv=document.getElementById('bookService').value,dt=document.getElementById('bookDate').value,tm=document.getElementById('bookSlot').value;
+    if(!dr)return showToast('Shifokorni tanlang','error');if(!sv)return showToast('Xizmatni tanlang','error');if(!dt)return showToast('Sanani tanlang','error');if(!tm)return showToast('Vaqtni tanlang','error');
+    const data=await api('POST','/api/tma/book',{doctor_id:dr,service_id:sv,patient_name:`${patientData?.first_name||''} ${patientData?.last_name||''}`.trim()||userName,date:dt,time:tm,payment_method:bookPayMethod});
+    if(data?.success){
+      const payUrl=data?.payment?.payment_url;
+      if(bookPayMethod==='online'&&payUrl){
+        showToast('Navbat tasdiqlandi! To\'lov sahifasi ochilmoqda...');
+        if(tg?.openLink)tg.openLink(payUrl);else window.open(payUrl,'_blank');
+      }else{
+        showToast(data?.appointment?.access_code?`Navbat tasdiqlandi! Kod: ${data.appointment.access_code}`:'Navbat tasdiqlandi!');
+      }
+      loadSlots(dr,dt,sv);loadAppointments()
+    }else showToast(data?.error||'Xatolik','error')
   }catch(e){console.error('bookAppointment error:',e);showToast('Yozilishda xatolik','error')}
 }
 
+// ===== Men keldim =====
+async function doCheckin(appointmentId){
+  try{
+    const data=await api('POST','/api/tma/checkin',appointmentId?{appointment_id:appointmentId}:{});
+    if(data?.success){const pos=data.queue_position?` Navbatingiz: ${data.queue_position}-o'rin.`:'';showToast(data.already?'Siz allaqachon kelganingizni belgilagansiz':'Xush kelibsiz! Navbatga qo\'shildingiz.'+pos);loadQueue();loadDashboard()}
+    else showToast(data?.error||'Xatolik','error')
+  }catch(e){showToast('Xatolik yuz berdi','error')}
+}
+
+const APPT_STATUS_LABEL={scheduled:'Kutilmoqda',confirmed:'Tasdiqlangan',in_progress:'Qabulda',completed:'Yakunlangan',pending_admission:'Statsionarga',cancelled:'Bekor qilingan',no_show:'Kelmadi'};
+const APPT_STATUS_BADGE={scheduled:'status-pending',confirmed:'status-pending',in_progress:'status-active',completed:'status-completed',pending_admission:'status-active',cancelled:'status-cancelled',no_show:'status-cancelled'};
 async function loadAppointments(){
-  try{const data=await api('GET','/api/tma/my-appointments');const el=document.getElementById('appointmentsList');const items=data?.appointments||[];if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">event_busy</span><div class="fs-14" style="color:var(--on-surface-variant)">Sizda qabullar yo\'q</div></div>';return}el.innerHTML=items.map((a,i)=>`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:48px;height:48px;border-radius:1rem;background:var(--primary-fixed);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary)">event</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-14 fw-600">${a.doctor_name||'Shifokor'}</div><span class="status-badge ${a.status==='Kutilmoqda'?'status-pending':a.status==='Yakunlangan'?'status-completed':'status-cancelled'}" style="margin-left:8px;flex-shrink:0">${a.status==='Kutilmoqda'?'Kutilmoqda':a.status==='Yakunlangan'?'Yakunlangan':'Bekor qilingan'}</span></div><div class="fs-12" style="color:var(--on-surface-variant)">${a.specialty||''}</div><div class="fs-12" style="color:var(--on-surface-variant);opacity:0.6;margin-top:2px">📅 ${a.appointment_date?a.appointment_date.slice(0,10):''} ⏰ ${a.appointment_time||''}</div></div></div>`).join('')}catch(e){document.getElementById('appointmentsList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
+  try{const data=await api('GET','/api/tma/my-appointments');const el=document.getElementById('appointmentsList');const items=data?.appointments||[];if(items.length===0){el.innerHTML='<div style="background:var(--surface-container-lowest);padding:32px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.3);text-align:center"><span class="material-symbols-outlined" style="font-size:48px;margin-bottom:12px;opacity:0.3;color:var(--outline)">event_busy</span><div class="fs-14" style="color:var(--on-surface-variant)">Sizda qabullar yo\'q</div></div>';return}el.innerHTML=items.map((a,i)=>{const label=APPT_STATUS_LABEL[a.status]||a.status,badge=APPT_STATUS_BADGE[a.status]||'status-pending';return`<div class="d-flex items-center gap-4 anim-in" style="background:var(--surface-container-lowest);padding:16px;border-radius:1.5rem;border:1px solid rgba(195,198,215,0.2);animation-delay:${i*0.06}s;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div class="d-flex items-center justify-center" style="width:48px;height:48px;border-radius:1rem;background:var(--primary-fixed);flex-shrink:0"><span class="material-symbols-outlined" style="color:var(--primary)">event</span></div><div class="flex-1 min-w-0"><div class="d-flex justify-between items-start"><div class="fs-14 fw-600">${a.doctor_name||'Shifokor'}</div><span class="status-badge ${badge}" style="margin-left:8px;flex-shrink:0">${label}</span></div><div class="fs-12" style="color:var(--on-surface-variant)">${a.service_name||a.specialty||''}</div><div class="fs-12" style="color:var(--on-surface-variant);opacity:0.6;margin-top:2px">📅 ${a.appointment_date?fmtDate(a.appointment_date):''} ⏰ ${a.appointment_time||''}${a.arrived?' · ✅ Keldi':''}</div></div></div>`}).join('')}catch(e){document.getElementById('appointmentsList').innerHTML='<div class="fs-14" style="color:var(--on-surface-variant);text-align:center;padding:16px">Xatolik yuz berdi</div>'}
 }
 
 async function loadConsultations(){

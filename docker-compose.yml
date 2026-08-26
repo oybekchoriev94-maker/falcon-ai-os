@@ -27,23 +27,104 @@ services:
     <<: *common
     image: ${STT_IMAGE:-falcon-ai-os-stt:local}
     build: ./stt-service
+    # PORT ATAYLAB CHIQARILMAGAN. Ilgari 8081-port host'ga to'g'ridan-to'g'ri
+    # chiqarilgan edi va xizmatni INTERNETGA ochib qo'ygan edi: istalgan kishi klinika
+    # protsessorida transkripsiya qildira olardi va 2 ta parallel slotni
+    # band qilib, shifokorning o'z AI Scribe'ini ishlamay qo'ya olardi.
+    # `app` unga Docker tarmog'i ichidan (http://stt:8081) murojaat qiladi —
+    # buning uchun portni tashqariga chiqarish SHART EMAS.
+    # Lokal sozlashda kerak bo'lsa: docker compose port yoki SSH tunnel.
     expose: ["8081"]
+    # DIQQAT: VPS'da bor-yo'g'i ~3.7GB RAM bor (tekshirilgan). Xom
+    # (transformers) checkpointni CT2'ga o'girish PyTorch orqali butun
+    # modelni xotiraga yuklaydi (~3GB+) — shu resursda db/app/frontend
+    # bilan bir vaqtda ishga tushirilsa, butun serverni OOM bilan
+    # qulatib qo'yishi mumkin. Shuning uchun MODEL_NAME lokal, OLDINDAN
+    # o'girilgan papkaga ko'rsatiladi (pastga qarang) — konvertatsiya
+    # BU serverda HECH QACHON ishlamaydi, faqat tayyor CT2 model o'qiladi.
+    #
+    # 2g YETARLILIGI O'LCHANGAN: int8 model (739MB) yuklangach haqiqiy
+    # band xotira (cgroup `anon`) 1.01 GiB = 53.8%. Qolgani fayl keshi,
+    # u xotira taqchil bo'lganda o'zi bo'shatiladi.
+    # Tekshirish: ./scripts/stt-smoke-test.sh
     mem_limit: 2g
     environment:
-      MODEL_NAME: hostmepanda/whisper-large-v3-turbo-uzbek-ct2
+      # rubaiSTT v2 medium — YAGONA production modeli. Klinika kompyuterida
+      # (GPU, ko'p RAM) int8'ga o'girilib, /models/rubaistt-v2-medium-ct2
+      # papkasidan shu yerga ko'chirilgan (pastdagi volumes qarang). Xom
+      # HuggingFace repo nomi ATAYLAB EMAS — server.py buni ko'rsa avtomatik
+      # o'girishga urinardi, VPS'ning tor xotirasida bu xavfli (yuqoriga q.).
+      #
+      # ORQAGA QAYTARISH YO'Q. Eski model
+      # (hostmepanda/whisper-large-v3-turbo-uzbek-ct2) NAFAQAGA CHIQARILDI va
+      # uning keshi (stt-cache volume) o'chirildi — bu qiymatni o'zgartirib
+      # "qaytarib" bo'lmaydi: xizmat modelni HuggingFace'dan qayta tortadi,
+      # bu esa tor xotirali VPS'da ishga tushmaslik xavfini tug'diradi.
+      # Model bilan bog'liq muammo chiqsa — orqaga qaytarish emas, klinika
+      # kompyuterida qayta o'girib (scripts/stt-compare/02-convert-model.sh)
+      # ./stt-models ga qaytadan scp qilish kerak.
+      MODEL_NAME: /models/rubaistt-v2-medium-ct2
       MODEL_DIR: /cache
       DEVICE: cpu
       COMPUTE_TYPE: int8
+      # O'LCHANGAN qiymat asosida 2 ga qaytarildi.
+      # Vaqtincha 1 ga tushirilgan edi: o'shanda /models ga xato bilan
+      # float16 (GPU uchun, 1.5GB) nusxa ko'chirilgan va xotira 2GB
+      # chegaraning 90% ida turardi. Endi haqiqiy int8 (739MB) qo'yildi —
+      # o'lchov: anon 1.01 GiB / 2 GiB (53.8%).
+      # 2-so'rov modelning IKKINCHI NUSXASINI yaratmaydi (og'irliklar
+      # umumiy) — faqat aktivatsiya buferlari qo'shiladi, ~0.3-0.4 GiB.
+      # Ya'ni 2 ta parallel diktant ~1.4 GiB da qoladi, chegara ichida.
+      # Bu klinika uchun muhim: 13 shifokor bor, ikkitasi bir vaqtda
+      # diktant qilsa, 1 bo'lganda ikkinchisi navbatda kutib turardi.
       STT_CONCURRENCY: "2"
       MAX_AUDIO_MB: "25"
+      # Ikkinchi himoya qatlami. Ilgari bu o'zgaruvchi FAQAT `app` ga
+      # berilardi — ya'ni app tokenni yuborardi, lekin STT uni tekshirmasdi.
+      STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
       - stt-cache:/cache
+      # Klinika kompyuterida int8'ga o'girilgan model shu papkaga scp
+      # qilinadi (README: scripts/stt-compare/README.md). Faqat o'qish —
+      # xizmat modelni o'zgartira olmaydi.
+      - ./stt-models:/models:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  # TTS (OmniVoice) — navbatni ovoz bilan o'qib berish. ATAYLAB profile
+  # bilan yopilgan: image ~3GB (torch+model), oddiy deploy'da VPS'ning
+  # tor xotirasida kerak emas. Asosiy joy — klinika GPU kompyuteri
+  # (xuddi STT kabi). Yoqish: docker compose --profile tts up -d
+  # va .env'da TTS_URL=http://tts:8082 (yoki tunnel orqali GPU host).
+  tts:
+    <<: *common
+    profiles: ["tts"]
+    image: ${TTS_IMAGE:-falcon-ai-os-tts:local}
+    build: ./tts-service
+    # Port tashqariga chiqarilmaydi — app Docker tarmog'i ichidan
+    # murojaat qiladi (stt bilan bir xil himoya).
+    expose: ["8082"]
+    environment:
+      TTS_MODEL: ${TTS_MODEL:-k2-fsa/OmniVoice}
+      DEVICE: ${TTS_DEVICE:-cpu}
+      TTS_AUTH_TOKEN: ${TTS_AUTH_TOKEN:-}
+      VOICES_DIR: /voices
+    volumes:
+      # Model keshi (HuggingFace) — qayta yuklanmasligi uchun
+      - tts-cache:/cache
+      # Saqlangan ovoz klonlari (.pt promptlar)
+      - tts-voices:/voices
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Model ilk yuklanishda HF'dan tortiladi — uzoq kutish kerak
+      start_period: 300s
 
   db-bootstrap:
     <<: *common
@@ -81,6 +162,9 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       TELEGRAM_TOKEN_PATIENT: ${TELEGRAM_TOKEN_PATIENT:-}
       TELEGRAM_TOKEN_REFERRAL: ${TELEGRAM_TOKEN_REFERRAL:-}
+      # Bemor boti hozircha bitta klinikaga xizmat qiladi — shu klinikaning
+      # tenants.id qiymati. Yangi Telegram bemor shu tenantga bog'lanadi.
+      TMA_TENANT_ID: ${TMA_TENANT_ID:-default}
       PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
       SEED_CEO_PASSWORD: ${SEED_CEO_PASSWORD:?SEED_CEO_PASSWORD required}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD required}
@@ -108,10 +192,46 @@ services:
       PUBLIC_URL_OVERRIDE: ${TUNNEL_URL:-}
       LOG_LEVEL: info
       LOCAL_ONLY: "${LOCAL_ONLY:-true}"
-      WHISPER_URL: http://stt:8081
+      # Lokal LLM (Ollama) manzili — klinika kompyuteridagi Qwen.
+      # DIQQAT: bu qator BO'LMASA, .env ga OLLAMA_URL yozilsa ham
+      # konteynerga YETIB BORMAYDI va llm.js `localhost:11434` ga —
+      # ya'ni konteynerning o'ziga — murojaat qilib, doim yiqiladi.
+      # Bo'sh qoldirilsa shu eski xatti-harakat saqlanadi.
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      # Sukut bo'yicha VPS'ning o'z konteyneri. Klinika kompyuteridagi
+      # GPU STT'ga o'tish uchun .env da WHISPER_URL ni o'zgartirish kifoya
+      # (masalan http://172.17.0.1:8081 — SSH reverse tunnel).
+      WHISPER_URL: ${WHISPER_URL:-http://stt:8081}
+      # ZAXIRA STT. Asosiysi (GPU kompyuter) javob bermasa shunga o'tiladi.
+      # Klinika GPU'si o'chsa yoki tunnel uzilsa ovoz BUTUNLAY to'xtab
+      # qolmasligi uchun — aynan shunday holat Tailscale bilan bo'lgan va
+      # jimgina o'tib ketgan edi. Sukut qiymati VPS'ning o'z konteyneri:
+      # sekinroq, lekin klinika ishi to'xtamaydi.
+      WHISPER_FALLBACK_URL: ${WHISPER_FALLBACK_URL:-http://stt:8081}
+      # Tunnel orqali ochilgan STT uchun majburiy (lokal tarmoqda bo'sh)
+      STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
+      # TTS (OmniVoice) — navbat ovozli chaqiruvi. Bo'sh bo'lsa ovoz
+      # endpoint'lari TTS_DISABLED qaytaradi, qolgan hamma narsa ishlaydi.
+      # Yoqilganda: TTS_URL=http://tts:8082 (compose --profile tts) yoki
+      # klinika GPU kompyuteriga tunnel (STT bilan bir xil sxema).
+      TTS_URL: ${TTS_URL:-}
+      TTS_AUTH_TOKEN: ${TTS_AUTH_TOKEN:-}
+      TTS_VOICE: ${TTS_VOICE:-}
     volumes:
-      - falcon-backup:/backup
+      # Backup va monitoring status fayllari. HOST'dagi ./backups papkaga
+      # bog'langan (PR #15): scripts/backup-pg.sh host'dan yozadi,
+      # app konteyneri /api/health/deep uchun /backup dan o'qiydi,
+      # watchdog esa eskirishni tekshiradi. Dump fayllar .gitignore'da.
+      - ./backups:/backup
       - falcon-logs:/app/logs
+      # Klinika logotiplari va PDF hisobotlar deploy'da yo'qolmasligi uchun
+      - app-uploads:/app/public/uploads
+      - app-reports:/app/public/reports
+      # Ovozli diktantlar. ATAYLAB `public/` dan TASHQARIDA — u statik
+      # tarqatiladi va bemor ovozi internetga ochilib qolardi.
+      # Muddati o'tganlari cron orqali o'chiriladi (VOICE_RETENTION_DAYS).
+      - app-voice:/app/voice-recordings
     depends_on:
       db-bootstrap:
         condition: service_completed_successfully
@@ -157,11 +277,17 @@ services:
 
 volumes:
   postgres-data:
-  falcon-backup:
+  # Yuklangan fayllar image ichida emas — har deploy'da yo'qolmasligi uchun
+  app-uploads:
+  app-reports:
+  # Ovozli diktantlar — xato bo'lganda qayta ishlash uchun saqlanadi
+  app-voice:
   falcon-logs:
   caddy-data:
   caddy-config:
   stt-cache:
+  tts-cache:
+  tts-voices:
 
 networks:
   falcon:

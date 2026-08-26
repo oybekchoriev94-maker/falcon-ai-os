@@ -1,34 +1,35 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-store";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
-  Plus,
-  Play,
   CheckCircle2,
   XCircle,
+  Stethoscope,
   Clock,
   Users,
-  ClipboardList,
-  HeartPulse,
-  CalendarDays,
   RefreshCw,
   Loader2,
   UserPlus,
-  FileText,
-  Search,
+  UserCheck,
+  Mic,
+  Square,
+  Wallet,
+  Printer,
+  CreditCard,
+  Banknote,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { SURXONDARYO_DISTRICTS, DEFAULT_REGION, toStoredPhone, toLocalPhone, formatLocalPhone } from "@/lib/regions";
 import {
   Dialog,
   DialogContent,
@@ -36,265 +37,479 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 
-interface QueueItem {
+/* ── Types ── */
+interface Doctor {
+  id: string;
+  first_name: string;
+  last_name?: string;
+  specialty?: string;
+  specialization?: string;
+}
+interface Service {
+  id: string;
+  name: string;
+  price: number;
+  specialty?: string;
+  duration_min?: number;
+  icon?: string;
+  category?: string | null;
+  is_consultation?: boolean;
+}
+/* "Shifokor qabuli" bo'limi — backend/services/consultation-catalog.js dan.
+   Kiosk va Telegram AYNAN shu ma'lumotni oladi. */
+interface ConsultSpecialty {
+  key: string;
+  label: string;
+  from_price: number;
+  services: { id: string; name: string; price: number; duration_min: number }[];
+  doctors: { id: string; name: string }[];
+}
+interface Slot {
+  time: string;
+  scheduled_at: string;
+  available: boolean;
+}
+interface Appointment {
   id: number;
+  appointment_id: string;
   patient_name: string;
-  doctor_name: string;
-  department: string;
-  status: "waiting" | "in_progress" | "completed" | "cancelled";
-  appointment_time: string;
-  notes?: string;
-  created_at: string;
+  phone?: string;
+  doctor_name?: string;
+  scheduled_at: string;
+  amount: number;
+  status: string;
+  payment_status: "pending" | "paid" | "refunded" | "cancelled";
+  payment_method?: string;
+  access_code?: string;
+  source?: string;
+  service_name?: string;
+  arrived_at?: string | null;
+  checked_in_source?: string | null;
 }
 
-interface QueuesResponse {
-  queues: QueueItem[];
+const PAY_BADGE: Record<string, string> = {
+  paid: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+  pending: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  cancelled: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+  refunded: "bg-slate-500/10 text-slate-500 border-slate-500/20",
+};
+const PAY_LABEL: Record<string, string> = {
+  paid: "To'langan",
+  pending: "To'lov kutilmoqda",
+  cancelled: "Bekor qilingan",
+  refunded: "Qaytarilgan",
+};
+
+const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
+const itemAnim = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
+
+function fmtSum(n: number) {
+  return (Number(n) || 0).toLocaleString("uz-UZ") + " so'm";
 }
-
-type StatusType = QueueItem["status"];
-
-const FILTER_OPTIONS: { value: StatusType | "all"; label: string }[] = [
-  { value: "all", label: "Barchasi" },
-  { value: "waiting", label: "Kutilmoqda" },
-  { value: "in_progress", label: "Qabulda" },
-  { value: "completed", label: "Yakunlangan" },
-  { value: "cancelled", label: "Bekor qilingan" },
-];
-
-const STATUS_CONFIG: Record<StatusType, { label: string; icon: React.ElementType; color: string }> = {
-  waiting: {
-    label: "Kutilmoqda",
-    icon: Clock,
-    color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  },
-  in_progress: {
-    label: "Qabulda",
-    icon: Play,
-    color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  },
-  completed: {
-    label: "Yakunlangan",
-    icon: CheckCircle2,
-    color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
-  cancelled: {
-    label: "Bekor qilingan",
-    icon: XCircle,
-    color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-  },
-};
-
-const STATS_CARDS = [
-  { key: "waiting" as const, label: "Kutilayotgan", icon: Clock, color: "from-amber-500/20 to-amber-500/5" },
-  { key: "in_progress" as const, label: "Qabulda", icon: Play, color: "from-blue-500/20 to-blue-500/5" },
-  { key: "completed" as const, label: "Yakunlangan", icon: CheckCircle2, color: "from-emerald-500/20 to-emerald-500/5" },
-  { key: "total" as const, label: "Bugungi jami", icon: Users, color: "from-purple-500/20 to-purple-500/5" },
-];
-
-const DEPARTMENTS = [
-  "Terapiya",
-  "Kardiologiya",
-  "Nevrologiya",
-  "Pediatriya",
-  "Xirurgiya",
-  "Ortopediya",
-  "Stomatologiya",
-  "Oftalmologiya",
-  "Lor",
-  "Boshqa",
-];
-
-const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.06 } },
-};
-
-const itemAnim = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0 },
-};
-
-function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
+function fmtTime(iso: string) {
+  try { return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return iso; }
 }
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("uz-UZ", { day: "numeric", month: "short" });
-  } catch {
-    return "";
-  }
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function ReceptionPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<StatusType | "all">("all");
+  const [date, setDate] = useState(todayStr());
   const [search, setSearch] = useState("");
-  const [addOpen, setAddOpen] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
 
-  const [formPatient, setFormPatient] = useState("");
-  const [formDoctor, setFormDoctor] = useState("");
-  const [formDept, setFormDept] = useState("");
-  const [formTime, setFormTime] = useState("");
-  const [formNotes, setFormNotes] = useState("");
+  /* Booking form state */
+  const [lang, setLang] = useState<"uz" | "ru">("uz");
+  const [fName, setFName] = useState("");
+  const [fPhone, setFPhone] = useState("");          // faqat 9 raqam
+  const [fDistrict, setFDistrict] = useState("");
+  const [fMahalla, setFMahalla] = useState("");
+  const [fDoctor, setFDoctor] = useState("");
+  const [fServiceIds, setFServiceIds] = useState<string[]>([]);
+  const [fCategory, setFCategory] = useState("");  // xizmat bo'limi filtri
+  const [fSpecialty, setFSpecialty] = useState(""); // "Shifokor qabuli" yo'nalishi
+  const [fDate, setFDate] = useState(todayStr());
+  const [fSlot, setFSlot] = useState<string | null>(null);
+  const [payMethod, setPayMethod] = useState<"cashier" | "online">("cashier");
 
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
-    queryKey: ["queues"],
+  /* Voice */
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  /* Cashier dialog */
+  const [payFor, setPayFor] = useState<Appointment | null>(null);
+  const [cashReceived, setCashReceived] = useState("");
+
+  /* Bemor kartasi (telefon bo'yicha topilgan) — takroriy bemorni ko'rsatib qo'yish uchun */
+  const [foundPatient, setFoundPatient] = useState<{ id: string; mrn?: string; visits: number } | null>(null);
+
+  // Telefon 9 raqamga to'lganda kartani izlab, ism va tumani bo'sh bo'lsa to'ldiramiz
+  useEffect(() => {
+    if (fPhone.length !== 9) { setFoundPatient(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = toStoredPhone(fPhone);
+        if (!stored) return;
+        const res = await api.get<{ patient: {
+          id: string; first_name: string; last_name?: string; middle_name?: string;
+          district?: string; address?: string; medical_record_number?: string;
+        } | null }>(`/api/patients/lookup?phone=${encodeURIComponent(stored)}`);
+        if (cancelled) return;
+        if (res.success && res.patient) {
+          const p = res.patient;
+          const full = `${p.last_name || ""} ${p.first_name} ${p.middle_name || ""}`.replace(/\s+/g, " ").trim();
+          setFName((cur) => cur.trim() ? cur : full);
+          if (p.district) setFDistrict((cur) => cur || p.district!);
+          if (p.address) setFMahalla((cur) => cur || p.address!);
+          // Necha marta kelganini istoriyadan olamiz (yumshoq — xato bo'lsa ko'rsatmaymiz)
+          try {
+            const h = await api.get<{ appointments: unknown[] }>(`/api/patients/${p.id}/history`);
+            setFoundPatient({ id: p.id, mrn: p.medical_record_number, visits: h.success ? h.appointments.length : 0 });
+          } catch {
+            setFoundPatient({ id: p.id, mrn: p.medical_record_number, visits: 0 });
+          }
+        } else {
+          setFoundPatient(null);
+        }
+      } catch {
+        if (!cancelled) setFoundPatient(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fPhone]);
+
+  /* ── Queries ── */
+  const { data: apptData, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["booking-list", date],
     queryFn: async () => {
-      const res = await api.get<QueuesResponse>("/api/voice/queues");
+      const res = await api.get<{ appointments: Appointment[] }>(`/api/booking/list?date=${date}`);
       if (res.success) return res;
       throw new Error(res.error);
     },
     refetchInterval: 30_000,
   });
+  const appointments = apptData?.appointments ?? [];
 
-  const queues = data?.queues ?? [];
+  const { data: docData } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: async () => {
+      const res = await api.get<{ doctors: Doctor[] }>("/api/doctors?limit=100");
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const doctors = docData?.doctors ?? [];
 
-  const addMutation = useMutation({
-    mutationFn: async (body: {
-      patient_name: string;
-      doctor_name: string;
-      department: string;
-      appointment_time: string;
-      notes?: string;
-    }) => {
-      const res = await api.post("/api/reception/confirm", body);
+  const { data: svcData } = useQuery({
+    queryKey: ["services-active"],
+    queryFn: async () => {
+      const res = await api.get<{ services: Service[] }>("/api/services?active_only=true");
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const services = svcData?.services ?? [];
+
+  // "Shifokor qabuli" bo'limi — kiosk va Telegram bilan bitta manbadan
+  const { data: consultData } = useQuery({
+    queryKey: ["consultations"],
+    queryFn: async () => {
+      const res = await api.get<{ specialties: ConsultSpecialty[]; missing_setup: { doctor: string; label: string; reason: string }[] }>(
+        "/api/booking/consultation-catalog"
+      );
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const consultSpecialties = useMemo(() => consultData?.specialties ?? [], [consultData]);
+  const missingSetup = consultData?.missing_setup ?? [];
+
+  const { data: mahallaData } = useQuery({
+    queryKey: ["mahallas", fDistrict],
+    enabled: !!fDistrict,
+    queryFn: async () => {
+      const res = await api.get<{ mahallas: string[] }>(`/api/booking/mahallas?district=${encodeURIComponent(fDistrict)}`);
+      if (res.success) return res; throw new Error(res.error);
+    },
+  });
+  const mahallaOptions = mahallaData?.mahallas ?? [];
+
+  const selectedDoctor = doctors.find((d) => d.id === fDoctor) || null;
+  // Bemor bir kelishida bir nechta xizmat oladi (masalan "Shifokor ko'rigi"
+  // + EKG). Backend buni allaqachon qo'llab-quvvatlaydi (service_ids[] va
+  // appointment_services jadvali) — bu yerda faqat interfeys cheklab turgan edi.
+  const selectedServices = fServiceIds
+    .map((id) => services.find((s) => s.id === id))
+    .filter((s): s is Service => !!s);
+  const servicesTotal = selectedServices.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const serviceIdsKey = fServiceIds.join(",");
+
+  function toggleService(id: string) {
+    setFServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setFSlot(null);   // davomiylik o'zgardi — vaqt qayta tanlanadi
+  }
+
+  const activeSpecialty = consultSpecialties.find((s) => s.key === fSpecialty) || null;
+  const consultServiceIds = useMemo(
+    () => new Set(services.filter((s) => s.is_consultation).map((s) => s.id)),
+    [services]
+  );
+
+  /**
+   * Qabulga yozish: shifokor tanlanadi va uning qabul xizmati savatga tushadi.
+   *
+   * Bitta tashrifda ikkita qabul bo'lmaydi (bemor bir shifokorga yoziladi),
+   * shuning uchun oldingi qabul xizmati almashtiriladi. Qo'shimcha
+   * xizmatlar (EKG, UZI) esa saqlanib qoladi — aynan shu klinikaning
+   * oqimi: ko'rik + tekshiruv bitta kelishda.
+   */
+  function pickConsultation(spec: ConsultSpecialty, doctorId: string, serviceId: string) {
+    setFDoctor(doctorId);
+    setFServiceIds((prev) => [...prev.filter((id) => !consultServiceIds.has(id)), serviceId]);
+    setFSpecialty(spec.key);
+    setFSlot(null);
+  }
+
+  // Xizmatlarni bo'limlarga ajratamiz — klinikada 80+ xizmat bo'lishi mumkin.
+  // Qabul xizmatlari BU RO'YXATDA YO'Q — ular yuqoridagi "Shifokor qabuli"
+  // bo'limida, aks holda bitta narsa ikki joyda chiqib chalkashtirardi.
+  const extraServices = useMemo(() => services.filter((s) => !s.is_consultation), [services]);
+
+  const svcCategories = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of extraServices) m.set(s.category || "Boshqa", (m.get(s.category || "Boshqa") || 0) + 1);
+    return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [extraServices]);
+
+  const groupedServices = useMemo(() => {
+    const list = fCategory ? extraServices.filter((s) => (s.category || "Boshqa") === fCategory) : extraServices;
+    const m = new Map<string, Service[]>();
+    for (const s of list) {
+      const k = s.category || "Boshqa";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(s);
+    }
+    return [...m.entries()]
+      .map(([name, items]) => ({ name, items: items.sort((a, b) => a.name.localeCompare(b.name)) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [extraServices, fCategory]);
+
+  const { data: slotData, isFetching: slotsFetching } = useQuery({
+    queryKey: ["slots", fDoctor, fDate, serviceIdsKey],
+    enabled: !!fDoctor && !!fDate,
+    queryFn: async () => {
+      let url = `/api/booking/slots?doctor_id=${fDoctor}&date=${fDate}`;
+      // Bir nechta xizmat tanlansa, backend ularning davomiyligini QO'SHIB
+      // hisoblaydi — ya'ni ko'rik+EKG uchun uzunroq oraliq ajratiladi.
+      if (serviceIdsKey) url += `&service_ids=${serviceIdsKey}`;
+      const res = await api.get<{ slots: Slot[]; reason?: string }>(url);
+      if (res.success) return res;
+      throw new Error(res.error);
+    },
+  });
+  const slots = slotData?.slots ?? [];
+
+  /* ── Mutations ── */
+  const bookMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ appointment: Appointment; payment: { payment_url?: string; access_code?: string } }>(
+        "/api/booking/create",
+        {
+          patient_name: fName.trim(),
+          phone: toStoredPhone(fPhone),
+          region: fDistrict ? DEFAULT_REGION : null,
+          district: fDistrict || null,
+          mahalla: fMahalla.trim() || null,
+          doctor_id: fDoctor,
+          service_ids: fServiceIds,
+          scheduled_at: fSlot,
+          payment_method: payMethod,
+          source: "reception",
+        }
+      );
       if (!res.success) throw new Error(res.error);
       return res;
     },
-    onSuccess: () => {
-      toast.success("Navbatga qo'shildi");
-      queryClient.invalidateQueries({ queryKey: ["queues"] });
-      setAddOpen(false);
-      resetForm();
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["booking-list"] });
+      const a = res.appointment;
+      if (payMethod === "online" && res.payment?.payment_url) {
+        toast.success("Bron qilindi", { description: "Onlayn to'lov havolasi ochilmoqda" });
+        window.open(res.payment.payment_url, "_blank");
+      } else {
+        toast.success(`Bron qilindi — kod: ${a.access_code}`, {
+          description: "Kassa uchun shu kod. Endi to'lovni qabul qiling.",
+        });
+      }
+      resetBook();
+      setBookOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Xatolik yuz berdi");
+      if (err.message?.toLowerCase().includes("band")) {
+        toast.error("Bu vaqt endi band", { description: "Boshqa vaqt tanlang" });
+        queryClient.invalidateQueries({ queryKey: ["slots"] });
+      } else {
+        toast.error(err.message || "Xatolik");
+      }
     },
   });
 
-  const completeMutation = useMutation({
+  const payMutation = useMutation({
+    mutationFn: async (args: { appt: Appointment; cash: number }) => {
+      const res = await api.post<{ payment: { receipt_number: number; change: number }; receipt_html?: string }>(
+        "/api/cashier/pay",
+        { appointment_id: args.appt.id, cash_received: args.cash, method: "cash" }
+      );
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["booking-list"] });
+      toast.success(`To'lov qabul qilindi — chek #${res.payment.receipt_number}`, {
+        description: res.payment.change > 0 ? `Qaytim: ${fmtSum(res.payment.change)}` : "Qaytim yo'q",
+      });
+      // Chek HTML'ini yangi oynaga yozamiz (authli tab GET ishlamaydi)
+      if (res.receipt_html) {
+        const w = window.open("", "_blank");
+        if (w) { w.document.write(res.receipt_html); w.document.close(); }
+      }
+      setPayFor(null);
+      setCashReceived("");
+    },
+    onError: (err: Error) => toast.error(err.message || "Xatolik"),
+  });
+
+  const checkinMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await api.post("/api/appointments/complete-status", { id });
+      const res = await api.post<{ appointment: { patient_name: string; doctor_name: string } }>(
+        "/api/booking/checkin",
+        { id }
+      );
       if (!res.success) throw new Error(res.error);
       return res;
     },
     onSuccess: () => {
-      toast.success("Qabul yakunlandi");
-      queryClient.invalidateQueries({ queryKey: ["queues"] });
+      toast.success("Bemor keldi deb belgilandi");
+      queryClient.invalidateQueries({ queryKey: ["booking-list"] });
     },
-    onError: (err: Error) => {
-      toast.error(err.message || "Xatolik yuz berdi");
-    },
+    onError: (err: Error) => toast.error(err.message || "Xatolik"),
   });
 
   const cancelMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await api.post("/api/appointments/cancel", { id });
+      const res = await api.post("/api/booking/cancel", { id });
       if (!res.success) throw new Error(res.error);
       return res;
     },
     onSuccess: () => {
       toast.success("Bekor qilindi");
-      queryClient.invalidateQueries({ queryKey: ["queues"] });
+      queryClient.invalidateQueries({ queryKey: ["booking-list"] });
     },
-    onError: (err: Error) => {
-      toast.error(err.message || "Xatolik yuz berdi");
-    },
+    onError: (err: Error) => toast.error(err.message || "Xatolik"),
   });
 
-  const startMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await api.post("/api/reception/confirm", { id, status: "in_progress" });
-      if (!res.success) throw new Error(res.error);
-      return res;
-    },
-    onSuccess: () => {
-      toast.success("Qabul boshlandi");
-      queryClient.invalidateQueries({ queryKey: ["queues"] });
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Xatolik yuz berdi");
-    },
-  });
-
-  const filteredQueues = useMemo(() => {
-    let items = queues;
-    if (statusFilter !== "all") {
-      items = items.filter((q) => q.status === statusFilter);
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (r) =>
-          r.patient_name.toLowerCase().includes(q) ||
-          r.doctor_name.toLowerCase().includes(q) ||
-          r.department.toLowerCase().includes(q)
-      );
-    }
-    return items;
-  }, [queues, statusFilter, search]);
+  /* ── Derived ── */
+  const filtered = useMemo(() => {
+    if (!search.trim()) return appointments;
+    const q = search.toLowerCase();
+    return appointments.filter(
+      (a) =>
+        a.patient_name.toLowerCase().includes(q) ||
+        (a.doctor_name || "").toLowerCase().includes(q) ||
+        (a.service_name || "").toLowerCase().includes(q)
+    );
+  }, [appointments, search]);
 
   const stats = useMemo(() => {
-    const waiting = queues.filter((q) => q.status === "waiting").length;
-    const inProgress = queues.filter((q) => q.status === "in_progress").length;
-    const completed = queues.filter((q) => q.status === "completed").length;
-    const cancelled = queues.filter((q) => q.status === "cancelled").length;
-    return { waiting, in_progress: inProgress, completed, cancelled, total: queues.length };
-  }, [queues]);
+    const paid = appointments.filter((a) => a.payment_status === "paid");
+    const pending = appointments.filter((a) => a.payment_status === "pending");
+    const revenue = paid.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    return { total: appointments.length, paid: paid.length, pending: pending.length, revenue };
+  }, [appointments]);
 
-  function resetForm() {
-    setFormPatient("");
-    setFormDoctor("");
-    setFormDept("");
-    setFormTime("");
-    setFormNotes("");
+  /* ── Helpers ── */
+  function resetBook() {
+    setFName(""); setFPhone(""); setFDistrict(""); setFMahalla(""); setFDoctor(""); setFServiceIds([]); setFCategory(""); setFSpecialty("");
+    setFSlot(null); setFDate(todayStr()); setPayMethod("cashier");
   }
 
-  function handleAddSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!formPatient.trim() || !formDoctor.trim() || !formDept || !formTime.trim()) {
-      toast.error("Iltimos, barcha majburiy maydonlarni to'ldiring");
+  async function toggleMic() {
+    if (recording && mediaRef.current) {
+      mediaRef.current.stop();
       return;
     }
-    addMutation.mutate({
-      patient_name: formPatient.trim(),
-      doctor_name: formDoctor.trim(),
-      department: formDept,
-      appointment_time: formTime,
-      notes: formNotes.trim() || undefined,
-    });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mediaRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = onRecStop;
+      mr.start();
+      setRecording(true);
+    } catch {
+      toast.error("Mikrofon ruxsati kerak");
+    }
   }
 
-  function handleAction(item: QueueItem, action: "start" | "complete" | "cancel") {
-    if (action === "complete") completeMutation.mutate(item.id);
-    else if (action === "cancel") cancelMutation.mutate(item.id);
-    else startMutation.mutate(item.id);
+  async function onRecStop() {
+    setRecording(false);
+    if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    setVoiceBusy(true);
+    try {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const fd = new FormData();
+      fd.append("audio", blob, "rec.webm");
+      fd.append("language", lang);
+      const res = await api.upload<{ extraction: { patient_name?: string; phone?: string; doctor_specialty?: string } }>(
+        "/api/reception/voice-register",
+        fd
+      );
+      if (!res.success) throw new Error(res.error);
+      const ex = res.extraction || {};
+      if (ex.patient_name) setFName(ex.patient_name);
+      if (ex.phone) setFPhone(toLocalPhone(ex.phone));
+      if (ex.doctor_specialty) {
+        const match = doctors.find(
+          (d) =>
+            (d.specialty || "").toLowerCase().includes(ex.doctor_specialty!.toLowerCase()) ||
+            (d.specialization || "").toLowerCase().includes(ex.doctor_specialty!.toLowerCase())
+        );
+        if (match) setFDoctor(match.id);
+      }
+      toast.success("Ovoz tahlil qilindi", { description: ex.patient_name || "To'ldirildi" });
+    } catch (e) {
+      toast.error((e as Error).message || "Tushunarli emas");
+    } finally {
+      setVoiceBusy(false);
+    }
   }
 
-  function isPendingOn(id: number) {
-    return (
-      (completeMutation.isPending && completeMutation.variables === id) ||
-      (cancelMutation.isPending && cancelMutation.variables === id) ||
-      (startMutation.isPending && startMutation.variables === id)
-    );
+  function submitBooking() {
+    if (!fName.trim()) return toast.error("Bemor ismini kiriting");
+    if (!fDoctor) return toast.error("Shifokorni tanlang");
+    if (fServiceIds.length === 0) return toast.error("Kamida bitta xizmatni tanlang");
+    if (!fSlot) return toast.error("Vaqtni tanlang");
+    bookMutation.mutate();
   }
 
   return (
@@ -302,305 +517,439 @@ export default function ReceptionPage() {
       {/* Header */}
       <motion.div variants={itemAnim} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Navbat boshqaruvi</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Qabulxona</h1>
           <p className="text-sm text-muted-foreground">
-            Bemorlarni qabulga navbatga qo&apos;yish va kuzatish
+            Bron, to&apos;lov va chek — bitta oqimda
             {user?.full_name && <> &mdash; {user.full_name}</>}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-            </span>
-            Jonli
-          </div>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Yangilash
           </Button>
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
-            <DialogTrigger
-              render={
-                <Button>
-                  <UserPlus className="size-4" />
-                  Navbatga qo&apos;shish
-                </Button>
-              }
-            />
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Navbatga qo&apos;shish</DialogTitle>
-                <DialogDescription>
-                  Bemor ma&apos;lumotlarini to&apos;ldiring va navbatga qo&apos;shing
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="patient">Bemor ismi *</Label>
-                  <Input
-                    id="patient"
-                    placeholder="Bemor ismini kiriting"
-                    value={formPatient}
-                    onChange={(e) => setFormPatient(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="doctor">Shifokor *</Label>
-                  <Input
-                    id="doctor"
-                    placeholder="Shifokor ismini kiriting"
-                    value={formDoctor}
-                    onChange={(e) => setFormDoctor(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Bo&apos;lim *</Label>
-                  <Select value={formDept} onValueChange={(val) => val && setFormDept(val)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Bo'limni tanlang" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DEPARTMENTS.map((dept) => (
-                        <SelectItem key={dept} value={dept}>
-                          {dept}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="time">Vaqt *</Label>
-                  <Input
-                    id="time"
-                    type="datetime-local"
-                    value={formTime}
-                    onChange={(e) => setFormTime(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Izoh</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Qo'shimcha ma'lumot"
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                <DialogFooter>
-                  <DialogClose render={<Button type="button" variant="outline">Bekor qilish</Button>} />
-                  <Button type="submit" disabled={addMutation.isPending}>
-                    {addMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                    Saqlash
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => { resetBook(); setBookOpen(true); }}>
+            <UserPlus className="size-4" />
+            Yangi bron
+          </Button>
         </div>
       </motion.div>
 
       {/* Stats */}
-      <motion.div variants={itemAnim} className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        {STATS_CARDS.map((s) => (
-          <Card key={s.key} className="relative overflow-hidden border-border/50">
-            <div className={`absolute inset-0 bg-gradient-to-br ${s.color}`} />
-            <CardContent className="relative p-3 md:p-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  {s.label}
-                </span>
-                <s.icon className="size-3.5 text-muted-foreground/60" />
+      <motion.div variants={itemAnim} className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          { label: "Bugungi bronlar", value: stats.total, icon: Users, color: "from-blue-500/20 to-blue-500/5" },
+          { label: "To'langan", value: stats.paid, icon: CheckCircle2, color: "from-emerald-500/20 to-emerald-500/5" },
+          { label: "To'lov kutilmoqda", value: stats.pending, icon: Clock, color: "from-amber-500/20 to-amber-500/5" },
+          { label: "Tushum", value: fmtSum(stats.revenue), icon: Wallet, color: "from-purple-500/20 to-purple-500/5" },
+        ].map((s) => (
+          <Card key={s.label} className={`bg-gradient-to-br ${s.color}`}>
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+                <p className="text-xl font-bold">{s.value}</p>
               </div>
-              {isLoading ? (
-                <Skeleton className="h-7 w-16" />
-              ) : (
-                <div className="text-xl font-bold tracking-tight">
-                  {stats[s.key]}
-                </div>
-              )}
+              <s.icon className="size-8 opacity-40" />
             </CardContent>
           </Card>
         ))}
       </motion.div>
 
-      {/* Filter + Search */}
-      <motion.div variants={itemAnim} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {FILTER_OPTIONS.map((opt) => (
-            <Button
-              key={opt.value}
-              variant={statusFilter === opt.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setStatusFilter(opt.value)}
-            >
-              {opt.label}
-              {opt.value !== "all" && (
-                <span className="ml-1 text-xs opacity-70">{stats[opt.value]}</span>
-              )}
-            </Button>
-          ))}
-        </div>
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Qidirish..."
-            className="pl-8"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+      {/* Search */}
+      <motion.div variants={itemAnim}>
+        <Input placeholder="Bemor / shifokor / xizmat bo'yicha qidirish..." value={search} onChange={(e) => setSearch(e.target.value)} />
       </motion.div>
 
-      {/* Queue List */}
-      {isLoading ? (
-        <motion.div variants={itemAnim} className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
-          ))}
-        </motion.div>
-      ) : isError ? (
-        <motion.div variants={itemAnim}>
-          <Card className="border-destructive/30">
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <XCircle className="size-10 text-destructive mb-3" />
-              <p className="font-medium">Ma&apos;lumotlarni yuklashda xatolik</p>
-              <p className="text-sm text-muted-foreground mt-1">Qayta urinib ko&apos;ring</p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
-                <RefreshCw className="size-3.5" />
-                Qayta yuklash
+      {/* List */}
+      <motion.div variants={itemAnim} className="space-y-3">
+        {isLoading ? (
+          [...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)
+        ) : filtered.length === 0 ? (
+          <Card><CardContent className="py-12 text-center text-muted-foreground">Bu kunga bron yo&apos;q</CardContent></Card>
+        ) : (
+          filtered.map((a) => (
+            <Card key={a.id}>
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{a.patient_name}</span>
+                    <Badge variant="outline" className={PAY_BADGE[a.payment_status] || ""}>
+                      {PAY_LABEL[a.payment_status] || a.payment_status}
+                    </Badge>
+                    {a.source === "telegram" && <Badge variant="outline">Telegram</Badge>}
+                    {a.arrived_at && (
+                      <Badge variant="outline" className="gap-1 border-sky-500/20 text-sky-600 dark:text-sky-400">
+                        <UserCheck className="size-3" /> Keldi · {fmtTime(a.arrived_at)}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {a.doctor_name} · {a.service_name || "—"} · {fmtTime(a.scheduled_at)} · <span className="font-medium text-foreground">{fmtSum(a.amount)}</span>
+                    {a.payment_status === "pending" && a.access_code && <> · kod <span className="font-mono">{a.access_code}</span></>}
+                  </p>
+                </div>
+                <div className="flex flex-shrink-0 gap-2">
+                  {!a.arrived_at && a.status !== "cancelled" && a.status !== "no_show" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => checkinMutation.mutate(a.id)}
+                      disabled={checkinMutation.isPending}
+                    >
+                      <UserCheck className="size-3.5" /> Keldi
+                    </Button>
+                  )}
+                  {a.payment_status === "pending" && (
+                    <Button size="sm" onClick={() => { setPayFor(a); setCashReceived(String(a.amount)); }}>
+                      <Wallet className="size-3.5" /> Kassa
+                    </Button>
+                  )}
+                  {a.payment_status === "paid" && (
+                    <Badge variant="outline" className="gap-1 border-emerald-500/20 text-emerald-600">
+                      <Printer className="size-3.5" /> Chek berilgan
+                    </Badge>
+                  )}
+                  {a.payment_status !== "cancelled" && a.payment_status !== "paid" && (
+                    <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate(a.id)} disabled={cancelMutation.isPending}>
+                      <XCircle className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </motion.div>
+
+      {/* ── Booking dialog ── */}
+      <Dialog open={bookOpen} onOpenChange={setBookOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Yangi bron</DialogTitle>
+            <DialogDescription>Ovoz yoki qo&apos;lda: bemor → shifokor → xizmat → vaqt → to&apos;lov</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Til + ovoz */}
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1">
+                {(["uz", "ru"] as const).map((l) => (
+                  <button key={l} onClick={() => setLang(l)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium ${lang === l ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                    {l === "uz" ? "🇺🇿 UZ" : "🇷🇺 RU"}
+                  </button>
+                ))}
+              </div>
+              <Button type="button" variant={recording ? "destructive" : "outline"} size="sm" onClick={toggleMic} disabled={voiceBusy}>
+                {voiceBusy ? <Loader2 className="size-4 animate-spin" /> : recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+                {recording ? "To'xtatish" : voiceBusy ? "Tahlil..." : "Ovoz"}
               </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : filteredQueues.length === 0 ? (
-        <motion.div variants={itemAnim}>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <ClipboardList className="size-12 text-muted-foreground/40 mb-4" />
-              <p className="text-base font-medium">Navbat bo&apos;sh</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {search || statusFilter !== "all"
-                  ? "Ushbu filtr bo'yicha hech qanday yozuv topilmadi"
-                  : "Hozircha navbatda bemorlar yo'q"}
-              </p>
-              {(search || statusFilter !== "all") && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    setSearch("");
-                    setStatusFilter("all");
-                  }}
-                >
-                  Filtrlarni tozalash
-                </Button>
-              )}
-              {!search && statusFilter === "all" && (
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => setAddOpen(true)}>
-                  <UserPlus className="size-3.5" />
-                  Birinchi bemorni qo&apos;shish
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : (
-        <motion.div variants={itemAnim} className="space-y-3">
-          {filteredQueues.map((item, index) => {
-            const StatusIcon = STATUS_CONFIG[item.status].icon;
-            const pending = isPendingOn(item.id);
-            return (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-              >
-                <Card className="border-border/50 transition-colors hover:border-border/80">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium truncate">{item.patient_name}</span>
-                          <Badge variant="outline" className={`shrink-0 ${STATUS_CONFIG[item.status].color}`}>
-                            <StatusIcon className="size-3 mr-1" />
-                            {STATUS_CONFIG[item.status].label}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <HeartPulse className="size-3" />
-                            {item.doctor_name}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <FileText className="size-3" />
-                            {item.department}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="size-3" />
-                            {formatTime(item.appointment_time)}
-                          </span>
-                          <span className="text-muted-foreground/60">{formatDate(item.created_at)}</span>
-                        </div>
-                        {item.notes && (
-                          <p className="text-xs text-muted-foreground/70 mt-1.5 line-clamp-1">{item.notes}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {item.status === "waiting" && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleAction(item, "start")}
-                            disabled={pending}
-                          >
-                            {pending ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Play className="size-3.5" />
-                            )}
-                            <span className="hidden sm:inline">Boshlash</span>
-                          </Button>
-                        )}
-                        {item.status === "in_progress" && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleAction(item, "complete")}
-                            disabled={pending}
-                          >
-                            {pending ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="size-3.5" />
-                            )}
-                            <span className="hidden sm:inline">Yakunlash</span>
-                          </Button>
-                        )}
-                        {(item.status === "waiting" || item.status === "in_progress") && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleAction(item, "cancel")}
-                            disabled={pending}
-                          >
-                            <XCircle className="size-3.5" />
-                            <span className="hidden sm:inline">Bekor qilish</span>
-                          </Button>
-                        )}
-                      </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Bemor ismi *</Label>
+                <Input value={fName} onChange={(e) => setFName(e.target.value)} placeholder="Ism familiya" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Telefon</Label>
+                <div className="flex items-center rounded-lg border border-input focus-within:border-ring">
+                  <span className="select-none border-r px-2.5 py-2 text-sm text-muted-foreground">+998</span>
+                  <input value={formatLocalPhone(fPhone)}
+                    onChange={(e) => setFPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 9))}
+                    inputMode="numeric" placeholder="90 123 45 67"
+                    className="w-full bg-transparent px-2.5 py-2 text-sm outline-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Bemor kartasi topildi — takroriy tashrifni darhol ko'rsatamiz */}
+            {foundPatient && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-primary">●</span>
+                  <span className="truncate">
+                    Bemor topildi
+                    {foundPatient.mrn && <span className="text-muted-foreground"> · {foundPatient.mrn}</span>}
+                    {foundPatient.visits > 0 && <span className="text-muted-foreground"> · {foundPatient.visits} ta tashrif</span>}
+                  </span>
+                </div>
+                <a href={`/patients/${foundPatient.id}`} target="_blank" rel="noopener"
+                   className="shrink-0 text-xs font-medium text-primary hover:underline">
+                  Kartani ochish →
+                </a>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Tuman</Label>
+                <select value={fDistrict} onChange={(e) => { setFDistrict(e.target.value); setFMahalla(""); }}
+                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus:border-ring">
+                  <option value="">— tanlang —</option>
+                  {SURXONDARYO_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Mahalla</Label>
+                <Input list="mahalla-list-r" value={fMahalla} onChange={(e) => setFMahalla(e.target.value)}
+                  placeholder={fDistrict ? "Mahalla nomi" : "Avval tuman"} disabled={!fDistrict} />
+                <datalist id="mahalla-list-r">
+                  {mahallaOptions.map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </div>
+            </div>
+
+            {/* ── SHIFOKOR QABULI ──
+                Alohida bo'lim: bemor avval yo'nalishni, keyin shifokorni
+                tanlaydi va qabul xizmati o'zi savatga tushadi. Kiosk va
+                Telegram bilan bir xil ro'yxat (/api/booking/consultations). */}
+            {consultSpecialties.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-primary/25 bg-primary/[0.03] p-3">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="size-4 text-primary" />
+                  <Label className="text-sm font-semibold">Shifokor qabuli</Label>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {consultSpecialties.map((sp) => (
+                    <button key={sp.key} type="button"
+                      onClick={() => setFSpecialty(fSpecialty === sp.key ? "" : sp.key)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        fSpecialty === sp.key
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:border-primary"
+                      }`}>
+                      {sp.label} · {fmtSum(sp.from_price)}dan
+                    </button>
+                  ))}
+                </div>
+
+                {activeSpecialty && (
+                  <div className="space-y-2">
+                    {activeSpecialty.services.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        Qabul turini shifokor tugmasidan keyin tanlang
+                      </p>
+                    )}
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {activeSpecialty.doctors.map((doc) =>
+                        activeSpecialty.services.map((svc) => {
+                          const on = fDoctor === doc.id && fServiceIds.includes(svc.id);
+                          return (
+                            <button key={`${doc.id}:${svc.id}`} type="button"
+                              onClick={() => pickConsultation(activeSpecialty, doc.id, svc.id)}
+                              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                                on ? "border-primary bg-primary/10" : "border-input hover:border-primary"
+                              }`}>
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{doc.name}</span>
+                                <span className="block truncate text-xs text-muted-foreground">{svc.name}</span>
+                              </span>
+                              <span className="shrink-0 text-xs font-semibold">{fmtSum(svc.price)}</span>
+                            </button>
+                          );
+                        })
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      )}
+                  </div>
+                )}
+
+                {/* Sozlanmagan shifokorlar — bemorga ko'rsatilmaydi, chunki
+                    ularga yozib bo'lmaydi. Registratura sababini bilsin. */}
+                {missingSetup.length > 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {missingSetup.length} ta shifokor qabulga chiqmayapti:{" "}
+                    {missingSetup.slice(0, 3).map((m) =>
+                      `${m.doctor} (${m.reason === "ish_jadvali_yoq" ? "jadval yo'q" : "qabul xizmati yo'q"})`
+                    ).join(", ")}
+                    {missingSetup.length > 3 ? " …" : ""}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>Shifokor *</Label>
+              <Select value={fDoctor} onValueChange={(v) => { setFDoctor(v ?? ""); setFSlot(null); }}>
+                <SelectTrigger>
+                  {/* Base UI SelectValue tanlangan QIYMATNI (uuid) chiqaradi — yorliqni o'zimiz beramiz */}
+                  <span data-slot="select-value" className="line-clamp-1 flex-1 text-left">
+                    {selectedDoctor
+                      ? `${selectedDoctor.first_name} ${selectedDoctor.last_name || ""}`.trim()
+                      : <span className="text-muted-foreground">Shifokorni tanlang</span>}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  {doctors.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.first_name} {d.last_name || ""} {d.specialty ? `· ${d.specialty}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Qo&apos;shimcha xizmatlar</Label>
+              {/* Bo'lim chiplari — 80+ xizmatni tekis ro'yxatdan topish qiyin */}
+              {svcCategories.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  <button type="button" onClick={() => setFCategory("")}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${!fCategory ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                    Barchasi ({services.length})
+                  </button>
+                  {svcCategories.map((c) => (
+                    <button key={c.name} type="button" onClick={() => setFCategory(c.name)}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${fCategory === c.name ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:border-primary"}`}>
+                      {c.name} ({c.count})
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Ko'p tanlovli ro'yxat: bemor bir kelishida ham shifokor
+                  ko'rigini, ham tekshiruvni oladi. Tanlanganlar tepada
+                  chip bo'lib turadi, bosilsa olib tashlanadi. */}
+              {selectedServices.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {selectedServices.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleService(s.id)}
+                      className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                      title="Olib tashlash"
+                    >
+                      {s.name} · {fmtSum(s.price)}
+                      <XCircle className="size-3.5" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-input">
+                {groupedServices.map((g) => (
+                  <div key={g.name}>
+                    <div className="sticky top-0 bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+                      {g.name}
+                    </div>
+                    {g.items.map((s) => {
+                      const on = fServiceIds.includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => toggleService(s.id)}
+                          className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted ${on ? "bg-primary/10" : ""}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className={`flex size-4 shrink-0 items-center justify-center rounded border ${on ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}>
+                              {on && <CheckCircle2 className="size-3" />}
+                            </span>
+                            {s.icon ? s.icon + " " : ""}{s.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">{fmtSum(s.price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              {selectedServices.length > 0 && (
+                <p className="text-right text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                  {selectedServices.length} ta xizmat · Jami {fmtSum(servicesTotal)}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Sana</Label>
+              <Input type="date" min={todayStr()} value={fDate} onChange={(e) => { setFDate(e.target.value); setFSlot(null); }} />
+            </div>
+
+            {/* Slots */}
+            <div className="space-y-1.5">
+              <Label>Vaqt *</Label>
+              {!fDoctor ? (
+                <p className="text-sm text-muted-foreground">Avval shifokorni tanlang</p>
+              ) : slotsFetching ? (
+                <p className="text-sm text-muted-foreground"><Loader2 className="mr-1 inline size-3 animate-spin" />Yuklanmoqda...</p>
+              ) : slots.length === 0 ? (
+                <p className="text-sm text-amber-600">{slotData?.reason || "Bo'sh vaqt yo'q"}</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-2">
+                  {slots.map((s) => (
+                    <button key={s.scheduled_at} disabled={!s.available}
+                      onClick={() => setFSlot(s.scheduled_at)}
+                      className={`rounded-md border py-2 text-sm ${
+                        fSlot === s.scheduled_at ? "border-primary bg-primary text-primary-foreground"
+                        : s.available ? "border-border hover:border-primary" : "cursor-not-allowed border-border opacity-30 line-through"
+                      }`}>
+                      {s.time}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* To'lov turi */}
+            <div className="space-y-1.5">
+              <Label>To&apos;lov turi</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setPayMethod("cashier")}
+                  className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-medium ${payMethod === "cashier" ? "border-primary bg-primary/5" : "border-border"}`}>
+                  <Banknote className="size-4" /> Kassada
+                </button>
+                <button onClick={() => setPayMethod("online")}
+                  className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 text-sm font-medium ${payMethod === "online" ? "border-primary bg-primary/5" : "border-border"}`}>
+                  <CreditCard className="size-4" /> Online
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBookOpen(false)}>Bekor</Button>
+            <Button onClick={submitBooking} disabled={bookMutation.isPending}>
+              {bookMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              Bron qilish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Cashier dialog ── */}
+      <Dialog open={!!payFor} onOpenChange={(o) => !o && setPayFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Kassa — to&apos;lov qabul qilish</DialogTitle>
+            <DialogDescription>{payFor?.patient_name} · {payFor?.service_name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex justify-between rounded-lg bg-muted p-3">
+              <span className="text-muted-foreground">To&apos;lov summasi</span>
+              <span className="text-lg font-bold">{fmtSum(payFor?.amount || 0)}</span>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Berilgan naqd (qaytim avtomatik)</Label>
+              <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
+            </div>
+            {payFor && Number(cashReceived) > payFor.amount && (
+              <p className="text-right text-sm">Qaytim: <span className="font-bold text-emerald-600">{fmtSum(Number(cashReceived) - payFor.amount)}</span></p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayFor(null)}>Bekor</Button>
+            <Button
+              onClick={() => payFor && payMutation.mutate({ appt: payFor, cash: Number(cashReceived) || payFor.amount })}
+              disabled={payMutation.isPending}>
+              {payMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
+              To&apos;lash + chek
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
+

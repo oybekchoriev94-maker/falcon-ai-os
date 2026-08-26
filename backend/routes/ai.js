@@ -37,6 +37,17 @@ export default function aiRoutes(db, authMiddleware, checkRole, validate, schema
     res.json({ success: true, total: agents.length, agents });
   });
 
+  // ─── GET /api/ai/agents/canonical — 12 kanonik agent xartiyasi ────
+  router.get('/agents/canonical', authMiddleware, checkRole('admin', 'ceo'), (req, res) => {
+    const registered = orchestrator.getAllAgents().map((a) => a.name);
+    res.json({
+      success: true,
+      total: orchestrator.CANONICAL_AGENTS.length,
+      coverage: orchestrator.getCanonicalCoverage(registered),
+      agents: orchestrator.CANONICAL_AGENTS,
+    });
+  });
+
   // ─── POST /api/ai/execute — agentni ishga tushirish ───────────────
   router.post('/execute', aiLimiter, authMiddleware, checkRole('admin', 'doctor', 'ceo', 'receptionist'), checkSubscription, checkAiLimit, validate(schemas.aiExecute), async (req, res) => {
     try {

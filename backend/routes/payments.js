@@ -70,6 +70,14 @@ export default function paymentRoutes(pool, authMiddleware, checkRole, platformP
           return { applied: false, reason: 'duplicate' };
         }
 
+        // Bog'langan appointment bo'lsa — uni ham to'langan qilamiz (online bron).
+        if (txn.appointment_id) {
+          await client.query(
+            "UPDATE appointments SET payment_status = 'paid', status = 'confirmed' WHERE id = $1 AND tenant_id = $2",
+            [txn.appointment_id, txn.tenant_id]
+          );
+        }
+
         if (txn.type === 'subscription_upgrade' || txn.type === 'subscription') {
           const metadata = typeof txn.services_json === 'string'
             ? JSON.parse(txn.services_json)

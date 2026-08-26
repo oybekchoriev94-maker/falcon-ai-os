@@ -1,0 +1,189 @@
+/* ============================================================
+   Kiosk dizayn tizimi — "Modernist"
+
+   Oqtosh Klinikasi maketidan olingan: o'tkir burchaklar (radius 0),
+   qalin Archivo sarlavhalar, 2px chiziqlar, ko'k + yashil aksent.
+   Dashboard'ning to'q mavzusidan mustaqil — kiosk doim yorug'.
+
+   ANIMATSIYA QOIDASI: faqat bir martalik kirish animatsiyalari.
+   Cheksiz takrorlanuvchi "suzuvchi/nafas oluvchi" effektlar ATAYLAB
+   yo'q — ular ekranni bezovta qiladi va sun'iy ko'rinish beradi.
+   ============================================================ */
+
+.kiosk-root {
+  --k-bg: #f4f6f7;
+  --k-surface: #e9eef0;
+  --k-text: #16303c;
+  --k-divider: color-mix(in srgb, #16303c 38%, transparent);
+
+  /* Ko'k — asosiy aksent */
+  --k-accent: #1b9bd8;
+  --k-accent-100: #eaf6fc;
+  --k-accent-200: #cbe9f7;
+  --k-accent-300: #9fd7f1;
+  --k-accent-400: #5cbde8;
+  --k-accent-500: #29a9df;
+  --k-accent-600: #1688bd;
+  --k-accent-700: #106c97;
+  --k-accent-800: #0c5273;
+  --k-accent-900: #093a52;
+
+  /* Yashil — tasdiq, navbat, muvaffaqiyat */
+  --k-green-100: #eef8ec;
+  --k-green-200: #d3eecf;
+  --k-green-300: #ade0a6;
+  --k-green-400: #79cb70;
+  --k-green-500: #4fb544;
+  --k-green-600: #3d9a34;
+  --k-green-700: #2f7c29;
+  --k-green-800: #245e1f;
+  --k-green-900: #1a4417;
+
+  --k-n-100: #f7f9fa;
+  --k-n-200: #e8edef;
+  --k-n-300: #d3dbdf;
+  --k-n-400: #b3bfc5;
+  --k-n-500: #90a0a8;
+  --k-n-600: #6f8189;
+  --k-n-700: #56686f;
+  --k-n-800: #23485a;
+  --k-n-900: #14313d;
+
+  --k-red-100: #fdecec;
+  --k-red-600: #cf3131;
+  --k-red-700: #a82626;
+
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sarlavhalar — Archivo 800, siqilgan harf oralig'i */
+.kiosk-root h1,
+.kiosk-root h2,
+.kiosk-root h3,
+.k-head {
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+/* Kichik katta harfli yorliq (kicker) */
+.k-kicker {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.kiosk-root button {
+  font-family: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.kiosk-root button:disabled {
+  cursor: not-allowed;
+}
+
+.kiosk-root input {
+  font-family: inherit;
+  color: var(--k-text);
+  background: var(--k-bg);
+  border-radius: 0;
+  outline: none;
+  caret-color: var(--k-accent);
+}
+.kiosk-root input::placeholder {
+  color: color-mix(in srgb, #16303c 35%, transparent);
+}
+
+.kiosk-root ::-webkit-scrollbar {
+  width: 8px;
+}
+.kiosk-root ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, #16303c 28%, transparent);
+}
+
+/* ── Animatsiyalar ──────────────────────────────────────────
+   Ikki guruh:
+   1) Kirish (bir martalik) — ekran/ro'yxat paydo bo'lganda.
+   2) Diqqat (takrorlanuvchi) — FAQAT bemorni keyingi qadamga
+      chaqiradigan joyda: ekran-saverdagi "teging" va asosiy
+      tugmadagi strelka. Bezak uchun harakat qo'yilmaydi.
+   ──────────────────────────────────────────────────────────── */
+@keyframes kFade {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes kUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes kSide {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes kPop {
+  0%   { opacity: 0; transform: scale(.8); }
+  62%  { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.k-fade { animation: kFade .32s ease both; }
+.k-up   { animation: kUp .36s ease both; }
+.k-side { animation: kSide .34s ease both; }
+.k-pop  { animation: kPop .5s cubic-bezier(.2,.8,.2,1) both; }
+
+/* ── Diqqat animatsiyalari ── */
+
+/* Ekran-saverdagi "EKRANGA TEGING" — sekin nafas olish */
+@keyframes kGlow {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
+}
+.k-glow { animation: kGlow 2.6s ease-in-out infinite; }
+
+/* Asosiy tugmadagi strelka — o'ngga imo qiladi */
+@keyframes kNudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(8px); }
+}
+.k-nudge { animation: kNudge 2.4s ease-in-out infinite; }
+
+/* Navbat kodi — bir marta e'tibor tortadi, keyin tinchiydi */
+@keyframes kRing {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-green-500) 60%, transparent); }
+  100% { box-shadow: 0 0 0 26px transparent; }
+}
+.k-ring { animation: kRing 1.4s ease-out 3; }
+
+/* Yuklanayotgan skelet */
+@keyframes kShimmer {
+  0%   { opacity: .45; }
+  50%  { opacity: .9; }
+  100% { opacity: .45; }
+}
+.k-shimmer { animation: kShimmer 1.3s ease-in-out infinite; }
+
+/* Harakatni kamaytirish so'ralgan bo'lsa — hammasini o'chiramiz */
+@media (prefers-reduced-motion: reduce) {
+  .k-fade, .k-up, .k-side, .k-pop,
+  .k-glow, .k-nudge, .k-ring, .k-shimmer { animation: none; }
+}
+
+/* Bosilganda bosilgandek his qilinsin (teginish qurilmasida muhim) */
+.k-press {
+  transition: background .16s ease, color .16s ease,
+              border-color .16s ease, transform .09s ease;
+}
+.k-press:active { transform: scale(.985); }
+
+/* Ro'yxat/plitka ustiga kelganda strelka siljisin */
+.k-arrow { transition: transform .18s ease; }
+.k-hover:hover .k-arrow { transform: translateX(6px); }

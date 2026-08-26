@@ -16,6 +16,10 @@ import {
   Eye,
   Lock,
   Activity,
+  ServerCog,
+  Database,
+  HardDrive,
+  Brain,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -66,6 +70,21 @@ interface AdminStats {
   activeUsers: number
   totalRevenue: number
   uptime: number
+}
+
+interface DeepHealth {
+  overall: "ok" | "degraded" | "down"
+  problems: string[]
+  database: { ok: boolean; latency_ms: number | null }
+  backup: {
+    state: "ok" | "stale" | "failed" | "missing"
+    ageHours: number | null
+    file: string | null
+    timestamp: string | null
+  }
+  engines: Record<string, boolean>
+  uptime_sec: number
+  timestamp: string
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -206,6 +225,17 @@ export default function AdminPage() {
     enabled: user?.role === "superadmin",
   })
 
+  const { data: health, isLoading: healthLoading } = useQuery({
+    queryKey: ["admin-health"],
+    queryFn: async () => {
+      const res = await api.get<DeepHealth>("/api/health/deep")
+      if (!res.success) throw new Error(res.error)
+      return res as unknown as DeepHealth
+    },
+    enabled: user?.role === "superadmin",
+    refetchInterval: 60_000,
+  })
+
   const toggleStatusMutation = useMutation({
     mutationFn: async (tenantId: number) => {
       const res = await api.post(`/api/admin/tenants/${tenantId}/status`)
@@ -341,6 +371,10 @@ export default function AdminPage() {
             <TabsTrigger value="stats" className="gap-1.5">
               <Activity className="size-4" />
               Statistika
+            </TabsTrigger>
+            <TabsTrigger value="health" className="gap-1.5">
+              <ServerCog className="size-4" />
+              Tizim holati
             </TabsTrigger>
           </TabsList>
 
@@ -561,6 +595,160 @@ export default function AdminPage() {
                       </div>
                     ))}
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="health">
+            <Card className="border-border/50">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ServerCog className="size-4 text-primary" />
+                    <CardTitle className="text-sm font-medium">
+                      Tizim holati (chuqur tekshiruv)
+                    </CardTitle>
+                  </div>
+                  {health && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "gap-1.5",
+                        health.overall === "ok" &&
+                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                        health.overall === "degraded" &&
+                          "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                        health.overall === "down" &&
+                          "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          health.overall === "ok" && "bg-emerald-500",
+                          health.overall === "degraded" && "bg-amber-500",
+                          health.overall === "down" && "bg-red-500",
+                        )}
+                      />
+                      {health.overall === "ok"
+                        ? "Barchasi ishlayapti"
+                        : health.overall === "degraded"
+                          ? "Qisman nosoz"
+                          : "Ishdan chiqqan"}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {healthLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-14" />
+                    ))}
+                  </div>
+                ) : !health ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-4 text-center text-sm text-red-600 dark:text-red-400">
+                    Tizim tekshiruvidan javob olinmadi — server holatini tekshiring
+                  </div>
+                ) : (
+                  <>
+                    {health.problems.length > 0 && (
+                      <div className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                        {health.problems.map((p) => (
+                          <div key={p} className="text-sm text-amber-700 dark:text-amber-400">
+                            • {p}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Database className="size-3.5" /> Ma&apos;lumotlar bazasi
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between">
+                          <span className={cn(
+                            "text-sm font-semibold",
+                            health.database.ok
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400",
+                          )}>
+                            {health.database.ok ? "Ishlayapti" : "Javob bermayapti"}
+                          </span>
+                          {health.database.latency_ms != null && (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {health.database.latency_ms} ms
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border p-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <HardDrive className="size-3.5" /> Zaxira nusxa (backup)
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between">
+                          <span className={cn(
+                            "text-sm font-semibold",
+                            health.backup.state === "ok" && "text-emerald-600 dark:text-emerald-400",
+                            health.backup.state === "stale" && "text-amber-600 dark:text-amber-400",
+                            (health.backup.state === "failed" || health.backup.state === "missing") &&
+                              "text-red-600 dark:text-red-400",
+                          )}>
+                            {health.backup.state === "ok" && "Yangi"}
+                            {health.backup.state === "stale" && "Eskirgan"}
+                            {health.backup.state === "failed" && "Xato"}
+                            {health.backup.state === "missing" && "Hali yo'q"}
+                          </span>
+                          {health.backup.ageHours != null && (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {health.backup.ageHours} soat oldin
+                            </span>
+                          )}
+                        </div>
+                        {health.backup.file && (
+                          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {health.backup.file}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        <Brain className="size-3.5" /> AI dvigatellari
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {Object.entries(health.engines).map(([name, ok]) => (
+                          <div key={name} className="rounded-lg border p-3">
+                            <div className="text-xs uppercase text-muted-foreground">{name}</div>
+                            <div className={cn(
+                              "mt-1 text-sm font-semibold",
+                              ok
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-muted-foreground",
+                            )}>
+                              {ok ? "Tayyor" : "O'chiq"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Dvigatel o&apos;chiq bo&apos;lsa ham tizim ishlayveradi — AI funksiyalar
+                        vaqtinchalik cheklanadi (graceful degradation).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+                      <span>
+                        Uptime: {Math.floor(health.uptime_sec / 86400)} kun{" "}
+                        {Math.floor((health.uptime_sec % 86400) / 3600)} soat
+                      </span>
+                      <span>Har 60 soniyada yangilanadi</span>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>

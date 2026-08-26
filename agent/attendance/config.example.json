@@ -1,0 +1,50 @@
+{
+  "_izoh": "Nusxa oling: cp config.example.json config.json — keyin tahrirlang",
+
+  "display": {
+    "_izoh": "--preview oynasidagi sarlavha. Klinika kompyuterida doim ekranda turadi.",
+    "clinic_name": "Oqtosh Klinikasi"
+  },
+
+  "server": {
+    "url": "https://falconmedai.uz",
+    "device_token": "BU_YERGA_TOKEN",
+    "batch_size": 50,
+    "send_interval_sec": 20,
+    "timeout_sec": 15
+  },
+
+  "camera": {
+    "_izoh": "device — USB kamera indeksi. Bitta kamera bo'lsa 0, noutbukning o'z kamerasi bilan birga bo'lsa odatda 1.",
+    "device": 0,
+    "width": 1920,
+    "height": 1080,
+    "process_width": 960
+  },
+
+  "faces": {
+    "_izoh_min_face_px": "Asl kadrda yuz shundan kichik bo'lsa e'tiborga olinmaydi. 80 dan pasaytirmang — noto'g'ri tanish boshlanadi.",
+    "min_face_px": 80,
+
+    "_izoh_cosine": "Tanish qat'iyligi. Yuqori = qat'iyroq. 0.40 tavsiya etiladi: noto'g'ri odamni 'keldi' deb yozishdan ko'ra, bir kadr o'tkazib yuborgan yaxshi.",
+    "cosine_threshold": 0.40,
+
+    "_izoh_papka": "Bemorlar uchun papka 'bemor_' prefiksi bilan: faces/bemor_Alisher Karim/. Oddiy ism — xodim.",
+
+    "det_score": 0.7
+  },
+
+  "attendance": {
+    "_izoh_confirm": "Ism shuncha marta ketma-ket tanilgandan keyingina 'keldi' yoziladi. Tasodifiy xato kadrdan himoya (multi-frame).",
+    "confirm_frames": 3,
+    "confirm_window_sec": 10,
+
+    "_izoh_liveness": "Jonlilik chegarasi: yuz shunchalik siljigan bo'lishi kerak (kenglikka nisbatan). Foto/qog'ozda ~0. Pasaytirmang — soxta yuz o'tib ketadi.",
+    "liveness_threshold": 0.02,
+
+    "_izoh_absence": "Odam shuncha soniya ko'rinmasa 'ketdi' deb yoziladi. Qisqa qo'ysangiz, xona ichida yurgan odam ham 'ketdi' bo'lib qoladi.",
+    "absence_timeout_sec": 180
+  },
+
+  "poll_interval_sec": 0.3
+}

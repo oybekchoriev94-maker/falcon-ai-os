@@ -2,9 +2,18 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 import { verifyTelegramInitData } from '../shared.js';
+import { checkInAppointment } from '../services/appointment-checkin.js';
+import { generateMrn } from '../services/patient-store.js';
+import { listConsultations } from '../services/consultation-catalog.js';
 import { bindTenantDbContext } from '../request-tenant-context.js';
 
-export default function tmaRoutes(pool, platformPool = pool) {
+// bookingCore - booking.js bilan BIR XIL bron yozish/vaqt hisoblash mantig'i
+// (backend/routes/booking.js: createBookingCore). Shu tufayli Telegram orqali
+// yozilgan bemor registratura va kiosk bilan bir xil `appointments`
+// jadvalida, bir xil navbatda ko'rinadi. Tenant esa har bir so'rovda
+// clinic code (start_param / x-clinic-code) orqali aniqlanadi -
+// quyidagi middleware qarang.
+export default function tmaRoutes(pool, bookingCore, platformPool = pool) {
   const router = Router();
   const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 7:'Yakshanba' };
 
@@ -19,7 +28,7 @@ export default function tmaRoutes(pool, platformPool = pool) {
     try {
       const startParam = String(req.telegramStartParam || '').replace(/^clinic[_:-]/i, '');
       const clinicRef = startParam || req.headers['x-clinic-code'];
-      const fallback = process.env.NODE_ENV === 'production' ? null : 'default';
+      const fallback = process.env.TMA_TENANT_ID || 'default';
       const reference = clinicRef || fallback;
       if (!reference) {
         return res.status(400).json({ success: false, error: 'Klinika kodi talab qilinadi' });
@@ -56,6 +65,49 @@ export default function tmaRoutes(pool, platformPool = pool) {
 
   function getTenantId(req) {
     return req.tenant_id;
+  }
+
+  // Bemor kartasini telegram_id orqali topadi - check-in va navbat uchun kerak.
+  async function getPatientByTelegram(telegramId) {
+    return qGet('SELECT id, tenant_id, first_name, last_name, phone FROM patients WHERE telegram_id = $1', [telegramId]);
+  }
+
+  /**
+   * Bemor kartasini topadi, bo'lmasa Telegram profili asosida ochadi.
+   *
+   * NEGA KERAK: ilgari karta FAQAT /register-patient orqali ochilardi, lekin
+   * tma.html uni hech qachon chaqirmasdi. Natijada patients.telegram_id hech
+   * qachon to'lmasdi va butun ilova bo'sh ko'rinardi: /my-queue, /my-appointments
+   * bo'sh, "Men keldim" 404, bron esa patient_id=NULL bilan yozilib, bemorning
+   * o'z ro'yxatida umuman ko'rinmasdi.
+   */
+  async function ensurePatient(telegramId, tgUser, tenantId) {
+    const found = await getPatientByTelegram(telegramId);
+    if (found) return found;
+
+    const firstName = String(tgUser?.first_name || '').trim() || 'Bemor';
+    const lastName = String(tgUser?.last_name || '').trim();
+    const id = uuidv4();
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const mrn = await generateMrn(pool, tenantId);
+        await q(
+          `INSERT INTO patients (id, tenant_id, first_name, last_name, telegram_id, medical_record_number)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [id, tenantId, firstName, lastName, telegramId, mrn]
+        );
+        return { id, tenant_id: tenantId, first_name: firstName, last_name: lastName, phone: null };
+      } catch (e) {
+        // Parallel so'rov shu telegram_id bilan kartani yaratib ulgurgan bo'lsa
+        const dup = await getPatientByTelegram(telegramId);
+        if (dup) return dup;
+        // MRN to'qnashuvi - qayta urinamiz
+        if (e.code === '23505' && attempt < 2) continue;
+        throw e;
+      }
+    }
+    return null;
   }
 
   // ===== Sync/Link Telegram user =====
@@ -157,30 +209,42 @@ export default function tmaRoutes(pool, platformPool = pool) {
     } catch (e) { safeError(res, e); }
   });
 
-  // ===== Current queue status =====
+  // ===== Current queue status — bugungi appointments, kiosk/registratura bilan bir xil manba =====
   router.get('/my-queue', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
       const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
-      const patient = await qGet(
-        "SELECT id, first_name, last_name, phone FROM patients WHERE tenant_id = $1 AND telegram_id = $2",
-        [tenantId, telegramId]
-      );
+      const patient = await getPatientByTelegram(telegramId);
       if (!patient) return res.json({ success: true, queue: [] });
 
-      const today = new Date().toISOString().slice(0, 10);
-      const queue = await q(
-        `SELECT pq.id, pq.department, pq.status, pq.queue_number, pq.appointment_time, pq.created_at,
-                pq.doctor AS doctor_name
-         FROM patient_queue pq
-         WHERE pq.tenant_id = $1
-           AND (pq.patient_id = $2 OR (pq.patient_id IS NULL AND pq.patient_name ILIKE $3))
-           AND DATE(pq.created_at) = $4
-         ORDER BY pq.created_at DESC LIMIT 10`,
-        [tenantId, patient.id, `%${patient.first_name}%`, today]
+      const rows = await q(
+        `SELECT a.id, a.access_code, a.status, a.scheduled_at, a.arrived_at,
+                a.doctor_name, d.specialization AS department, s.name AS service_name
+           FROM appointments a
+           LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
+           LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+          WHERE a.tenant_id = $1 AND a.patient_id = $2
+            AND a.scheduled_at::date = CURRENT_DATE
+            -- Yakunlangani ham navbatda turgandek ko'rinmasin
+            AND a.status NOT IN ('cancelled', 'no_show', 'completed', 'pending_admission')
+          ORDER BY a.scheduled_at ASC LIMIT 10`,
+        [patient.tenant_id, patient.id]
       );
+
+      const queue = rows.map((r) => ({
+        id: r.id,
+        access_code: r.access_code,
+        department: r.department,
+        doctor_name: r.doctor_name,
+        service_name: r.service_name,
+        // Frontend eski nomlarni kutadi — moslikni saqlaymiz
+        status: r.status === 'in_progress' ? 'active' : (r.arrived_at ? 'waiting' : 'scheduled'),
+        arrived: !!r.arrived_at,
+        appointment_time: new Date(r.scheduled_at).toISOString().slice(11, 16),
+        created_at: r.scheduled_at,
+      }));
 
       res.json({ success: true, queue });
     } catch (e) { safeError(res, e); }
@@ -193,21 +257,21 @@ export default function tmaRoutes(pool, platformPool = pool) {
       const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
-      const patient = await qGet(
-        "SELECT id, first_name, last_name, phone FROM patients WHERE tenant_id = $1 AND telegram_id = $2",
-        [tenantId, telegramId]
-      );
+      const patient = await getPatientByTelegram(telegramId);
       if (!patient) return res.json({ success: true, consultations: [] });
 
+      // MAXFIYLIK: ilgari bu ism bo'yicha (`patient_name ILIKE '%ism%'`),
+      // tenant va patient_id filtri BO'LMASDAN qidirardi — "Ali" ismli bemor
+      // butun bazadagi barcha "Alisher"/"Aliya" konsultatsiyalarini, hatto
+      // boshqa klinikalarnikini ham ko'rardi. Endi qat'iy patient_id bo'yicha.
       const consultations = await q(
         `SELECT pc.id, pc.patient_name, pc.raw_text, pc.data_json, pc.created_at,
-                d.first_name || ' ' || d.last_name AS doctor_name
+                d.first_name || ' ' || COALESCE(d.last_name, '') AS doctor_name
          FROM patient_consultations pc
          LEFT JOIN doctors d ON d.id = pc.doctor_id AND d.tenant_id = pc.tenant_id
-         WHERE pc.tenant_id = $1
-           AND (pc.patient_id = $2 OR (pc.patient_id IS NULL AND pc.patient_name ILIKE $3))
+         WHERE pc.tenant_id = $1 AND pc.patient_id = $2
          ORDER BY pc.created_at DESC LIMIT 20`,
-        [tenantId, patient.id, `%${patient.first_name}%`]
+        [patient.tenant_id, patient.id]
       );
 
       res.json({ success: true, consultations });
@@ -221,19 +285,19 @@ export default function tmaRoutes(pool, platformPool = pool) {
       const tenantId = getTenantId(req);
       if (!telegramId) return res.status(400).json({ success: false, error: 'Telegram ID topilmadi' });
 
-      const patient = await qGet(
-        "SELECT id, first_name, last_name, phone FROM patients WHERE tenant_id = $1 AND telegram_id = $2",
-        [tenantId, telegramId]
-      );
+      const patient = await getPatientByTelegram(telegramId);
       if (!patient) return res.json({ success: true, data: [], total: 0 });
 
+      // MAXFIYLIK: `patient_name ILIKE '%ism%' OR patient_id = ...` shakli
+      // boshqa bemorlarning (va boshqa klinikalarning) yo'llanmalarini ham
+      // qaytarardi — OR sababli patient_id sharti hech narsani cheklamasdi.
       const referrals = await q(
         `SELECT r.*, rc.name AS receiver_name
          FROM referrals r
-         LEFT JOIN referral_partners rc ON rc.id::text = r.receiver_clinic_id AND rc.tenant_id = r.tenant_id
-         WHERE r.tenant_id = $1 AND (r.patient_id = $2 OR (r.patient_id IS NULL AND r.patient_name ILIKE $3))
+         LEFT JOIN referral_partners rc ON rc.id::text = r.receiver_clinic_id
+         WHERE r.tenant_id = $1 AND r.patient_id = $2
          ORDER BY r.created_at DESC LIMIT 20`,
-        [tenantId, patient.id, `%${patient.first_name}%`]
+        [patient.tenant_id, patient.id]
       );
 
       res.json({ success: true, data: referrals, total: referrals.length });
@@ -289,22 +353,55 @@ export default function tmaRoutes(pool, platformPool = pool) {
   });
 
   // ===== Doctors list for TMA =====
+  // Tenant bo'yicha filtrlanadi — aks holda boshqa klinikalarning
+  // shifokorlari ham aralashib chiqadi (bir bazada bir nechta klinika bor).
   router.get('/doctors', async (req, res) => {
     try {
       const tenantId = getTenantId(req);
       const docs = await q(
-        "SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND status = 'Faol' ORDER BY first_name",
+        // status NULL bo'lgan shifokorlar ham faol hisoblanadi - booking.js
+        // bilan bir xil shart, aks holda ular faqat Mini App'da yo'qolib qoladi
+        "SELECT id, first_name, last_name, specialty, specialization FROM doctors WHERE tenant_id = $1 AND (status IS NULL OR status = 'Faol') ORDER BY first_name",
         [tenantId]
       );
       res.json({ success: true, doctors: docs });
     } catch (e) { safeError(res, e); }
   });
 
-  // ===== Available slots for TMA =====
+  // ===== Services list for TMA (bron uchun xizmat tanlash) =====
+  router.get('/services', async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const rows = await q(
+        `SELECT id, name, category, specialty, price::float8 AS price, duration_min,
+                COALESCE(is_consultation, false) AS is_consultation
+           FROM services_catalog WHERE tenant_id = $1 AND active = TRUE ORDER BY category NULLS LAST, name`,
+        [tenantId]
+      );
+      res.json({ success: true, services: rows });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // GET /api/tma/consultation-catalog — "Shifokor qabuli" bo'limi.
+  // Kiosk va registratura bilan AYNAN bir xil ro'yxat (yagona manba).
+  //
+  // NOMI NEGA "catalog": bu routerda `/consultations` ALLAQACHON band —
+  // u bemorning O'TGAN tibbiy yozuvlarini qaytaradi (220-qator) va
+  // tma.html boshqaruv panelida ishlatiladi. Express birinchi mos
+  // marshrutni oladi, shuning uchun bir xil nom qo'yilsa bu endpoint
+  // umuman ishlamas edi. Nom uchala kanalda bir xil saqlanadi.
+  router.get('/consultation-catalog', async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const data = await listConsultations(pool, tenantId);
+      res.json({ success: true, specialties: data.specialties });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // ===== Available slots for TMA — booking.js bilan bir xil hisoblash =====
   router.get('/slots', async (req, res) => {
     try {
-      const { doctor_id, date } = req.query;
-      const tenantId = getTenantId(req);
+      const { doctor_id, date, service_id } = req.query;
       if (!doctor_id || !date) {
         return res.status(400).json({ success: false, error: 'doctor_id va date talab qilinadi' });
       }
@@ -312,115 +409,45 @@ export default function tmaRoutes(pool, platformPool = pool) {
       if (isNaN(dateObj.getTime())) {
         return res.status(400).json({ success: false, error: 'Sana formati notogri. YYYY-MM-DD ishlating' });
       }
+      const tenantId = getTenantId(req);
+      const r = await bookingCore.computeSlots(tenantId, doctor_id, date, service_id ? [service_id] : []);
       const dayOfWeek = dateObj.getDay() || 7;
-      const doctor = await qGet(
-        "SELECT id FROM doctors WHERE tenant_id = $1 AND id = $2 AND status = 'Faol'",
-        [tenantId, doctor_id]
-      );
-      if (!doctor) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-
-      const schedule = await qGet(
-        "SELECT * FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 AND day_of_week = $3",
-        [tenantId, doctor_id, dayOfWeek]
-      );
-      if (!schedule) {
-        return res.json({ success: true, date, day_name: DAY_NAMES[dayOfWeek] || 'Noma\'lum', doctor_id, slots: [], message: 'Shifokor bu kuni ishlamaydi' });
-      }
-      const bookedSlots = await q(
-        "SELECT appointment_time FROM bookings WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 AND status != 'Bekor qilingan'",
-        [tenantId, doctor_id, date]
-      );
-      const bookedSet = new Set(bookedSlots.map(b => b.appointment_time));
-      const slots = [];
-      const [startH, startM] = schedule.start_time.split(':').map(Number);
-      const [endH, endM] = schedule.end_time.split(':').map(Number);
-      const duration = schedule.slot_duration || 30;
-      let current = startH * 60 + startM;
-      const end = endH * 60 + endM;
-      while (current + duration <= end) {
-        const hh = String(Math.floor(current / 60)).padStart(2, '0');
-        const mm = String(current % 60).padStart(2, '0');
-        const timeStr = `${hh}:${mm}`;
-        slots.push({ time: timeStr, available: !bookedSet.has(timeStr) });
-        current += duration;
-      }
-      res.json({ success: true, date, day_name: DAY_NAMES[dayOfWeek], doctor_id, slots });
+      res.status(r.status).json({ ...r.body, day_name: DAY_NAMES[dayOfWeek] });
     } catch (e) { safeError(res, e); }
   });
 
-  // ===== Book appointment via TMA =====
+  // ===== Book appointment via TMA — booking.js bilan BIR XIL yozuv =====
   router.post('/book', async (req, res) => {
     try {
-      const { doctor_id, patient_name, date, time } = req.body;
+      const { doctor_id, service_id, patient_name, date, time, payment_method } = req.body;
       const telegram_id = getTelegramId(req);
       const tenantId = getTenantId(req);
-      if (!doctor_id || !patient_name || !date || !time) {
-        return res.status(400).json({ success: false, error: 'doctor_id, patient_name, date va time talab qilinadi' });
+      if (!telegram_id) return res.status(401).json({ success: false, error: 'Telegram ID topilmadi' });
+      if (!doctor_id || !service_id || !patient_name || !date || !time) {
+        return res.status(400).json({ success: false, error: 'doctor_id, service_id, patient_name, date va time talab qilinadi' });
       }
 
-      const dateObj = new Date(date + 'T' + time);
-      if (isNaN(dateObj.getTime())) {
+      const scheduledAt = new Date(`${date}T${time}:00`);
+      if (isNaN(scheduledAt.getTime())) {
         return res.status(400).json({ success: false, error: 'Sana yoki vaqt formati notogri' });
       }
 
-      const existing = await qGet(
-        "SELECT id FROM bookings WHERE tenant_id = $1 AND doctor_id = $2 AND appointment_date = $3 AND appointment_time = $4 AND status != 'Bekor qilingan'",
-        [tenantId, doctor_id, date, time]
-      );
-      if (existing) {
-        return res.status(409).json({ success: false, error: 'Bu vaqt allaqachon band qilingan' });
-      }
+      // Kartani MAJBURAN ta'minlaymiz: patient_id bo'lmasa bron
+      // patient_id=NULL bilan yoziladi va bemorning o'z ro'yxatida ham,
+      // "Men keldim"da ham ko'rinmay qoladi. Telefonga client kiritgan
+      // qiymatga ishonmaymiz - saqlangan kartadan olamiz.
+      const patient = await ensurePatient(telegram_id, req.telegramUser, tenantId);
 
-      const dayOfWeek = dateObj.getDay() || 7;
-      const doctor = await qGet(
-        "SELECT id, first_name, last_name, specialty FROM doctors WHERE tenant_id = $1 AND id = $2 AND status = 'Faol'",
-        [tenantId, doctor_id]
-      );
-      if (!doctor) return res.status(404).json({ success: false, error: 'Shifokor topilmadi' });
-
-      const schedule = await qGet(
-        "SELECT * FROM doctor_schedules WHERE tenant_id = $1 AND doctor_id = $2 AND day_of_week = $3",
-        [tenantId, doctor_id, dayOfWeek]
-      );
-      if (!schedule) {
-        return res.status(400).json({ success: false, error: 'Shifokor bu kuni ishlamaydi' });
-      }
-
-      const timeMinutes = time.split(':').reduce((h, m) => parseInt(h) * 60 + parseInt(m), 0);
-      const startMinutes = schedule.start_time.split(':').reduce((h, m) => parseInt(h) * 60 + parseInt(m), 0);
-      const endMinutes = schedule.end_time.split(':').reduce((h, m) => parseInt(h) * 60 + parseInt(m), 0);
-      if (timeMinutes < startMinutes || timeMinutes + (schedule.slot_duration || 30) > endMinutes) {
-        return res.status(400).json({ success: false, error: 'Bu vaqt ish soatlaridan tashqari' });
-      }
-
-      const result = await q(
-        "INSERT INTO bookings (tenant_id, doctor_id, patient_name, telegram_id, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, $6, 'Kutilmoqda') RETURNING id",
-        [tenantId, doctor_id, patient_name, telegram_id || null, date, time]
-      );
-
-      const bookingId = result.rows[0]?.id || result[0]?.id;
-
-      if (telegram_id) {
-        try {
-          const doctorName = doctor ? `${doctor.first_name} ${doctor.last_name || ''}`.trim() : 'Shifokor';
-          const dateFormatted = new Date(date + 'T00:00:00').toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long', day: 'numeric' });
-          const msg = `✅ Navbat tasdiqlandi!\n\n👤 Bemor: ${patient_name}\n👨‍⚕️ Shifokor: ${doctorName}\n📅 Sana: ${dateFormatted}\n⏰ Vaqt: ${time}\n\nIltimos, belgilangan vaqtda klinikaga yetib keling.`;
-          const internalSecret = process.env.INTERNAL_SECRET;
-          if (internalSecret) {
-            fetch(`${req.protocol}://${req.get('host')}/api/internal/send-telegram`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-internal-secret': internalSecret },
-              body: JSON.stringify({ chat_id: telegram_id, text: msg, parse_mode: 'Markdown' })
-            }).catch(() => {});
-          } else {
-            console.warn('[TMA] INTERNAL_SECRET sozlanmagan, Telegram xabari yuborilmadi');
-          }
-        } catch (botErr) { console.warn('[TMA] Telegram xabarnoma xatosi:', botErr.message); }
-      }
-
-      res.status(201).json({
-        success: true,
-        booking: { id: bookingId, doctor_id, patient_name, appointment_date: date, appointment_time: time, status: 'Kutilmoqda' }
+      await bookingCore.handleCreate(req, res, tenantId, {
+        patient_name,
+        phone: patient?.phone || null,
+        patient_id: patient?.id || null,
+        doctor_id,
+        service_id,
+        scheduled_at: scheduledAt.toISOString(),
+        payment_method: payment_method === 'online' ? 'online' : 'cashier',
+        source: 'telegram',
+        telegram_id,
       });
     } catch (e) {
       if (e?.code === '23505' && e?.constraint === 'bookings_active_slot_unique') {
@@ -430,21 +457,80 @@ export default function tmaRoutes(pool, platformPool = pool) {
     }
   });
 
-  // ===== My appointments =====
+  // ===== Men keldim — Telegram identifikatori orqali, kod kiritish shart emas =====
+  // Kiosk/registratura kirish kodi so'raydi, chunki ularda bemor kim ekani
+  // noma'lum. Bu yerda esa Telegram initData allaqachon tasdiqlangan —
+  // shuning uchun bemorning BUGUNGI, hali kelmagan eng yaqin bronini
+  // to'g'ridan-to'g'ri belgilaymiz.
+  router.post('/checkin', async (req, res) => {
+    try {
+      const telegramId = getTelegramId(req);
+      if (!telegramId) return res.status(401).json({ success: false, error: 'Telegram ID topilmadi' });
+      const patient = await ensurePatient(telegramId, req.telegramUser, req.tenant_id);
+      if (!patient) return res.status(404).json({ success: false, error: 'Bemor kartasi topilmadi' });
+
+      let appointmentId = req.body?.appointment_id || null;
+      if (!appointmentId) {
+        const next = await qGet(
+          `SELECT id FROM appointments
+            WHERE tenant_id = $1 AND patient_id = $2
+              AND scheduled_at::date = CURRENT_DATE
+              AND status IN ('scheduled', 'confirmed')
+              AND arrived_at IS NULL
+            ORDER BY scheduled_at ASC LIMIT 1`,
+          [patient.tenant_id, patient.id]
+        );
+        if (!next) return res.status(404).json({ success: false, error: 'Bugungi faol bron topilmadi' });
+        appointmentId = next.id;
+      }
+
+      const r = await checkInAppointment(pool, {
+        tenantId: patient.tenant_id,
+        appointmentId,
+        source: 'telegram',
+      });
+      res.json({ success: true, already: r.already, queue_position: r.queue_position ?? null, appointment: r.appointment });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ success: false, error: e.message, code: e.code });
+      safeError(res, e);
+    }
+  });
+
+  // ===== My appointments — appointments jadvalidan, registratura ko'rgani bilan bir xil =====
   router.get('/my-appointments', async (req, res) => {
     try {
       const telegramId = getTelegramId(req);
       const tenantId = getTenantId(req);
       if (!telegramId) return res.json({ success: true, appointments: [] });
 
-      const appointments = await q(
-        `SELECT b.*, d.first_name || ' ' || d.last_name AS doctor_name, d.specialty
-         FROM bookings b
-         LEFT JOIN doctors d ON d.id = b.doctor_id AND d.tenant_id = b.tenant_id
-         WHERE b.tenant_id = $1 AND b.telegram_id = $2
-         ORDER BY b.appointment_date DESC, b.appointment_time DESC LIMIT 20`,
-        [tenantId, telegramId]
+      const patient = await getPatientByTelegram(telegramId);
+      if (!patient) return res.json({ success: true, appointments: [] });
+
+      const rows = await q(
+        `SELECT a.id, a.access_code, a.status, a.payment_status, a.scheduled_at, a.arrived_at,
+                a.amount::float8 AS amount, a.doctor_name, d.specialty, d.specialization,
+                s.name AS service_name
+           FROM appointments a
+           LEFT JOIN doctors d ON d.id = a.doctor_id AND d.tenant_id = a.tenant_id
+           LEFT JOIN services_catalog s ON s.id = a.service_id AND s.tenant_id = a.tenant_id
+          WHERE a.tenant_id = $1 AND a.patient_id = $2
+          ORDER BY a.scheduled_at DESC LIMIT 20`,
+        [patient.tenant_id, patient.id]
       );
+
+      const appointments = rows.map((r) => ({
+        id: r.id,
+        access_code: r.access_code,
+        doctor_name: r.doctor_name,
+        specialty: r.specialty || r.specialization,
+        service_name: r.service_name,
+        status: r.status,
+        arrived: !!r.arrived_at,
+        payment_status: r.payment_status,
+        amount: r.amount,
+        appointment_date: r.scheduled_at,
+        appointment_time: new Date(r.scheduled_at).toISOString().slice(11, 16),
+      }));
 
       res.json({ success: true, appointments });
     } catch (e) { safeError(res, e); }

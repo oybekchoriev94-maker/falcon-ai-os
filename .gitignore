@@ -83,3 +83,39 @@ fix.cjs
 # Local dev scratch (token, helper scripts)
 token.txt
 get-token.mjs
+
+# Vaqtinchalik tahlil fayllari (maket ajratish)
+.tmp-kiosk/
+
+# STT solishtiruvi — bemor audiosi va etalon matnlari GIT'GA TUSHMASIN
+scripts/stt-compare/audio*/
+scripts/stt-compare/models/
+scripts/stt-compare/natija*.md
+
+# VPS'da ishlatiladigan STT model og'irliklari (GB'larcha, binary) —
+# klinika kompyuteridan scp orqali ko'chiriladi, git'ga tushmaydi.
+/stt-models/
+
+# Davomat agenti — biometrik ma'lumot va sozlama GIT'GA TUSHMASIN
+agent/attendance/faces/
+agent/attendance/data/
+agent/attendance/models/
+agent/attendance/config.json
+agent/attendance/venv/
+# Sinov fotolari — real odamlarning yuzlari (biometrik ma'lumot)
+agent/attendance/test-photos/
+
+# Python kesh — hech qachon kuzatilmasin
+__pycache__/
+*.pyc
+
+# Bemorlarning qog'oz tibbiy kartalari fotolari — MAXFIY, git'ga tushmaydi
+tibbiy karta/
+
+# Runtime yuklamalar — production'da Docker volume'da saqlanadi,
+# repo faqat .gitkeep ni kuzatadi (tracked fayllarga ta'sir qilmaydi)
+public/uploads/*
+!.gitkeep
+
+# PostgreSQL backup dump'lari va watchdog holati (PR #15) — MAXFIY
+backups/

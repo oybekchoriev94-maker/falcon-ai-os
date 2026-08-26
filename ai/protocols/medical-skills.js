@@ -370,6 +370,102 @@ JSON shabloni:
       { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
     ]
   },
+  // Oqtosh Klinikasining ENG KATTA yo'nalishi — 7 shifokor. Shabloni
+  // bo'lmagani uchun diktant umumiy ("bemor ismi, tashxis, dori") shablonga
+  // tushardi va reproduktologiyaga xos o'lchovlar (follikulometriya, gormon
+  // qiymatlari, sikl kuni) tuzilmasdan, bitta matn bo'lib qolardi.
+  reproduktolog: {
+    label: '👶 Reproduktolog',
+    systemPrompt: `Siz reproduktolog (nazorat qilinadigan ovulyatsiya, EKO, bepushtlik) yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- complaints: Shikoyatlar va murojaat sababi (bepushtlik muddati, homiladorlikni rejalashtirish)
+- anamnesis: Anamnez (homiladorliklar soni, tug'ruqlar, tushishlar, oldingi davolash, EKO urinishlari)
+- cycle: Hayz sikli (kun uzunligi, oxirgi hayz sanasi, sikl kuni, muntazamligi)
+- uterus: Bachadon (o'lchamlari, endometriy qalinligi mm, tuzilishi)
+- ovaries: Tuxumdonlar (o'ng/chap hajmi, antral follikullar soni, dominant follikul o'lchami mm)
+- hormones: Gormonlar (AMH, FSH, LH, estradiol, prolaktin, TSH — qiymati va birligi bilan)
+- spermogram: Er sperma tahlili (konsentratsiya, harakatchanlik, morfologiya) — aytilsa
+- diagnosis: Tashxis
+- plan: Davolash rejasi (stimulyatsiya protokoli, dori va doza, keyingi ko'rik sanasi)
+- recommendations: Tavsiyalar
+
+MUHIM: barcha o'lchov va gormon qiymatlarini RAQAMDA yozing, birligi bilan.
+Aytilmagan ma'lumotni O'YLAB TOPMANG — bo'sh qoldiring.
+
+JSON shabloni:
+{"patient_name":"...","complaints":"...","anamnesis":"...","cycle":{"length":"28 kun","last_period":"...","cycle_day":"12","regular":"ha"},"uterus":{"size":"52x38x45 mm","endometrium":"9 mm","structure":"Bir jinsli"},"ovaries":{"right":"Hajmi 8 sm3, 7 ta antral follikul","left":"Hajmi 7 sm3, dominant follikul 18 mm"},"hormones":{"AMH":"2.4 ng/ml","FSH":"6.2 mIU/ml","LH":"5.1 mIU/ml","estradiol":"180 pg/ml","prolaktin":"...","TSH":"..."},"spermogram":"...","diagnosis":"...","plan":"...","recommendations":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      complaints: { type: 'string', required: true },
+      anamnesis: { type: 'string', required: false },
+      cycle: { type: 'object', required: false },
+      uterus: { type: 'object', required: false },
+      ovaries: { type: 'object', required: false },
+      hormones: { type: 'object', required: false },
+      spermogram: { type: 'string', required: false },
+      diagnosis: { type: 'string', required: true },
+      plan: { type: 'string', required: true },
+      recommendations: { type: 'string', required: false }
+    },
+    fields: [
+      { key: 'complaints', label: 'Shikoyatlar', icon: '🗣️' },
+      { key: 'anamnesis', label: 'Anamnez', icon: '📜' },
+      { key: 'cycle', label: 'Hayz sikli', icon: '🗓️', type: 'object' },
+      { key: 'uterus', label: 'Bachadon', icon: '📏', type: 'object' },
+      { key: 'ovaries', label: 'Tuxumdonlar', icon: '🥚', type: 'object' },
+      { key: 'hormones', label: 'Gormonlar', icon: '🧪', type: 'object' },
+      { key: 'spermogram', label: 'Spermogramma', icon: '🔬' },
+      { key: 'diagnosis', label: 'Tashxis', icon: '🏷️' },
+      { key: 'plan', label: 'Davolash rejasi', icon: '💊' },
+      { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
+    ]
+  },
+  // Oqtosh Klinikasida 3 shifokor. Shabloni yo'q edi.
+  xirurg: {
+    label: '🔪 Xirurg',
+    systemPrompt: `Siz xirurg yordamchisisiz.
+Ovozli matndan quyidagi ma'lumotlarni ajratib oling va faqat JSON formatida qaytaring:
+- patient_name: Bemor ismi
+- complaints: Shikoyatlar (og'riq joyi va tavsifi, davomiyligi, shish, harorat)
+- anamnesis: Kasallik tarixi va oldingi operatsiyalar
+- local_status: Mahalliy ko'rik (jarohat/shish o'lchami, chegarasi, rangi, palpatsiya, simptomlar)
+- diagnosis: Tashxis
+- procedure: Bajarilgan yoki rejalashtirilgan muolaja/operatsiya
+- anesthesia: Og'riqsizlantirish turi — aytilsa
+- wound_care: Jarohat parvarishi (bog'lam almashtirish, chok olish sanasi)
+- medicines: Buyurilgan dorilar (nomi, dozasi, davomiyligi)
+- recommendations: Tavsiyalar va keyingi ko'rik
+
+MUHIM: o'lcham, harorat, doza — hammasini RAQAMDA yozing.
+Aytilmagan ma'lumotni O'YLAB TOPMANG — bo'sh qoldiring.
+
+JSON shabloni:
+{"patient_name":"...","complaints":"...","anamnesis":"...","local_status":{"location":"O'ng yonbosh soha","size":"30x20 mm","skin":"Giperemiya bor","palpation":"Og'riqli, fluktuatsiya yo'q"},"diagnosis":"...","procedure":"...","anesthesia":"Mahalliy, lidokain 2%","wound_care":"Bog'lam kunora, chok 7-kuni","medicines":"...","recommendations":"..."}`,
+    schema: {
+      patient_name: { type: 'string', required: true },
+      complaints: { type: 'string', required: true },
+      anamnesis: { type: 'string', required: false },
+      local_status: { type: 'object', required: true },
+      diagnosis: { type: 'string', required: true },
+      procedure: { type: 'string', required: false },
+      anesthesia: { type: 'string', required: false },
+      wound_care: { type: 'string', required: false },
+      medicines: { type: 'string', required: false },
+      recommendations: { type: 'string', required: true }
+    },
+    fields: [
+      { key: 'complaints', label: 'Shikoyatlar', icon: '🗣️' },
+      { key: 'anamnesis', label: 'Anamnez', icon: '📜' },
+      { key: 'local_status', label: 'Mahalliy ko\'rik', icon: '🔎', type: 'object' },
+      { key: 'diagnosis', label: 'Tashxis', icon: '🏷️' },
+      { key: 'procedure', label: 'Muolaja / operatsiya', icon: '🔪' },
+      { key: 'anesthesia', label: 'Og\'riqsizlantirish', icon: '💉' },
+      { key: 'wound_care', label: 'Jarohat parvarishi', icon: '🩹' },
+      { key: 'medicines', label: 'Dorilar', icon: '💊' },
+      { key: 'recommendations', label: 'Tavsiyalar', icon: '📋' }
+    ]
+  },
   fizioterapevt: {
     label: '💆 Fizioterapevt',
     systemPrompt: `Siz fizioterapevt yordamchisisiz.

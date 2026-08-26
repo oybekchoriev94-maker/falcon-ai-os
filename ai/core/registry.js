@@ -14,6 +14,8 @@ const agents = new Map();
  *   schema      {ZodType}  — input validatsiyasi (ixtiyoriy, lekin tavsiya etiladi)
  *   handler     {Function} — async (input, ctx) => data   |  ctx = { tenantId, db, user }
  *   timeoutMs   {number}   — ixtiyoriy
+ *   canonical   {string}   — kanonik agent id (ai/core/canonical.js), ixtiyoriy;
+ *                            berilmagan bo'lsa canonicalForAgent() orqali topiladi
  */
 export function registerAgent(mod) {
   if (!mod?.name || typeof mod.handler !== 'function') {
@@ -31,6 +33,7 @@ export function registerAgent(mod) {
     schema: mod.schema || null,
     handler: mod.handler,
     timeoutMs: mod.timeoutMs || null,
+    canonical: mod.canonical || null,
     loadedAt: new Date().toISOString(),
   });
 }
