@@ -57,6 +57,7 @@
         <button class="btn-secondary tab-btn" data-tab="shifts" onclick="switchTab('shifts')">🗓 Smenalar</button>
         <button class="btn-secondary tab-btn" data-tab="zones" onclick="switchTab('zones')">📍 Zona qoidalari</button>
         <button class="btn-secondary tab-btn" data-tab="presence" onclick="switchTab('presence')">🕐 Faollik</button>
+        <button class="btn-secondary tab-btn" data-tab="warehouse" onclick="switchTab('warehouse')">📦 Ombor nazorati</button>
         <button class="btn-secondary tab-btn" data-tab="cameras" onclick="switchTab('cameras')">📷 Kameralar</button>
         <button class="btn-secondary tab-btn" data-tab="tasks" onclick="switchTab('tasks')">✅ Vazifalar</button>
       </div>
@@ -194,6 +195,29 @@
         </div>
       </div>
 
+      <!-- ===== OMBOR NAZORATI (warehouse) ===== -->
+      <div id="tab-warehouse" class="tab-panel hidden space-y-4">
+        <div class="card">
+          <div class="flex flex-wrap items-center gap-3">
+            <h3 class="text-lg font-semibold">Ombor-kamera korrelyatsiyasi</h3>
+            <input type="date" id="whDate" class="input-field" style="max-width:190px" onchange="loadWarehouse()">
+            <input id="whZone" class="input-field" style="max-width:150px" value="ombor" placeholder="zona" onchange="loadWarehouse()">
+            <button class="btn-secondary text-sm" onclick="loadWarehouse()">🔄 Yangilash</button>
+          </div>
+          <p class="text-slate-400 text-xs mt-2">Har kirim/chiqimga ±5 daqiqa oynada ombor zonasida kamera hodisasi bor-yo'qligi tekshiriladi. Kamerasiz amal = signal, jazo emas.</p>
+          <div id="whSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3"></div>
+        </div>
+        <div class="card overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-slate-400 border-b border-slate-700">
+              <th class="py-2 pr-4">Vaqt</th><th class="py-2 pr-4">Mol</th><th class="py-2 pr-4">Tur</th>
+              <th class="py-2 pr-4">Miqdor</th><th class="py-2 pr-4">Kim</th><th class="py-2 pr-4">Kamera</th><th class="py-2">Belgi</th>
+            </tr></thead>
+            <tbody id="whRows"><tr><td colspan="7" class="py-4 text-slate-500">Yuklanmoqda...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ===== KAMERALAR (cameras) ===== -->
       <div id="tab-cameras" class="tab-panel hidden space-y-4">
         <div class="card">
@@ -304,7 +328,7 @@
   }
 
   // ── Tabs ────────────────────────────────────────────────────────
-  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, presence: false, cameras: false, tasks: false };
+  const loaded = { attendance: false, alerts: false, shifts: false, zones: false, presence: false, warehouse: false, cameras: false, tasks: false };
   function switchTab(name) {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
     document.getElementById('tab-' + name).classList.remove('hidden');
@@ -312,7 +336,7 @@
       b.classList.toggle('btn-primary', b.dataset.tab === name);
       b.classList.toggle('btn-secondary', b.dataset.tab !== name);
     });
-    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, presence: loadPresence, cameras: loadNodes, tasks: loadTasks }[name])(); }
+    if (!loaded[name]) { loaded[name] = true; ({ alerts: loadAlerts, shifts: loadShifts, zones: loadZones, presence: loadPresence, warehouse: loadWarehouse, cameras: loadNodes, tasks: loadTasks }[name])(); }
   }
 
   // ── Davomat ─────────────────────────────────────────────────────
@@ -495,6 +519,38 @@
       method: 'PUT', headers: authHeaders(), body: JSON.stringify({ enabled }),
     });
     if (r.ok) loadZones();
+  }
+
+  // ── Ombor nazorati ───────────────────────────────────────────────
+  const TX_LABEL = { IN: 'Kirim', CONSUMPTION: 'Iste\'mol', VOICE_RECEIPT: 'Ovozli kirim', ADJUST: 'Tuzatish' };
+  const FLAG_LABEL = { no_camera: '📷 kamerasiz', kamomad: '⚠️ kamomad' };
+
+  async function loadWarehouse() {
+    const date = document.getElementById('whDate').value || todayStr();
+    const zone = document.getElementById('whZone').value.trim() || 'ombor';
+    try {
+      const r = await fetch(`${API}/api/inventory/camera-evidence?date=${date}&zone=${encodeURIComponent(zone)}`, { headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Xatolik');
+      const s = d.summary || {};
+      document.getElementById('whSummary').innerHTML = [
+        ['Jami amallar', s.total, '#60a5fa'], ['Kamera bor', s.with_camera, '#22c55e'],
+        ['Kamera yo\'q', s.without_camera, '#f59e0b'], ['Kamomad', s.kamomad, '#ef4444'],
+      ].map(([label, v, c]) => `<div class="stat-card border-l-4" style="border-color:${c}"><p class="text-slate-400 text-sm">${label}</p><p class="stat-value mt-1">${v ?? 0}</p></div>`).join('');
+      const rows = (d.rows || []).map((row) => `
+        <tr class="border-b border-slate-800">
+          <td class="py-2 pr-4">${fmtTime(row.created_at)}</td>
+          <td class="py-2 pr-4 font-medium">${esc(row.item_name || '—')}</td>
+          <td class="py-2 pr-4 text-slate-400">${TX_LABEL[row.type] || row.type || '—'}</td>
+          <td class="py-2 pr-4">${row.quantity ?? '—'}</td>
+          <td class="py-2 pr-4 text-slate-400">${esc(row.performed_by || '—')}</td>
+          <td class="py-2 pr-4">${row.camera_evidence
+            ? `<span class="badge" style="background:#22c55e22;color:#22c55e">✓ ${row.matched_events} ta</span>`
+            : '<span class="badge" style="background:#f59e0b22;color:#f59e0b">✗ yo\'q</span>'}</td>
+          <td class="py-2 text-slate-400">${(row.flags || []).map((f) => FLAG_LABEL[f] || f).join(' ')}</td>
+        </tr>`).join('');
+      document.getElementById('whRows').innerHTML = rows || '<tr><td colspan="7" class="py-4 text-slate-500">Bu kunda ombor amallari yo\'q</td></tr>';
+    } catch (e) { showError(e.message); }
   }
 
   // ── Edge tugunlari ──────────────────────────────────────────────

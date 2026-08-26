@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { safeError } from '../services/safe-error.js';
+import { correlateWarehouseEvents, summarizeWarehouse } from '../services/warehouse-service.js';
 
 // ─── Local rate limiters ───────────────────────────────────
 const inventoryLimiter = rateLimit({
@@ -571,6 +572,45 @@ export default function inventoryRoutes(
         [tenantId, limit]
       );
       res.json({ success: true, total: txns.length, transactions: txns });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // GET /inventory/camera-evidence?date=&zone=&window= — ombor-kamera korrelyatsiyasi (PR #12)
+  // Har bir kirim/chiqimga o'sha payt ombor zonasida kamera hodisasi
+  // bo'lganmi. Kamera yo'q = signal, jazo emas.
+  router.get('/inventory/camera-evidence', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const date = req.query.date && String(req.query.date);
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw routeError(400, "date parametri kerak va 'YYYY-MM-DD' formatda bo'lishi shart");
+      }
+      const zoneRaw = String(req.query.zone || 'ombor');
+      const zone = /^[a-z0-9_.-]{3,64}$/.test(zoneRaw) ? zoneRaw : 'ombor';
+      const windowRaw = parseInt(req.query.window, 10);
+      const windowMinutes = Number.isFinite(windowRaw) && windowRaw >= 1 && windowRaw <= 60 ? windowRaw : 5;
+
+      const txns = await q(
+        `SELECT t.id, t.type, t.quantity, t.performed_by, t.reason, t.created_at, i.name AS item_name
+         FROM inventory_transactions t
+         LEFT JOIN inventory_items i ON i.tenant_id = t.tenant_id AND i.id = t.item_id
+         WHERE t.tenant_id = $1
+           AND t.created_at >= $2::timestamp AND t.created_at < $2::timestamp + interval '1 day'
+         ORDER BY t.created_at DESC LIMIT 500`,
+        [tenantId, date]
+      );
+      const events = await q(
+        `SELECT subject_ref, occurred_at FROM vision_events
+         WHERE tenant_id = $1 AND zone_id = $2
+           AND occurred_at >= $3::timestamp - interval '1 hour'
+           AND occurred_at <  $3::timestamp + interval '25 hours'`,
+        [tenantId, zone, date]
+      );
+      const rows = correlateWarehouseEvents(txns, events, windowMinutes);
+      res.json({
+        success: true, date, zone, window_minutes: windowMinutes,
+        summary: summarizeWarehouse(rows), rows,
+      });
     } catch (e) { safeError(res, e); }
   });
 
