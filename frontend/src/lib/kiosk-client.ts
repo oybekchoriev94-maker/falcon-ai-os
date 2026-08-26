@@ -68,6 +68,18 @@ export const kioskApi = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
+  /** Binary javob (masalan, navbat ovozli chaqiruvi WAV'i). Xato bo'lsa null. */
+  getAudio: async (path: string): Promise<Blob | null> => {
+    const token = getKioskToken();
+    if (!token) throw new KioskAuthError("Qurilma sozlanmagan");
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "GET",
+      headers: { "X-Kiosk-Token": token },
+    });
+    const ct = res.headers.get("content-type") || "";
+    if (!res.ok || !ct.startsWith("audio/")) return null;
+    return res.blob();
+  },
 };
 
 // ── Javob tiplari ────────────────────────────────────────────
@@ -182,6 +194,8 @@ export interface QueueItem {
   /** scheduled | confirmed | in_progress */
   status: string;
   paid: boolean;
+  /** Bron qilmagan, registraturada navbatga qo'yilgan bemor */
+  walk_in?: boolean;
   /** Taxminiy kutish (daqiqa) — faqat jismonan kelganlar (check-in qilganlar) uchun */
   wait_minutes: number;
 }
@@ -194,6 +208,7 @@ export interface QueueResult {
 export interface CheckinResult {
   success: true;
   already: boolean;
+  queue_position: number | null;
   appointment: { patient_name: string; doctor_name: string; scheduled_at: string };
   message: string;
 }

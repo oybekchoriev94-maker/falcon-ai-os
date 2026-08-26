@@ -7,7 +7,7 @@
 //  - Pastda kutayotganlar ro'yxati
 // Har 10 soniyada yangilanadi. Ism qisqartirilgan (PII).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { kioskApi, fmtDateFull, type QueueItem } from "@/lib/kiosk-client";
 import { useKioskPairing } from "@/lib/use-kiosk-pairing";
 import { PairingScreen } from "@/components/kiosk/pairing-screen";
@@ -34,6 +34,12 @@ function QueueBoard({ clinicName }: { clinicName: string }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [loaded, setLoaded] = useState(false);
+  // Ovozli chaqiruv: chaqirilgan kodlar eslab qolinadi — har bemor
+  // faqat BIR MARTA e'lon qilinadi (aks holda har 10 soniyada chalinardi).
+  const announcedRef = useRef<Set<string>>(new Set());
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Ilk yuklanishda ekranda allaqachon turgan bemorlarni o'qimaymiz
+  const firstLoadRef = useRef(true);
 
   useEffect(() => {
     let dead = false;
@@ -51,6 +57,34 @@ function QueueBoard({ clinicName }: { clinicName: string }) {
 
   const serving = useMemo(() => queue.filter((q) => q.status === "in_progress"), [queue]);
   const waiting = useMemo(() => queue.filter((q) => q.status !== "in_progress"), [queue]);
+
+  // Yangi chaqiruv paydo bo'lsa — TTS audio'ni chalamiz. TTS o'chiq
+  // bo'lsa (503) yoki brauzer autoplay'ni bloklasa jim o'tamiz —
+  // ekran baribir ishlayveradi.
+  useEffect(() => {
+    if (!loaded) return;
+    if (firstLoadRef.current) {
+      // Ekran endi ochilganda: mavjud chaqiruvlarni belgilab qo'yamiz,
+      // lekin chalmaymiz (ular allaqachon e'lon qilingan)
+      for (const q of serving) announcedRef.current.add(q.code);
+      firstLoadRef.current = false;
+      return;
+    }
+    const fresh = serving.filter((q) => !announcedRef.current.has(q.code));
+    if (fresh.length === 0) return;
+    for (const q of fresh) announcedRef.current.add(q.code);
+    kioskApi
+      .getAudio("/api/kiosk/queue/announce/audio")
+      .then((blob) => {
+        if (!blob) return;
+        if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
+        const audio = new Audio(URL.createObjectURL(blob));
+        audioRef.current = audio;
+        audio.play().catch(() => { /* autoplay bloklangan — jim */ });
+      })
+      .catch(() => { /* ovoz yo'q — ekran ishlayveradi */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, serving]);
 
   const [first, ...rest] = clinicName.toUpperCase().split(" ");
 
