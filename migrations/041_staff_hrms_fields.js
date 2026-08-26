@@ -28,7 +28,7 @@ export async function up(knex) {
   const addIfMissing = async (col, ddl) => {
     const exists = await knex.raw(
       `SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'staff_members' AND column_name = $1`,
+        WHERE table_name = 'staff_members' AND column_name = ?`,
       [col]
     );
     if (!exists.rows.length) await knex.raw(ddl);

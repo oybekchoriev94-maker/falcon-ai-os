@@ -107,19 +107,19 @@ export async function up(knex) {
     const branchId = (await knex.raw('SELECT gen_random_uuid()::text AS id')).rows[0].id;
     await knex.raw(
       `INSERT INTO clinics (id, tenant_id, name, code, status)
-       VALUES ($1, $2, $3, 'main', 'active')
+       VALUES (?, ?, ?, 'main', 'active')
        ON CONFLICT (tenant_id, code) DO NOTHING`,
       [clinicId, tenant.id, tenant.name || 'Klinika']
     );
     await knex.raw(
       `INSERT INTO branches (id, tenant_id, clinic_id, name, code, status)
-       SELECT $1, $2, c.id, 'Bosh filial', 'main', 'active'
+       SELECT ?, ?, c.id, 'Bosh filial', 'main', 'active'
        FROM clinics c
-       WHERE c.tenant_id = $2 AND c.code = 'main'
+       WHERE c.tenant_id = ? AND c.code = 'main'
          AND NOT EXISTS (
-           SELECT 1 FROM branches b WHERE b.tenant_id = $2 AND b.code = 'main'
+           SELECT 1 FROM branches b WHERE b.tenant_id = ? AND b.code = 'main'
          )`,
-      [branchId, tenant.id]
+      [branchId, tenant.id, tenant.id, tenant.id]
     );
   }
 
