@@ -55,6 +55,7 @@ import appointmentRoutes from './backend/routes/appointments.js';
 import billingRoutes from './backend/routes/billing.js';
 import subscriptionRoutes from './backend/routes/subscription.js';
 import tenantRoutes from './backend/routes/tenants.js';
+import clinicRoutes from './backend/routes/clinics.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
 import scribeRoutes from './backend/routes/scribe.js';
@@ -400,6 +401,7 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use(`${API_PREFIX}/subscription`, checkSubscription, subscriptionRoutes());
   targetApp.use('/webhooks', webhookRoutes());
   targetApp.use(`${API_PREFIX}/tenants`, tenantRoutes(upload));
+  targetApp.use(`${API_PREFIX}/clinics`, clinicRoutes());
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
 
   // Scribe eng qimmat oqim (STT + LLM) — obuna va kunlik AI limiti majburiy.

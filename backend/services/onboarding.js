@@ -11,6 +11,25 @@ export async function afterRegistration(tenantId, userId, clinicName, execute = 
     [tenantId]
   );
 
+  // Multi-klinika modeli (PR #4): yangi tenant uchun default klinika va
+  // bosh filial. Idempotent — takroriy onboarding'da nusxa yaratilmaydi.
+  await execute(
+    `INSERT INTO clinics (id, tenant_id, name, code, status)
+     VALUES (gen_random_uuid(), $1, $2, 'main', 'active')
+     ON CONFLICT (tenant_id, code) DO NOTHING`,
+    [tenantId, clinicName || 'Klinika']
+  );
+  await execute(
+    `INSERT INTO branches (id, tenant_id, clinic_id, name, code, status)
+     SELECT gen_random_uuid(), $1, c.id, 'Bosh filial', 'main', 'active'
+     FROM clinics c
+     WHERE c.tenant_id = $1 AND c.code = 'main'
+       AND NOT EXISTS (
+         SELECT 1 FROM branches b WHERE b.tenant_id = $1 AND b.code = 'main'
+       )`,
+    [tenantId]
+  );
+
   const welcomeMessage = `Assalomu alaykum, ${clinicName}!
 
 Falcon AI OS ga xush kelibsiz! 🎉
