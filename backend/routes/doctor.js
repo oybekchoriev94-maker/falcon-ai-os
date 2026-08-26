@@ -113,7 +113,7 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
 
       const rows = await q(
         `SELECT a.id, a.appointment_id, a.patient_id, a.patient_name, a.phone,
-                a.scheduled_at, a.status, a.payment_status, a.amount::float8 AS amount,
+                a.scheduled_at, a.arrived_at, a.status, a.payment_status, a.amount::float8 AS amount,
                 a.notes, s.name AS service_name,
                 p.medical_record_number, p.district, p.address,
                 a.forwarded_from_appointment_id,
@@ -133,6 +133,65 @@ export default function doctorRoutes(pool, authMiddleware, checkRole, upload) {
         params
       );
       res.json({ success: true, date: date || new Date().toISOString().slice(0, 10), queue: rows });
+    } catch (e) { serverError(res, e); }
+  });
+
+  // POST /queue/call — "Keyingi bemorni chaqirish" tugmasi.
+  //
+  // Bemorni in_progress qiladi — shunda kutish zali TV ekrani uni
+  // "HOZIR QABULDA" zonasiga chiqaradi va ovozli e'lon chalinadi
+  // (/api/kiosk/queue/announce/audio). Chaqiruv TIZIMI shu statusga
+  // bog'langani uchun bu endpoint butun navbat oqimining yuragi.
+  //
+  // Tanlash tartibi: id berilsa — o'sha bemor; berilmasa — KELGAN
+  // (arrived_at bor) bemorlar orasidan eng erta kelgani. Bron qilib
+  // hali kelmagan bemor chaqirilmaydi — navbatda yo'q-ku!
+  //
+  // arrived_at = COALESCE(arrived_at, NOW()): doktor bemorni qo'lda
+  // chaqirsa, demak u JISMONAN kelgan — lekin kioskda "Men keldim"
+  // bosmagan bo'lishi mumkin. Belgilanmasa TV ekrani uni ko'rsatmaydi
+  // (TV faqat arrived bemorlarni oladi).
+  const callSchema = z.object({ id: z.union([z.string(), z.number()]).optional() });
+  router.post('/queue/call', authMiddleware, checkRole('doctor'), async (req, res) => {
+    const parsed = callSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ success: false, error: 'So\'rov noto\'g\'ri' });
+    try {
+      const tenantId = tenantOf(req);
+      let row;
+      if (parsed.data.id) {
+        row = await qGet(
+          `UPDATE appointments SET status = 'in_progress', arrived_at = COALESCE(arrived_at, NOW())
+            WHERE tenant_id = $1 AND doctor_id = $2 AND id = $3
+              AND date(scheduled_at) = CURRENT_DATE
+              AND status NOT IN ('completed', 'cancelled', 'no_show', 'pending_admission')
+            RETURNING id, patient_name, doctor_name, status`,
+          [tenantId, req.user.id, parsed.data.id]
+        );
+        if (!row) return res.status(404).json({ success: false, error: 'Bemor topilmadi yoki qabul yakunlangan' });
+      } else {
+        row = await qGet(
+          `UPDATE appointments SET status = 'in_progress', arrived_at = COALESCE(arrived_at, NOW())
+            WHERE id = (
+              SELECT id FROM appointments
+               WHERE tenant_id = $1 AND doctor_id = $2
+                 AND date(scheduled_at) = CURRENT_DATE
+                 AND status IN ('scheduled', 'confirmed')
+                 AND arrived_at IS NOT NULL
+               ORDER BY arrived_at ASC, scheduled_at ASC
+               LIMIT 1
+            )
+            RETURNING id, patient_name, doctor_name, status`,
+          [tenantId, req.user.id]
+        );
+        if (!row) {
+          return res.status(404).json({
+            success: false,
+            code: 'NO_ARRIVED',
+            error: 'Navbatda kelgan bemor yo\'q. Bemor kiosk yoki registraturada "Men keldim" bosishi kerak.',
+          });
+        }
+      }
+      res.json({ success: true, called: row });
     } catch (e) { serverError(res, e); }
   });
 

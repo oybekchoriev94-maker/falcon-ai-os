@@ -23,6 +23,7 @@ import {
   Loader2,
   Inbox,
   ArrowRight,
+  Megaphone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,8 @@ interface QueueItem {
   patient_name: string;
   phone: string | null;
   scheduled_at: string;
+  /** Bemor kiosk/registraturada "Men keldim" bosgan vaqt */
+  arrived_at: string | null;
   status: string;
   payment_status: string;
   amount: number;
@@ -134,6 +137,23 @@ export default function DoctorPage() {
   const waiting = queue.filter((q) => q.status !== "completed" && !q.has_consultation);
   const done = queue.filter((q) => q.status === "completed" || q.has_consultation);
 
+  // ── Keyingi bemorni chaqirish — TV ekran va ovozli e'longa bog'langan ──
+  const callNext = useMutation({
+    mutationFn: async (id?: number) => {
+      const res = await api.post<{ called?: { patient_name: string }; code?: string }>(
+        "/api/doctor/queue/call",
+        id ? { id } : {}
+      );
+      if (!res.success) throw new Error(res.error || "Xatolik");
+      return res;
+    },
+    onSuccess: (res) => {
+      toast.success(`${res.called?.patient_name || "Bemor"} chaqirildi — TV ekranda ko'rinadi`);
+      queryClient.invalidateQueries({ queryKey: ["doctor-queue"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // ── Statistika ──
   const { data: stats } = useQuery({
     queryKey: ["doctor-stats"],
@@ -186,6 +206,8 @@ export default function DoctorPage() {
             empty="Kutayotgan bemor yo'q — tinchgina qahva iching ☕"
             onOpen={setVisitOf}
             highlight
+            onCallNext={() => callNext.mutate(undefined)}
+            calling={callNext.isPending}
           />
           {done.length > 0 && (
             <QueueSection
@@ -279,7 +301,7 @@ function StatsRow({ today, total, revenue, balance }: { today: number; total: nu
 }
 
 function QueueSection({
-  title, items, loading, empty, onOpen, highlight,
+  title, items, loading, empty, onOpen, highlight, onCallNext, calling,
 }: {
   title: string;
   items: QueueItem[];
@@ -287,16 +309,27 @@ function QueueSection({
   empty: string;
   onOpen: (q: QueueItem) => void;
   highlight?: boolean;
+  /** Keyingi bemorni chaqirish tugmasi (faqat kutayotgan navbatda) */
+  onCallNext?: () => void;
+  calling?: boolean;
 }) {
   return (
     <Card className={cn("border-border/50", highlight && "border-primary/30")}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Clock className={cn("size-4", highlight ? "text-primary" : "text-muted-foreground")} />
             {title}
           </CardTitle>
-          <Badge variant={highlight ? "default" : "secondary"} className="text-xs">{items.length}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={highlight ? "default" : "secondary"} className="text-xs">{items.length}</Badge>
+            {onCallNext && (
+              <Button size="sm" onClick={onCallNext} disabled={calling || items.length === 0} className="h-8">
+                {calling ? <Loader2 className="size-4 animate-spin" /> : <Megaphone className="size-4" />}
+                Keyingi bemor
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
@@ -318,6 +351,7 @@ function QueueSection({
 
 function QueueRow({ item, onOpen }: { item: QueueItem; onOpen: () => void }) {
   const done = item.status === "completed" || item.has_consultation;
+  const serving = item.status === "in_progress";
   return (
     <button
       onClick={onOpen}
@@ -337,6 +371,12 @@ function QueueRow({ item, onOpen }: { item: QueueItem; onOpen: () => void }) {
           <p className={cn("text-sm font-medium truncate", done && "text-muted-foreground")}>
             {item.patient_name}
           </p>
+          {serving && (
+            <Badge variant="default" className="text-[10px] shrink-0 bg-emerald-600">qabulda</Badge>
+          )}
+          {!serving && !done && item.arrived_at && (
+            <Badge variant="secondary" className="text-[10px] shrink-0">keldi</Badge>
+          )}
           {item.medical_record_number && (
             <span className="text-[10px] font-mono text-muted-foreground shrink-0">{item.medical_record_number}</span>
           )}
