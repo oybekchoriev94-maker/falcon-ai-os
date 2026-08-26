@@ -95,6 +95,37 @@ services:
       retries: 3
       start_period: 120s
 
+  # TTS (OmniVoice) — navbatni ovoz bilan o'qib berish. ATAYLAB profile
+  # bilan yopilgan: image ~3GB (torch+model), oddiy deploy'da VPS'ning
+  # tor xotirasida kerak emas. Asosiy joy — klinika GPU kompyuteri
+  # (xuddi STT kabi). Yoqish: docker compose --profile tts up -d
+  # va .env'da TTS_URL=http://tts:8082 (yoki tunnel orqali GPU host).
+  tts:
+    <<: *common
+    profiles: ["tts"]
+    image: ${TTS_IMAGE:-falcon-ai-os-tts:local}
+    build: ./tts-service
+    # Port tashqariga chiqarilmaydi — app Docker tarmog'i ichidan
+    # murojaat qiladi (stt bilan bir xil himoya).
+    expose: ["8082"]
+    environment:
+      TTS_MODEL: ${TTS_MODEL:-k2-fsa/OmniVoice}
+      DEVICE: ${TTS_DEVICE:-cpu}
+      TTS_AUTH_TOKEN: ${TTS_AUTH_TOKEN:-}
+      VOICES_DIR: /voices
+    volumes:
+      # Model keshi (HuggingFace) — qayta yuklanmasligi uchun
+      - tts-cache:/cache
+      # Saqlangan ovoz klonlari (.pt promptlar)
+      - tts-voices:/voices
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Model ilk yuklanishda HF'dan tortiladi — uzoq kutish kerak
+      start_period: 300s
+
   db-bootstrap:
     <<: *common
     image: ${BACKEND_IMAGE:-falcon-ai-os:local}
@@ -180,6 +211,13 @@ services:
       WHISPER_FALLBACK_URL: ${WHISPER_FALLBACK_URL:-http://stt:8081}
       # Tunnel orqali ochilgan STT uchun majburiy (lokal tarmoqda bo'sh)
       STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
+      # TTS (OmniVoice) — navbat ovozli chaqiruvi. Bo'sh bo'lsa ovoz
+      # endpoint'lari TTS_DISABLED qaytaradi, qolgan hamma narsa ishlaydi.
+      # Yoqilganda: TTS_URL=http://tts:8082 (compose --profile tts) yoki
+      # klinika GPU kompyuteriga tunnel (STT bilan bir xil sxema).
+      TTS_URL: ${TTS_URL:-}
+      TTS_AUTH_TOKEN: ${TTS_AUTH_TOKEN:-}
+      TTS_VOICE: ${TTS_VOICE:-}
     volumes:
       - falcon-backup:/backup
       - falcon-logs:/app/logs
@@ -245,6 +283,8 @@ volumes:
   caddy-data:
   caddy-config:
   stt-cache:
+  tts-cache:
+  tts-voices:
 
 networks:
   falcon:

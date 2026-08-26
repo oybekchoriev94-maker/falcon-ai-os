@@ -27,6 +27,7 @@ import { normalizePhone } from '../services/patient-store.js';
 import { createPayment } from '../services/payment-gateway.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
 import { dedupeKey, buildCallAnnouncement } from '../services/queue-service.js';
+import { isTtsEnabled, synthesize, concatWavBuffers } from '../services/tts-client.js';
 import { listConsultations } from '../services/consultation-catalog.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -917,44 +918,79 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
     }
   });
 
+  // Chaqirilayotgan bemorlar ro'yxati — /queue/announce va
+  // /queue/announce/audio ikkalasi ham shu funksiyani ishlatadi.
+  async function fetchAnnouncementCalls(tenantId) {
+    const rows = await q(
+      `SELECT a.access_code, a.patient_name, a.doctor_name, a.status
+         FROM appointments a
+        WHERE a.tenant_id = $1
+          AND date(a.scheduled_at) = CURRENT_DATE
+          AND a.status = 'in_progress'
+          AND a.arrived_at IS NOT NULL
+        ORDER BY a.arrived_at DESC LIMIT 5`,
+      [tenantId]
+    );
+    const walkins = await q(
+      `SELECT queue_number, patient_name, doctor, status
+         FROM patient_queue
+        WHERE tenant_id = $1 AND status = 'in_progress'
+        ORDER BY created_at DESC LIMIT 5`,
+      [tenantId]
+    );
+    return [
+      ...rows.map((r) => ({
+        code: r.access_code,
+        doctor: r.doctor_name,
+        text: buildCallAnnouncement(r),
+      })),
+      ...walkins.map((r) => ({
+        code: `N${r.queue_number}`,
+        doctor: r.doctor || 'Qabul',
+        text: buildCallAnnouncement({
+          patient_name: r.patient_name, doctor_name: r.doctor, queue_number: r.queue_number,
+        }),
+      })),
+    ].filter((c) => c.text);
+  }
+
   // GET /api/kiosk/queue/announce — ovozli chaqiruv matni (TTS uchun).
   // TV/karnay tizimi shu matnni oladi va TTS dvigatelida (masalan
   // OmniVoice — uz/uzn tillarini qo'llaydi) o'qib beradi.
   // Chaqiriladiganlar: qabulga kirayotgan (in_progress) bemorlar.
   router.get('/queue/announce', deviceAuth, async (req, res) => {
     try {
-      const rows = await q(
-        `SELECT a.access_code, a.patient_name, a.doctor_name, a.status
-           FROM appointments a
-          WHERE a.tenant_id = $1
-            AND date(a.scheduled_at) = CURRENT_DATE
-            AND a.status = 'in_progress'
-            AND a.arrived_at IS NOT NULL
-          ORDER BY a.arrived_at DESC LIMIT 5`,
-        [req.kioskTenantId]
-      );
-      const walkins = await q(
-        `SELECT queue_number, patient_name, doctor, status
-           FROM patient_queue
-          WHERE tenant_id = $1 AND status = 'in_progress'
-          ORDER BY created_at DESC LIMIT 5`,
-        [req.kioskTenantId]
-      );
-      const calls = [
-        ...rows.map((r) => ({
-          code: r.access_code,
-          doctor: r.doctor_name,
-          text: buildCallAnnouncement(r),
-        })),
-        ...walkins.map((r) => ({
-          code: `N${r.queue_number}`,
-          doctor: r.doctor || 'Qabul',
-          text: buildCallAnnouncement({
-            patient_name: r.patient_name, doctor_name: r.doctor, queue_number: r.queue_number,
-          }),
-        })),
-      ].filter((c) => c.text);
-      res.json({ success: true, total: calls.length, calls });
+      const calls = await fetchAnnouncementCalls(req.kioskTenantId);
+      res.json({ success: true, total: calls.length, calls, tts_enabled: isTtsEnabled() });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // GET /api/kiosk/queue/announce/audio — tayyor WAV (24kHz mono).
+  // Barcha chaqiruvlar bitta audioga birlashtiriladi. TTS o'chiq
+  // bo'lsa 503 + TTS_DISABLED — TV shunda ham matnni ko'rsatadi.
+  router.get('/queue/announce/audio', deviceAuth, async (req, res) => {
+    if (!isTtsEnabled()) {
+      return res.status(503).json({ success: false, code: 'TTS_DISABLED', error: 'TTS xizmati ulanmagan (TTS_URL)' });
+    }
+    try {
+      const calls = await fetchAnnouncementCalls(req.kioskTenantId);
+      if (calls.length === 0) {
+        return res.status(404).json({ success: false, code: 'NO_CALLS', error: 'Hozircha chaqiruv yo\'q' });
+      }
+      const bufs = [];
+      for (const c of calls) {
+        const b = await synthesize(c.text, { voice: process.env.TTS_VOICE || undefined });
+        if (b) bufs.push(b);
+      }
+      if (bufs.length === 0) {
+        return res.status(502).json({ success: false, code: 'TTS_UNAVAILABLE', error: 'TTS xizmatiga ulanib bo\'lmadi' });
+      }
+      const wav = concatWavBuffers(bufs);
+      res.setHeader('Content-Type', 'audio/wav');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(wav);
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
     }
