@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { safeError } from '../services/safe-error.js';
 import { normalizePhone, generateMrn } from '../services/patient-store.js';
+import { matchReasons } from '../services/queue-service.js';
 
 const PATIENT_COLUMNS =
   'id, first_name, last_name, middle_name, phone, birth_date, region, district, address, ' +
@@ -157,6 +158,41 @@ export default function patientsRoutes(pool, authMiddleware) {
         return res.status(400).json({ success: false, error: 'phone yoki mrn talab qilinadi' });
       }
       res.json({ success: true, patient });
+    } catch (e) { safeError(res, e); }
+  });
+
+  // GET /duplicate-check?phone=&passport_number=&name= — dublikat tekshiruvi
+  // (roadmap modul 2: telefon, pasport/JSHSHIR va ism bo'yicha). Yangi karta
+  // ochishdan OLDIN registrator shu endpoint bilan takroriy yozuvlarni ko'radi.
+  router.get('/duplicate-check', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = tenantOf(req);
+      const phone = normPhone(req.query.phone);
+      const passport = String(req.query.passport_number || '').trim();
+      const name = String(req.query.name || '').trim();
+      if (!phone && !passport && !name) {
+        return res.status(400).json({ success: false, error: 'phone, passport_number yoki name dan kamida bittasi kerak' });
+      }
+
+      const conditions = [];
+      const params = [tenantId];
+      if (phone) { params.push(phone); conditions.push(`phone = $${params.length}`); }
+      if (passport) { params.push(passport.toLowerCase()); conditions.push(`LOWER(TRIM(passport_number)) = $${params.length}`); }
+      if (name) {
+        params.push(`%${name.split(/\s+/)[0]}%`);
+        conditions.push(`(first_name ILIKE $${params.length} OR last_name ILIKE $${params.length})`);
+      }
+
+      const candidates = await q(
+        `SELECT ${PATIENT_COLUMNS} FROM patients
+          WHERE tenant_id = $1 AND (${conditions.join(' OR ')})
+          ORDER BY created_at DESC LIMIT 20`,
+        params
+      );
+      const matches = candidates
+        .map((p) => ({ patient: p, match_reasons: matchReasons(p, { phone, passport_number: passport, name }) }))
+        .filter((m) => m.match_reasons.length > 0);
+      res.json({ success: true, total: matches.length, matches });
     } catch (e) { safeError(res, e); }
   });
 

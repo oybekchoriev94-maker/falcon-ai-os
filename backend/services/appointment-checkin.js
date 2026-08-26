@@ -46,9 +46,37 @@ export async function checkInAppointment(pool, { tenantId, appointmentId, access
     `UPDATE appointments
         SET arrived_at = NOW(), checked_in_source = $3, checked_in_by = $4
       WHERE tenant_id = $1 AND id = $2
-      RETURNING id, patient_name, doctor_name, scheduled_at, arrived_at, checked_in_source`,
+      RETURNING id, patient_name, doctor_name, scheduled_at, arrived_at, checked_in_source, phone`,
     [tenantId, row.id, source, actorUserId]
   )).rows[0];
 
-  return { already: false, appointment: updated };
+  // Check-in -> navbat: bemor avtomatik jonli navbatga tushadi.
+  // Best-effort — navbat xatosi check-in'ni bekor qilmasligi kerak.
+  let queuePosition = null;
+  try {
+    const existing = (await pool.query(
+      `SELECT id FROM patient_queue
+        WHERE tenant_id = $1 AND LOWER(TRIM(patient_name)) = LOWER(TRIM($2))
+          AND status IN ('waiting', 'in_progress')`,
+      [tenantId, updated.patient_name]
+    )).rows[0];
+    if (!existing) {
+      const maxQ = (await pool.query(
+        `SELECT COALESCE(MAX(queue_number), 0) + 1 AS n
+           FROM patient_queue WHERE tenant_id = $1 AND status IN ('waiting', 'in_progress')`,
+        [tenantId]
+      )).rows[0];
+      await pool.query(
+        `INSERT INTO patient_queue (queue_number, patient_name, phone, doctor, notes, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [maxQ.n, updated.patient_name, updated.phone || '', updated.doctor_name || '',
+          `check-in: ${source}`, tenantId]
+      );
+      queuePosition = maxQ.n;
+    }
+  } catch (queueError) {
+    console.warn('[CHECKIN] Navbatga qo\'shish xatosi:', queueError.message);
+  }
+
+  return { already: false, appointment: updated, queue_position: queuePosition };
 }
