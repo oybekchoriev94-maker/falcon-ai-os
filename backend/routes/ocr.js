@@ -119,7 +119,8 @@ export default function ocrRoutes(upload) {
                         d.patient_id, d.ai_summary, d.error, d.created_at, d.reviewed_at,
                         TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS patient_name
                    FROM ocr_documents d
-                   LEFT JOIN patients p ON p.id = d.patient_id
+                   LEFT JOIN patients p
+                          ON p.id = d.patient_id AND p.tenant_id = d.tenant_id
                   WHERE d.tenant_id = $1`;
       const params = [req.user.tenant_id];
       if (req.query.patient_id && UUID_RE.test(String(req.query.patient_id))) {
@@ -145,7 +146,8 @@ export default function ocrRoutes(upload) {
       if (!UUID_RE.test(req.params.id)) return res.status(400).json({ success: false, error: "Noto'g'ri id" });
       const doc = await qGet(
         `SELECT d.*, TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS patient_name
-           FROM ocr_documents d LEFT JOIN patients p ON p.id = d.patient_id
+           FROM ocr_documents d
+           LEFT JOIN patients p ON p.id = d.patient_id AND p.tenant_id = d.tenant_id
           WHERE d.id = $1 AND d.tenant_id = $2`,
         [req.params.id, req.user.tenant_id]
       );
@@ -253,7 +255,12 @@ export default function ocrRoutes(upload) {
         [req.params.id, req.user.tenant_id]
       );
       if (!doc) return res.status(404).json({ success: false, error: 'Hujjat topilmadi' });
-      await q('UPDATE ocr_documents SET status = $2, error = NULL, updated_at = now() WHERE id = $1', [doc.id, 'processing']);
+      // tenant_id shartisiz UPDATE yozilgan edi. RLS uni to'sadi, lekin
+      // himoyani bitta qatlamga tashlab qo'ymaymiz: RLS konteksti
+      // o'rnatilmagan yo'l qo'shilsa (bu allaqachon bir marta sodir
+      // bo'lgan) bu so'rov boshqa klinikaning hujjatini o'zgartira olardi.
+      await q('UPDATE ocr_documents SET status = $2, error = NULL, updated_at = now() WHERE id = $1 AND tenant_id = $3',
+        [doc.id, 'processing', req.user.tenant_id]);
       const updated = await runPipeline(doc);
       res.json({ success: true, document: updated });
     } catch (e) {

@@ -145,34 +145,4 @@ const PREP_INSTRUCTIONS = {
   consult:       'Avvalgi tekshiruv natijalari va dori ro\'yxati bilan keling.',
 };
 
-export const preparationInstructor = {
-  name: 'preparation-instructor',
-  description: 'Tekshiruv oldi bemorga tayyorgarlik yo\'riqnomasi.',
-  version: '1.0.0',
-  category: 'patient_notify',
-  schema: z.object({
-    clinic_name: z.string(),
-    test_type: z.string(),
-    scheduled_at: z.string(),
-  }),
-
-  handler(input) {
-    const instruction = PREP_INSTRUCTIONS[input.test_type];
-    if (!instruction) return { message: null }; // ko'rsatma yo'q — yubormaymiz
-
-    const dateStr = fmtDate(input.scheduled_at);
-    const timeStr = fmtTime(input.scheduled_at);
-
-    return {
-      message:
-        `📋 *${input.clinic_name}* — Tayyorgarlik\n\n` +
-        `Ertaga ${dateStr} soat ${timeStr} tekshiruvingizga tayyorgarlik:\n\n` +
-        `${instruction}\n\n` +
-        `Savol bo'lsa qabulxonaga qo'ng'iroq qiling.`,
-    };
-  },
-};
-
-export const PATIENT_NOTIFY_AGENTS = [
-  appointmentReminder, labResultReady, followUpScheduler, preparationInstructor,
-];
+export const PATIENT_NOTIFY_AGENTS = [appointmentReminder, labResultReady, followUpScheduler];

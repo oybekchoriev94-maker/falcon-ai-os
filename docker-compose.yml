@@ -232,6 +232,11 @@ services:
       # tarqatiladi va bemor ovozi internetga ochilib qolardi.
       # Muddati o'tganlari cron orqali o'chiriladi (VOICE_RETENTION_DAYS).
       - app-voice:/app/voice-recordings
+      # Yuklangan hujjatlar (OCR). Volume BO'LMASA har deploy'da
+      # skanerlangan tibbiy kartalar O'CHIB KETADI, bazadagi yozuvlar esa
+      # qoladi — natijada "hujjat bor" deb ko'rinadi, lekin fayl yo'q.
+      # `public/` dan tashqarida: bemor hujjatlari statik tarqatilmasin.
+      - app-ocr:/app/ocr-documents
     depends_on:
       db-bootstrap:
         condition: service_completed_successfully
@@ -282,6 +287,8 @@ volumes:
   app-reports:
   # Ovozli diktantlar — xato bo'lganda qayta ishlash uchun saqlanadi
   app-voice:
+  # Yuklangan hujjatlar (OCR) — deploy'da yo'qolmasligi uchun
+  app-ocr:
   falcon-logs:
   caddy-data:
   caddy-config:

@@ -13,6 +13,7 @@
 //     ochilgan patient_context bo'lsa ham, faqat isim + yosh + allergiya).
 // ============================================================
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { patientChatbot } from '../../ai/agents/patient-chatbot.js';
 
 const TG_API = 'https://api.telegram.org';
@@ -49,10 +50,33 @@ export default function patientBotRoutes(pool) {
   // POST /api/patient-bot/webhook
   // Telegram Bot API webhook. Secret solishtiriladi.
   router.post('/webhook', async (req, res) => {
-    // 1) Secret tekshirish
+    // 1) Secret tekshirish — FAIL-CLOSED.
+    //
+    // Ilgari shart `if (expected && provided !== expected)` edi: sozlama
+    // bo'lmasa tekshiruv BUTUNLAY o'tkazib yuborilardi va istalgan kishi
+    // soxta Telegram xabarlarini yuborib, bemor nomidan ish qila olardi.
+    // Sozlamani unutish oson, va uni unutganda tizim JIM ravishda
+    // himoyasiz qolardi — eng xavfli turdagi nosozlik.
+    //
+    // Endi sozlama yo'q bo'lsa so'rov RAD ETILADI. Uni o'rnatish uchun:
+    //   1) .env ga TELEGRAM_PATIENT_WEBHOOK_SECRET=<tasodifiy satr>
+    //   2) Telegram'ga aytish: setWebhook?secret_token=<o'sha satr>
     const expected = process.env.TELEGRAM_PATIENT_WEBHOOK_SECRET || '';
-    const provided = req.headers['x-telegram-bot-api-secret-token'] || '';
-    if (expected && provided !== expected) {
+    if (!expected) {
+      console.error(
+        '[BOT] TELEGRAM_PATIENT_WEBHOOK_SECRET sozlanmagan — webhook rad etildi. ' +
+        'Soxta xabarlarni oldini olish uchun uni .env ga qo\'shing va ' +
+        'Telegram setWebhook da secret_token sifatida bering.'
+      );
+      return res.status(503).json({ ok: false, error: 'Webhook not configured' });
+    }
+
+    // Vaqt bo'yicha hujumga qarshi: oddiy `!==` solishtiruvi belgi-belgi
+    // to'xtaydi va javob vaqti orqali secretni bit-bit topish mumkin.
+    const provided = String(req.headers['x-telegram-bot-api-secret-token'] || '');
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       return res.status(403).json({ ok: false, error: 'Invalid secret' });
     }
 

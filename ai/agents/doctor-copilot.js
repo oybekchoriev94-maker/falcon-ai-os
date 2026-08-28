@@ -127,8 +127,15 @@ export const doctorCopilot = {
         input.question,
         { timeoutMs: 10000, maxTokens: 600 }
       );
+      // Bo'sh javobni "muvaffaqiyat" deb qaytarmaymiz: shifokor bo'sh
+      // oynani ko'rib, savol yetib bormadimi yoki AI javob bermadimi —
+      // farqini bilmasdi.
+      const clean = String(answer || '').trim();
+      if (!clean) {
+        return { error: 'AI javob bermadi. Qayta urinib ko\'ring.', code: 'EMPTY_LLM_RESULT', answer: null };
+      }
       return {
-        answer: String(answer || '').slice(0, 2000),
+        answer: clean.slice(0, 2000),
         disclaimer: 'AI tavsiya — yakuniy qaror shifokor ixtiyorida',
       };
     } catch (e) {

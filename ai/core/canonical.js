@@ -18,7 +18,7 @@
 //   - actions                  bajara oladigan amallari
 //   - requires_human_approval  inson tasdig'isiz bajarib BO'LMAYDIGAN
 //                              harakatlari
-//   - mapped_agents            hozirgi 34 agentdan qaysilari shu kanonik
+//   - mapped_agents            ro'yxatdagi agentlardan qaysilari shu kanonik
 //                              agentga xizmat qiladi
 //
 // QAT'IY QOIDA (yo'l xarita): AI mustaqil ravishda yakuniy tashxis,
@@ -36,7 +36,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     data_scope: ['patients', 'appointments', 'doctor_schedules', 'referrals', 'referral_partners'],
     actions: ['create_patient', 'book_appointment', 'update_patient_card', 'track_referral'],
     requires_human_approval: ['merge_patients', 'delete_patient'],
-    mapped_agents: ['receptionist', 'referral-agent', 'b2b-referral'],
+    mapped_agents: [],   // hozircha alohida agent yo'q — oqim kodda
   }),
   Object.freeze({
     id: 'doctor-copilot',
@@ -48,9 +48,8 @@ export const CANONICAL_AGENTS = Object.freeze([
     actions: ['propose_action', 'medication_check', 'autofill_form', 'suggest_diagnosis', 'triage', 'flag_vital_anomaly'],
     requires_human_approval: ['execute_any_proposal', 'confirm_diagnosis'],
     mapped_agents: [
-      'doctor-copilot', 'voice-command', 'smart-autofill', 'medication-coach',
-      'diagnosis-suggester', 'drug-interaction', 'triage-agent',
-      'vitals-anomaly', 'vital-anomaly',
+      'doctor-copilot', 'voice-command', 'smart-autofill',
+      'drug-interaction', 'triage-agent', 'vital-anomaly',
     ],
   }),
   Object.freeze({
@@ -73,7 +72,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     data_scope: ['patient_consultations', 'medical_reports', 'daily_notes'],
     actions: ['create_draft', 'generate_epicrisis', 'ocr_import'],
     requires_human_approval: ['confirm_record'],
-    mapped_agents: ['medical-scribe', 'obhod-scribe', 'epicrisis-writer'],
+    mapped_agents: ['obhod-scribe', 'epicrisis-writer'],
   }),
   Object.freeze({
     id: 'laboratory',
@@ -84,7 +83,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     data_scope: ['lab_orders', 'medical_reports', 'patients'],
     actions: ['interpret_lab', 'draft_conclusion', 'flag_critical_value', 'notify_result_ready'],
     requires_human_approval: ['confirm_conclusion'],
-    mapped_agents: ['lab-conclusion-helper', 'lab-interpreter', 'lab-critical', 'lab-result-ready'],
+    mapped_agents: ['lab-interpreter', 'lab-critical', 'lab-result-ready'],
   }),
   Object.freeze({
     id: 'pharmacy-inventory',
@@ -95,7 +94,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     data_scope: ['inventory_items', 'inventory_batches', 'inventory_transactions'],
     actions: ['flag_low_stock', 'flag_expiry', 'propose_purchase'],
     requires_human_approval: ['confirm_purchase', 'write_off_stock'],
-    mapped_agents: ['inventory-manager'],
+    mapped_agents: [],   // ombor agenti o'chirilgan (chaqiruvchisi yo'q edi)
   }),
   Object.freeze({
     id: 'hr-attendance',
@@ -139,7 +138,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     data_scope: ['doctor_analytics', 'appointments', 'patients', 'usage_metering'],
     actions: ['generate_report', 'churn_risk_report', 'staff_utilization_report'],
     requires_human_approval: [],
-    mapped_agents: ['analytics-agent', 'churn-detector', 'staff-utilization'],
+    mapped_agents: ['churn-detector', 'staff-utilization'],
   }),
   Object.freeze({
     id: 'compliance-audit',
@@ -162,8 +161,7 @@ export const CANONICAL_AGENTS = Object.freeze([
     actions: ['send_reminder', 'send_instructions', 'answer_faq', 'schedule_follow_up'],
     requires_human_approval: ['send_medical_advice'],
     mapped_agents: [
-      'patient-chatbot', 'symptom-checker', 'photo-triage',
-      'appointment-reminder', 'follow-up-scheduler', 'preparation-instructor',
+      'patient-chatbot', 'appointment-reminder', 'follow-up-scheduler',
     ],
   }),
 ]);

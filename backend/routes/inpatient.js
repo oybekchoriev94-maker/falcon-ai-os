@@ -1177,13 +1177,11 @@ export default function(pool, authMiddleware, checkRole, upload) {
            text, parsed.ai_summary || null, JSON.stringify(parsed)]
         );
 
-        // Ai_requests hisobiga qo'shamiz
-        await q(
-          `INSERT INTO usage_metering (tenant_id, metric, count, date)
-           VALUES ($1, 'ai_requests', 1, CURRENT_DATE)
-           ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`,
-          [tenantId]
-        ).catch(() => {});
+        // AI hisobi bu yerda YOZILMAYDI: obhod diktanti orkestrator orqali
+        // o'tadi (executeAgent -> obhod-scribe) va runtime uni O'ZI hisobga
+        // oladi (ai/core/runtime.js: meterUsage). Bu yerda qo'lda yozilsa
+        // bitta diktant IKKI marta hisoblanardi va klinikaning AI kvotasi
+        // ikki barobar tez tugardi.
 
         // AUTO-AGENT: vital-anomaly ovozli obhod maydonlaridan.
         // AI ajrata olmagan bo'lsa ISHGA TUSHIRMAYMIZ: barcha ko'rsatkich
