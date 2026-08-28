@@ -20,6 +20,8 @@ import { createPayment } from '../services/payment-gateway.js';
 import { upsertPatientByPhone } from '../services/patient-store.js';
 import { checkInAppointment } from '../services/appointment-checkin.js';
 import { listConsultations } from '../services/consultation-catalog.js';
+import { getPlatformPool } from '../db.js';
+import { bindTenantDbContext } from '../request-tenant-context.js';
 
 // Telegram "Men keldim" tugmasi — autentifikatsiyasiz, shuning uchun
 // access_code brute-force'iga qarshi oddiy IP bo'yicha limit.
@@ -345,13 +347,45 @@ export default function bookingRoutes(pool, authMiddleware, telegramOrJwtAuth, s
   const tid = (req) => req.user?.tenant_id || req.tenant_id;
 
   // Bemor (public) so'rovi uchun tenant: ?clinic=<id|code>, aks holda 'default'.
-  // Production hozircha yagona 'default' tenant — ko'p klinika bo'lganda code orqali.
+  //
+  // PLATFORMA POOLI SHART: `tenants` jadvalida ham RLS yoqilgan, ilova esa
+  // bazaga `falcon_app` roli bilan ulanadi (RLS_ENFORCE_APP_ROLE=true) va
+  // uni chetlab o'tolmaydi. Oddiy pool bilan bu so'rov HECH NARSA
+  // qaytarmasdi va funksiya har doim 'default' ga tushib qolardi — ya'ni
+  // `?clinic=` parametri umuman ishlamasdi. `tenants` — platforma registri,
+  // tenantga tegishli ma'lumot emas, shuning uchun bypass o'rinli.
   async function resolvePublicTenant(req) {
     const clinic = String(req.query.clinic || req.body?.clinic || '').trim();
     if (!clinic) return 'default';
-    const row = await qGet('SELECT id FROM tenants WHERE id = $1 OR code = $2 LIMIT 1', [clinic, clinic]);
-    return row?.id || 'default';
+    const { rows } = await getPlatformPool().query(
+      'SELECT id FROM tenants WHERE id = $1 OR code = $2 LIMIT 1', [clinic, clinic]
+    );
+    return rows[0]?.id || 'default';
   }
+
+  // ── OCHIQ ENDPOINTLAR UCHUN RLS KONTEKSTI ──
+  //
+  // MUAMMO: RLS siyosati `tenant_id = current_setting('app.tenant_id')`.
+  // JWT bo'lgan so'rovlarda bu kontekstni auth middleware o'rnatadi
+  // (shared.js: bindTenantDbContext). Ochiq endpointlarda JWT yo'q, ya'ni
+  // kontekst BO'SH qoladi va shart NULL bilan solishtiriladi — hech qanday
+  // qator mos kelmaydi.
+  //
+  // Natija eng yomon turdagi nosozlik: so'rov XATO BERMAYDI, HTTP 200 va
+  // `success: true` bilan BO'SH massiv qaytaradi. Bemor "shifokor yo'q"
+  // deb ko'radi, logda esa hech narsa yo'q. Production'da aynan shunday
+  // bo'ldi — bazada 18 shifokor turgan holda katalog bo'sh chiqdi.
+  //
+  // Shuning uchun tenant klinika kodidan aniqlanib, kontekst BARCHA
+  // /public/* marshrutlariga bir joyda bog'lanadi. Bu vakolat bermaydi:
+  // har bir query baribir o'z tenant_id si bilan cheklanadi.
+  router.use('/public', async (req, res, next) => {
+    try {
+      const tenantId = await resolvePublicTenant(req);
+      req.tenant_id = tenantId;
+      return bindTenantDbContext(tenantId, res, next);
+    } catch (e) { serverError(res, e); }
+  });
 
   // ============================================================
   // XODIM (staff) — autentifikatsiyalangan

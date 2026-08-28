@@ -29,6 +29,7 @@ import { checkInAppointment } from '../services/appointment-checkin.js';
 import { dedupeKey, buildCallAnnouncement } from '../services/queue-service.js';
 import { isTtsEnabled, synthesize, concatWavBuffers } from '../services/tts-client.js';
 import { listConsultations } from '../services/consultation-catalog.js';
+import { bindTenantDbContext } from '../request-tenant-context.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -91,6 +92,7 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
 
       req.kioskDevice = dev;
       req.kioskTenantId = dev.tenant_id;
+      req.tenant_id = dev.tenant_id;
 
       // last_seen (fire-and-forget)
       pool.query(
@@ -98,7 +100,11 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
         [ip || null, dev.id]
       ).catch(() => {});
 
-      next();
+      // RLS KONTEKSTI MAJBURIY — device-auth.js dagi izohga qarang.
+      // Busiz kiosk barcha so'rovlarda bo'sh natija olardi: xizmatlar
+      // ro'yxati bo'sh, shifokorlar bo'sh, bemor topilmaydi, bron
+      // yozilmaydi. Hech qanday xato chiqmaydi.
+      return bindTenantDbContext(dev.tenant_id, res, next);
     } catch (e) {
       console.error('[KIOSK auth]', e);
       res.status(500).json({ success: false, error: 'Server xatosi' });

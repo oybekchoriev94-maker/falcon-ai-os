@@ -11,6 +11,7 @@
 // Token bazada OCHIQ SAQLANMAYDI — faqat sha256 hash.
 // ============================================================
 import crypto from 'node:crypto';
+import { bindTenantDbContext } from '../request-tenant-context.js';
 
 export const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -63,6 +64,7 @@ export function makeDeviceAuth(pool, allowKinds = null) {
 
       req.device = dev;
       req.deviceTenantId = dev.tenant_id;
+      req.tenant_id = dev.tenant_id;
 
       // last_seen — javobni kutkuzmaymiz
       pool.query(
@@ -70,7 +72,14 @@ export function makeDeviceAuth(pool, allowKinds = null) {
         [ip || null, dev.id]
       ).catch(() => {});
 
-      next();
+      // RLS KONTEKSTI MAJBURIY. Ilova bazaga `falcon_app` roli bilan
+      // ulanadi (RLS_ENFORCE_APP_ROLE=true) va RLS'ni chetlab o'tolmaydi;
+      // siyosat `tenant_id = current_setting('app.tenant_id')`. JWT bilan
+      // kirilganda buni auth middleware o'rnatadi, qurilma tokeni bilan
+      // esa hech kim o'rnatmasdi — natijada har bir SELECT bo'sh qaytar,
+      // har bir INSERT esa WITH CHECK bo'yicha rad etilardi. Xato
+      // chiqmaydi, shuning uchun buni sezish deyarli imkonsiz.
+      return bindTenantDbContext(dev.tenant_id, res, next);
     } catch (e) {
       console.error('[DEVICE auth]', e);
       res.status(500).json({ success: false, error: 'Server xatosi' });
