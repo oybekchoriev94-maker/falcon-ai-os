@@ -16,7 +16,28 @@ import { checkSubscription, checkDoctorLimit } from '../subscription-middleware.
 
 export default function doctorRoutes(pool, authMiddleware, checkRole, validate, schemas, telegramOrJwtAuth, upload) {
   const router = Router();
-  router.use(authMiddleware);
+
+  // BU YERGA `router.use(authMiddleware)` QO'YMANG.
+  //
+  // Bu router server.js da `/api` ILDIZIGA mount qilingan
+  // (targetApp.use(`${p}`, doctorRoutes(...))). Express'da ildizga
+  // mount qilingan routerdagi `router.use(mw)` — o'sha prefiks ostidagi
+  // BARCHA so'rovlar uchun ishlaydi, hatto bu router'da mos marshrut
+  // bo'lmasa ham. authMiddleware esa token yo'q bo'lsa next() emas,
+  // to'g'ridan-to'g'ri 401 qaytaradi.
+  //
+  // Natijada undan KEYIN mount qilingan hamma narsa o'ladi:
+  //   /api/booking/public/*  — bemorning ochiq broni (Telegram, kiosk)
+  //   /api/patient-bot/*     — Telegram webhook (auth yo'q, secret bilan)
+  //   /api/kiosk/*           — qurilma tokeni (X-Kiosk-Token) bilan ishlaydi
+  //   /api/attendance/*      — Face ID agenti qurilma tokeni bilan yuboradi
+  // Bularning hech biri JWT ishlatmaydi, shuning uchun hammasi 401 olardi.
+  // Production'da aynan shu sodir bo'ldi: kiosk, davomat, bot va ochiq
+  // bron bir vaqtda ishlamay qoldi.
+  //
+  // Himoya HAR MARSHRUTDA alohida beriladi (pastda hammasida bor):
+  // authMiddleware + checkRole, yoki ataylab optionalAuth
+  // (/doctors va /campaign/settings bemorga ochiq bo'lishi kerak).
 
   async function q(sql, params = []) {
     const result = await pool.query(sql, params);
