@@ -25,6 +25,7 @@ import {
   DOC_TYPES, DOC_TYPE_LABEL, buildExtractionPrompt,
   sanitizeRawText, parseStructured, decideStatus,
 } from '../services/ocr-pipeline.js';
+import { serverFail } from '../services/safe-error.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -136,7 +137,7 @@ export default function ocrRoutes(upload) {
       const rows = await q(sql, params);
       res.json({ success: true, total: rows.length, documents: rows });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Hujjatlar ro'yxatini olib bo'lmadi", details: e.message });
+      serverFail(res, e, "Hujjatlar ro'yxatini olib bo'lmadi", 500);
     }
   });
 
@@ -154,7 +155,7 @@ export default function ocrRoutes(upload) {
       if (!doc) return res.status(404).json({ success: false, error: 'Hujjat topilmadi' });
       res.json({ success: true, document: doc, doc_type_label: DOC_TYPE_LABEL[doc.doc_type] || doc.doc_type });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Hujjatni o'qib bo'lmadi", details: e.message });
+      serverFail(res, e, "Hujjatni o'qib bo'lmadi", 500);
     }
   });
 
@@ -188,7 +189,7 @@ export default function ocrRoutes(upload) {
         );
         res.status(201).json({ success: true, document: doc });
       } catch (e) {
-        res.status(500).json({ success: false, error: "Hujjatni saqlab bo'lmadi", details: e.message });
+        serverFail(res, e, "Hujjatni saqlab bo'lmadi", 500);
       }
     });
 
@@ -224,7 +225,7 @@ export default function ocrRoutes(upload) {
         );
         res.status(201).json({ success: true, document: doc });
       } catch (e) {
-        res.status(500).json({ success: false, error: "Diktantni saqlab bo'lmadi", details: e.message });
+        serverFail(res, e, "Diktantni saqlab bo'lmadi", 500);
       }
     });
 
@@ -242,7 +243,7 @@ export default function ocrRoutes(upload) {
         );
         res.status(201).json({ success: true, document: doc });
       } catch (e) {
-        res.status(500).json({ success: false, error: "Hujjatni saqlab bo'lmadi", details: e.message });
+        serverFail(res, e, "Hujjatni saqlab bo'lmadi", 500);
       }
     });
 
@@ -264,7 +265,7 @@ export default function ocrRoutes(upload) {
       const updated = await runPipeline(doc);
       res.json({ success: true, document: updated });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Hujjatni qayta ishlab bo'lmadi", details: e.message });
+      serverFail(res, e, "Hujjatni qayta ishlab bo'lmadi", 500);
     }
   });
 
@@ -306,7 +307,7 @@ export default function ocrRoutes(upload) {
         );
         res.json({ success: true, document: updated });
       } catch (e) {
-        res.status(500).json({ success: false, error: "Hujjatni yangilab bo'lmadi", details: e.message });
+        serverFail(res, e, "Hujjatni yangilab bo'lmadi", 500);
       }
     });
 
@@ -327,7 +328,7 @@ export default function ocrRoutes(upload) {
       }
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Hujjatni o'chirib bo'lmadi", details: e.message });
+      serverFail(res, e, "Hujjatni o'chirib bo'lmadi", 500);
     }
   });
 

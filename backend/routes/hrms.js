@@ -28,6 +28,7 @@ import {
   updateFrappeDoc,
   findFrappeDoc,
 } from '../services/frappe-client.js';
+import { serverFail } from '../services/safe-error.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const FRAPPE_COMPANY = process.env.FRAPPE_COMPANY || '';
@@ -113,7 +114,7 @@ export default function hrmsRoutes() {
       const rows = await q(`${sql} ORDER BY full_name`, params);
       res.json({ success: true, total: rows.length, staff: rows });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Ro'yxatni olib bo'lmadi", details: e.message });
+      serverFail(res, e, "Ro'yxatni olib bo'lmadi", 500);
     }
   });
 
@@ -175,7 +176,7 @@ export default function hrmsRoutes() {
         res.status(409).json({ success: false, error: 'Bu ismli xodim allaqachon bor' });
         return;
       }
-      res.status(500).json({ success: false, error: 'Yangilanmadi', details: e.message });
+      serverFail(res, e, 'Yangilanmadi', 500);
     }
   });
 
@@ -211,7 +212,7 @@ export default function hrmsRoutes() {
       );
       res.json({ success: true, synced: true, frappe_employee_name: name });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -259,7 +260,7 @@ export default function hrmsRoutes() {
       }
       res.json({ success: true, date, ...result });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 

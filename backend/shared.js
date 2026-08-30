@@ -79,15 +79,41 @@ export async function authMiddleware(req, res, next) {
  * boshqasining ma'lumotini so'ray oladi. JWT esa soxtalashtirilmaydi, shuning
  * uchun token mavjud bo'lsa u har doim ustun turishi kerak.
  */
-export function optionalAuth(req, _res, next) {
+export async function optionalAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) return next();
+
+  let decoded;
   try {
-    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
-    req.user = decoded;
-    if (decoded.tenant_id) req.tenant_id = decoded.tenant_id;
-  } catch { /* yaroqsiz token — ochiq foydalanuvchi sifatida davom etadi */ }
-  next();
+    // JWT_VERIFY_OPTIONS (issuer + audience) qo'shildi. Ilgari oddiy
+    // `jwt.verify` ishlatilardi, ya'ni boshqa xizmat uchun berilgan,
+    // lekin bir xil sir bilan imzolangan token ham qabul qilinardi.
+    decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET, JWT_VERIFY_OPTIONS);
+  } catch {
+    return next();   // yaroqsiz token — ochiq foydalanuvchi sifatida davom etadi
+  }
+
+  // BEKOR QILINGAN TOKEN TEKSHIRUVI. Ilgari bu yerda yo'q edi: xodim
+  // tizimdan chiqqach uning tokeni authMiddleware'da rad etilardi, lekin
+  // optionalAuth'li endpointlarda (masalan /api/doctors) HAMON ishlar va
+  // xodim darajasidagi ma'lumot berardi.
+  try {
+    const pool = req.app?.locals?.pool || (await import('./db.js')).getPool();
+    if (pool && decoded.jti) {
+      const r = await pool.query('SELECT 1 FROM token_blacklist WHERE jti = $1', [decoded.jti]);
+      if (r.rows.length) return next();   // bekor qilingan — anonim davom etadi
+    }
+  } catch {
+    // Tekshirib bo'lmadi. Bu ochiq endpoint, shuning uchun 503 qaytarmaymiz —
+    // xavfsiz tomonga og'amiz va tokenni HISOBGA OLMAYMIZ.
+    return next();
+  }
+
+  req.user = decoded;
+  if (!decoded.tenant_id) return next();
+  req.tenant_id = decoded.tenant_id;
+  // RLS konteksti — tokendagi tenant sarlavhadagidan ustun turadi
+  return bindTenantDbContext(decoded.tenant_id, res, next);
 }
 
 export function checkRole(...allowedRoles) {

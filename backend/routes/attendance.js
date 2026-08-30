@@ -204,7 +204,12 @@ export default function attendanceRoutes(pool, authMiddleware, checkRole) {
   }
 
   // GET /api/attendance/today
-  router.get('/today', authMiddleware, async (req, res) => {
+  // Rol cheklovi: davomat — XODIMLAR ustidan kuzatuv ma'lumoti (kim
+  // qachon keldi/ketdi). Ilgari faqat `authMiddleware` turardi, ya'ni
+  // istalgan shifokor yoki registrator butun jamoaning davomatini
+  // ko'ra olardi. Interfeys menyusi allaqachon ceo/admin bilan
+  // cheklangan edi — backend esa emas.
+  router.get('/today', authMiddleware, checkRole('ceo', 'admin', 'superadmin'), async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
@@ -249,7 +254,7 @@ export default function attendanceRoutes(pool, authMiddleware, checkRole) {
   });
 
   // GET /api/attendance/report?date=YYYY-MM-DD
-  router.get('/report', authMiddleware, async (req, res) => {
+  router.get('/report', authMiddleware, checkRole('ceo', 'admin', 'superadmin'), async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id;
       const d = String(req.query.date || '').slice(0, 10);

@@ -89,11 +89,18 @@ export default function b2bRoutes(pool, authMiddleware, checkRole, validate, sch
 
   router.get('/qr/:token', async (req, res) => {
     try {
-      // Public QR token is the capability used to discover its tenant.
+      // FAQAT qr_code_token bo'yicha — bu maxfiy, tasodifiy qiymat.
+      //
+      // Ilgari `OR referral_id = $1` ham bor edi. referral_id esa MAXFIY
+      // EMAS: u chekda chop etiladi, xabarlarda yuboriladi va xodimlarga
+      // ko'rinadi. Ya'ni uni bilgan istalgan kishi bu ochiq endpointdan
+      // BOSHQA klinikaning bemori ismini va xizmat turini olardi.
+      // QR token esa faqat yo'llanma qog'ozidagi kodni skanerlagan
+      // kishida bo'ladi — capability sifatida to'g'ri ishlaydi.
       const ref = await platformQGet(
         `SELECT referral_id, patient_name, service_required, sender_clinic_id, status, created_at
          FROM referrals
-         WHERE qr_code_token = $1 OR referral_id = $1`,
+         WHERE qr_code_token = $1`,
         [req.params.token]
       );
       if (!ref) return res.status(404).json({ success: false, error: 'Yo\'llanma topilmadi' });

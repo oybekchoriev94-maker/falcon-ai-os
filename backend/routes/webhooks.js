@@ -47,7 +47,42 @@ export default function webhookRoutes() {
         return res.status(401).json({ error: -1, error_note: 'SIGN CHECK FAILED' });
       }
       const { click_trans_id, service_id, merchant_trans_id, amount, status } = req.body;
+
+      // Bizning service_id ekanini tekshiramiz. U imzoga kiradi, ya'ni
+      // soxtalashtirib bo'lmaydi — lekin noto'g'ri sozlangan boshqa
+      // merchant hisobidan kelgan to'lov obunani uzaytirib yubormasin.
+      const expectedService = process.env.CLICK_SERVICE_ID || '';
+      if (expectedService && String(service_id) !== String(expectedService)) {
+        console.warn(`[CLICK] Boshqa service_id: ${service_id} (kutilgan ${expectedService})`);
+        return res.status(400).json({ error: -1, error_note: 'WRONG SERVICE' });
+      }
+
       if (status === 0) {
+        // TO'LANGAN SUMMA REJA NARXIGA YETADIMI.
+        //
+        // Ilgari summa UMUMAN tekshirilmasdi: 1000 so'mlik to'lov ham
+        // to'liq bir oylik obunani ochib berardi. Imzo to'g'ri bo'lgani
+        // uchun bu "haqiqiy" to'lov hisoblanardi — ya'ni klinika
+        // istalgan kichik summa bilan oyni uzaytira olardi.
+        const plan = await qGet(
+          `SELECT p.monthly_price
+             FROM subscriptions s
+             JOIN subscription_plans p ON p.id = s.plan_id
+            WHERE s.tenant_id = $1`,
+          [merchant_trans_id]
+        );
+        if (!plan) {
+          console.error(`[CLICK] Obuna/reja topilmadi: tenant=${merchant_trans_id}`);
+          return res.status(400).json({ error: -5, error_note: 'SUBSCRIPTION NOT FOUND' });
+        }
+        // Kichik farqga yo'l qo'yamiz (yaxlitlash, komissiya)
+        const paid = Number(amount) || 0;
+        const price = Number(plan.monthly_price) || 0;
+        if (price > 0 && paid < price - 1) {
+          console.error(`[CLICK] Summa yetarli emas: to'landi ${paid}, kerak ${price} (tenant=${merchant_trans_id})`);
+          return res.status(400).json({ error: -2, error_note: 'INCORRECT AMOUNT' });
+        }
+
         await q(
           `UPDATE subscriptions SET current_period_start = current_period_end,
             current_period_end = current_period_end + INTERVAL '1 month' WHERE tenant_id = $1`,

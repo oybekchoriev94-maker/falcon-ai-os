@@ -20,6 +20,7 @@ import {
   createErpnextDoc,
   updateErpnextDoc,
 } from '../services/erpnext-client.js';
+import { serverFail } from '../services/safe-error.js';
 
 const ERPNEXT_COMPANY = process.env.ERPNEXT_COMPANY || '';
 const ERPNEXT_WAREHOUSE = process.env.ERPNEXT_WAREHOUSE || '';
@@ -100,7 +101,7 @@ export default function erpnextRoutes() {
       );
       res.json({ success: true, synced: true, erpnext_item_code: name });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -129,7 +130,7 @@ export default function erpnextRoutes() {
       }
       res.json({ success: true, total: items.length, ...result });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -189,7 +190,7 @@ export default function erpnextRoutes() {
       );
       res.json({ success: true, synced: true, erpnext_entry: name });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -205,7 +206,7 @@ export default function erpnextRoutes() {
       );
       res.json({ success: true, total: rows.length, mappings: rows });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Ro'yxatni olib bo'lmadi", details: e.message });
+      serverFail(res, e, "Ro'yxatni olib bo'lmadi", 500);
     }
   });
 

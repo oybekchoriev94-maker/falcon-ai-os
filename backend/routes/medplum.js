@@ -21,6 +21,7 @@ import {
   createFhirResource,
   updateFhirResource,
 } from '../services/medplum-client.js';
+import { serverFail } from '../services/safe-error.js';
 
 const SYSTEM = 'medplum';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -118,7 +119,7 @@ export default function medplumRoutes() {
       }
       res.json({ success: true, synced: true, entity: 'Patient', external_id: r.external_id });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -181,7 +182,7 @@ export default function medplumRoutes() {
         patient_external_id: patientSync.external_id,
       });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Sinhronizatsiya xatosi', details: e.message });
+      serverFail(res, e, 'Sinhronizatsiya xatosi', 500);
     }
   });
 
@@ -197,7 +198,7 @@ export default function medplumRoutes() {
       );
       res.json({ success: true, total: rows.length, mappings: rows });
     } catch (e) {
-      res.status(500).json({ success: false, error: "Ro'yxatni olib bo'lmadi", details: e.message });
+      serverFail(res, e, "Ro'yxatni olib bo'lmadi", 500);
     }
   });
 

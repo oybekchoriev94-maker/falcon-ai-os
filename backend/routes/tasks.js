@@ -11,6 +11,7 @@ import { q, qGet } from '../db.js';
 import { authMiddleware, validate } from '../shared.js';
 import { requirePermission } from '../rbac.js';
 import { canTransition, isOverdue, summarizeTasks } from '../services/task-service.js';
+import { serverFail } from '../services/safe-error.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,7 +101,7 @@ export default function taskRoutes() {
       );
       res.status(201).json({ success: true, task: row });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Vazifa yaratilmadi', details: e.message });
+      serverFail(res, e, 'Vazifa yaratilmadi', 500);
     }
   });
 
@@ -135,7 +136,7 @@ export default function taskRoutes() {
       }
       res.json({ success: true, task: row });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Yangilanmadi', details: e.message });
+      serverFail(res, e, 'Yangilanmadi', 500);
     }
   });
 
@@ -173,7 +174,7 @@ export default function taskRoutes() {
       );
       res.json({ success: true, task: row });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Status yangilanmadi', details: e.message });
+      serverFail(res, e, 'Status yangilanmadi', 500);
     }
   });
 

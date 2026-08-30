@@ -176,8 +176,39 @@ export default function(pool, authMiddleware, checkRole, validate, schemas, tele
       );
       if (user) {
         if (user.tenant_status !== 'active') return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+
+        // HISOB BLOKLASH — shifokorlarникi bilan bir xil qoida.
+        // Ilgari bu FAQAT `doctors` uchun bor edi, ya'ni eng ko'p
+        // huquqli hisoblar (ceo, admin) cheksiz parol tanlashga ochiq
+        // edi. HTTP cheklovi (authLimiter) xotirada saqlanadi va
+        // konteyner qayta ishga tushganda nolga tushadi; bazadagi
+        // hisoblagich esa deploydan keyin ham qoladi.
+        const MAX_ATTEMPTS = 5;
+        const LOCKOUT_MINUTES = 15;
+        if (user.failed_attempts >= MAX_ATTEMPTS && user.locked_until) {
+          const lockTime = new Date(user.locked_until).getTime();
+          if (Date.now() < lockTime) {
+            const remaining = Math.ceil((lockTime - Date.now()) / 60000);
+            return res.status(429).json({ error: `Hisob vaqtincha bloklangan. ${remaining} daqiqadan keyin urinib ko'ring.` });
+          }
+          await unsafeQuery.q('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1', [user.id]);
+          user.failed_attempts = 0;
+        }
+
         const valid = await bcrypt.compare(password, user.password);
-        if (!valid) return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+        if (!valid) {
+          const attempts = (user.failed_attempts || 0) + 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            await unsafeQuery.q(
+              'UPDATE users SET failed_attempts = $1, locked_until = NOW() + make_interval(mins => $2) WHERE id = $3',
+              [attempts, LOCKOUT_MINUTES, user.id]);
+          } else {
+            await unsafeQuery.q('UPDATE users SET failed_attempts = $1 WHERE id = $2', [attempts, user.id]);
+          }
+          return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+        }
+
+        await unsafeQuery.q('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1', [user.id]);
         const token = signToken(user);
         return res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
       }
