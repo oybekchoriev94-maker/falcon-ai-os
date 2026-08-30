@@ -610,8 +610,9 @@ export default function patientsRoutes(pool, authMiddleware) {
         [tenantId, pid]
       );
 
-      const { admissionSummary } = await import('../../ai/agents/time-savers.js');
-      const result = await admissionSummary.handler({
+      // Orkestrator orqali — LLM chaqiruvi, audit va hisob kerak
+      const { executeAgent } = await import('../../ai/orchestrator.js');
+      const run = await executeAgent('admission-summary', {
         patient: {
           age,
           gender: patient.gender,
@@ -632,7 +633,12 @@ export default function patientsRoutes(pool, authMiddleware) {
           diagnosis_initial: a.diagnosis_initial,
           diagnosis_final: a.diagnosis_final,
         })),
-      });
+      }, { tenantId, user: req.user });
+
+      if (!run.success) {
+        return res.status(500).json({ success: false, error: run.error, code: run.code });
+      }
+      const result = run.data;
 
       // Keshga yozamiz (24h)
       try {

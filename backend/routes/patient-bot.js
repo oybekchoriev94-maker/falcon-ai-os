@@ -14,7 +14,8 @@
 // ============================================================
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { patientChatbot } from '../../ai/agents/patient-chatbot.js';
+// Chatbot agenti orkestrator orqali chaqiriladi (executeAgent) —
+// validatsiya, timeout, AI hisobi va audit uchun.
 
 const TG_API = 'https://api.telegram.org';
 
@@ -155,7 +156,11 @@ export default function patientBotRoutes(pool) {
           ? Math.floor((Date.now() - new Date(patient.birth_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
           : null;
 
-        const result = await patientChatbot.handler({
+        // Orkestrator orqali — LLM chaqiruvi, audit va hisob kerak.
+        // Bemor bilan bevosita gaplashadigan agent, shuning uchun
+        // uning har ishga tushishi qayd etilishi ayniqsa muhim.
+        const { executeAgent } = await import('../../ai/orchestrator.js');
+        const run = await executeAgent('patient-chatbot', {
           message: text,
           history: historyArr,
           patient_context: patient ? {
@@ -164,7 +169,8 @@ export default function patientBotRoutes(pool) {
             known_allergies: patient.allergies,
           } : undefined,
           clinic_name: patient?.clinic_name,
-        });
+        }, { tenantId });
+        const result = run.success ? run.data : { reply: null, error: run.error };
 
         // 8) Bot javobini yozib qo'yamiz
         await pool.query(

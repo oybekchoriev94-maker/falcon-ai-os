@@ -37,6 +37,7 @@ function fmtWeekday(iso, tz = 'Asia/Tashkent') {
 // ============================================================
 export const appointmentReminder = {
   name: 'appointment-reminder',
+  metered: false,   // shablon matni, LLM yo'q
   description: 'Bemor bronidan N soat oldin Telegram xabar matni.',
   version: '1.0.0',
   category: 'patient_notify',
@@ -78,6 +79,7 @@ export const appointmentReminder = {
 // ============================================================
 export const labResultReady = {
   name: 'lab-result-ready',
+  metered: false,   // shablon matni, LLM yo'q
   description: 'Bemorga laborator natija tayyor bo\'lganini xabar qiladi.',
   version: '1.0.0',
   category: 'patient_notify',
@@ -105,6 +107,7 @@ export const labResultReady = {
 // ============================================================
 export const followUpScheduler = {
   name: 'follow-up-scheduler',
+  metered: false,   // shablon matni, LLM yo'q
   description: 'Statsionardan chiqqan bemorga 7 kun keyin kuzatuv xabari.',
   version: '1.0.0',
   category: 'patient_notify',

@@ -29,7 +29,7 @@ import { checkInAppointment } from '../services/appointment-checkin.js';
 import { dedupeKey, buildCallAnnouncement } from '../services/queue-service.js';
 import { isTtsEnabled, synthesize, concatWavBuffers } from '../services/tts-client.js';
 import { listConsultations } from '../services/consultation-catalog.js';
-import { bindTenantDbContext } from '../request-tenant-context.js';
+import { makeDeviceAuth } from '../services/device-auth.js';
 
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 
@@ -68,47 +68,28 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   const qGet = async (sql, p = []) => (await pool.query(sql, p)).rows[0] || null;
 
   // ── QURILMA AUTENTIFIKATSIYASI ────────────────────────────
-  async function deviceAuth(req, res, next) {
-    const token = req.headers['x-kiosk-token'] || '';
-    if (!token) {
-      return res.status(401).json({ success: false, error: 'Qurilma tokeni yo\'q', code: 'NO_DEVICE_TOKEN' });
-    }
-    try {
-      const dev = await qGet(
-        `SELECT id, tenant_id, name, kind, allowed_ips
-           FROM kiosk_devices
-          WHERE token_hash = $1 AND is_active = true`,
-        [sha256(token)]
-      );
-      if (!dev) {
-        return res.status(401).json({ success: false, error: 'Qurilma tokeni yaroqsiz', code: 'BAD_DEVICE_TOKEN' });
-      }
+  //
+  // Kiosk turlari (migratsiya 028): entry — kirish planshetи,
+  // queue_tv — navbat ekrani, result — natija chop etish nuqtasi.
+  //
+  // `attendance` ATAYLAB YO'Q: davomat agenti klinika kompyuterida
+  // ishlaydi va uning tokeni ilgari BARCHA kiosk endpointlariga kirardi —
+  // jumladan bemor qidiruvi (`/lookup`) va bron yozishga. Tur tekshiruvi
+  // `makeDeviceAuth` da bor edi, lekin kiosk o'z nusxasini ishlatib,
+  // uni o'tkazib yuborardi.
+  const KIOSK_KINDS = ['entry', 'queue_tv', 'result'];
+  const baseDeviceAuth = makeDeviceAuth(pool, KIOSK_KINDS);
 
-      // IP cheklovi (agar sozlangan bo'lsa)
-      const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
-      if (dev.allowed_ips?.length && ip && !dev.allowed_ips.includes(ip)) {
-        return res.status(403).json({ success: false, error: 'Ruxsat etilmagan tarmoq', code: 'IP_BLOCKED' });
-      }
-
-      req.kioskDevice = dev;
-      req.kioskTenantId = dev.tenant_id;
-      req.tenant_id = dev.tenant_id;
-
-      // last_seen (fire-and-forget)
-      pool.query(
-        `UPDATE kiosk_devices SET last_seen_at = NOW(), last_seen_ip = $1::inet WHERE id = $2`,
-        [ip || null, dev.id]
-      ).catch(() => {});
-
-      // RLS KONTEKSTI MAJBURIY — device-auth.js dagi izohga qarang.
-      // Busiz kiosk barcha so'rovlarda bo'sh natija olardi: xizmatlar
-      // ro'yxati bo'sh, shifokorlar bo'sh, bemor topilmaydi, bron
-      // yozilmaydi. Hech qanday xato chiqmaydi.
-      return bindTenantDbContext(dev.tenant_id, res, next);
-    } catch (e) {
-      console.error('[KIOSK auth]', e);
-      res.status(500).json({ success: false, error: 'Server xatosi' });
-    }
+  // Umumiy middleware `req.device` / `req.deviceTenantId` qo'yadi;
+  // kiosk kodi esa `req.kioskDevice` / `req.kioskTenantId` kutadi
+  // (28 ta joyda). Nomlarni moslashtiramiz — mantiq bitta joyda qoladi.
+  function deviceAuth(req, res, next) {
+    return baseDeviceAuth(req, res, (err) => {
+      if (err) return next(err);
+      req.kioskDevice = req.device;
+      req.kioskTenantId = req.deviceTenantId;
+      next();
+    });
   }
 
   // ============================================================

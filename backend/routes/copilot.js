@@ -14,7 +14,8 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { voiceCommand, doctorCopilot, smartAutofill } from '../../ai/agents/doctor-copilot.js';
+// Agentlar endi to'g'ridan-to'g'ri emas, orkestrator orqali chaqiriladi
+// (executeAgent) — validatsiya, timeout, hisob va audit uchun.
 
 // In-memory rate limiter (per user, per hour)
 const rateBuckets = new Map();
@@ -57,7 +58,17 @@ export default function copilotRoutes(pool, authMiddleware, checkRole, upload) {
         };
         if (req.file) input.audio = req.file.buffer;
 
-        const result = await voiceCommand.handler(input);
+        // Orkestrator orqali: kirish validatsiyasi, timeout, tenant
+        // konteksti, AI hisobi va audit (agent_executions).
+        // Ilgari `voiceCommand.handler()` to'g'ridan-to'g'ri chaqirilardi
+        // va bularning hech biri ishlamasdi — agent yiqilsa hech kim
+        // bilmasdi, hisobga ham olinmasdi.
+        const { executeAgent } = await import('../../ai/orchestrator.js');
+        const run = await executeAgent('voice-command', input, { tenantId, user: req.user });
+        if (!run.success) {
+          return res.status(400).json({ success: false, error: run.error, code: run.code });
+        }
+        const result = run.data;
         if (result.error) return res.status(400).json({ success: false, error: result.error, transcript: result.transcript });
 
         // Har taklifni bazaga yozamiz (pending, 2h expiry)
@@ -142,12 +153,15 @@ export default function copilotRoutes(pool, authMiddleware, checkRole, upload) {
         [tenantId, sessionId, req.user?.id || null, parsed.data.question, parsed.data.patient_id || null]
       );
 
-      const result = await doctorCopilot.handler({
+      const { executeAgent } = await import('../../ai/orchestrator.js');
+      const run = await executeAgent('doctor-copilot', {
         question: parsed.data.question,
         history: historyArr,
         patient_context: patientContext,
-      });
+      }, { tenantId, user: req.user });
 
+      if (!run.success) return res.status(500).json({ success: false, error: run.error, code: run.code });
+      const result = run.data;
       if (result.error) return res.status(500).json({ success: false, error: result.error });
 
       // Assistant javobini yozib qo'yamiz
@@ -181,10 +195,13 @@ export default function copilotRoutes(pool, authMiddleware, checkRole, upload) {
       if (!parsed.success) {
         return res.status(400).json({ success: false, error: 'Validatsiya xatosi' });
       }
-      const result = await smartAutofill.handler(parsed.data);
+      const { executeAgent } = await import('../../ai/orchestrator.js');
+      const run = await executeAgent('smart-autofill', parsed.data,
+        { tenantId: tenantOf(req), user: req.user });
+      if (!run.success) return res.status(500).json({ success: false, error: run.error, code: run.code });
       res.json({
         success: true,
-        ...result,
+        ...run.data,
         disclaimer: 'AI tavsiya — tekshirib saqlang',
       });
     } catch (e) {

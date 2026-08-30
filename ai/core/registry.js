@@ -33,6 +33,13 @@ export function registerAgent(mod) {
     schema: mod.schema || null,
     handler: mod.handler,
     timeoutMs: mod.timeoutMs || null,
+    // AI kvotasidan hisoblansinmi. Ba'zi agentlar LLM'ga UMUMAN
+    // murojaat qilmaydi — masalan `vital-anomaly` sof chegara tekshiruvi,
+    // `appointment-reminder` esa shablon matni. Ularni "ai_requests" deb
+    // hisoblash klinikaning kvotasini bekorga yeb qo'yardi va
+    // orkestrator orqali o'tkazishni qimmatga aylantirardi.
+    // Sukut bo'yicha true — yangi agent LLM ishlatadi deb hisoblanadi.
+    metered: mod.metered !== false,
     canonical: mod.canonical || null,
     loadedAt: new Date().toISOString(),
   });

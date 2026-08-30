@@ -178,10 +178,15 @@ export default function labsRoutes(pool, authMiddleware, checkRole) {
         // 2) lab-interpreter (LLM, fire-and-forget — natija ai_interpretation ga)
         (async () => {
           try {
-            const li = await labInterpreter.handler({
+            // Orkestrator orqali — bu LLM chaqiruvi, ya'ni audit va
+            // hisobga olish kerak. Fon oqimida bo'lgani uchun xato
+            // hech qayerda ko'rinmasdi; endi agent_executions'da qoladi.
+            const { executeAgent } = await import('../../ai/orchestrator.js');
+            const run = await executeAgent('lab-interpreter', {
               raw_text: raw,
               test_type: order.test_type || 'umumiy',
-            });
+            }, { tenantId, user: req.user });
+            const li = run.success ? run.data : null;
             if (li?.interpretation) {
               await pool.query(
                 `UPDATE lab_results SET ai_interpretation = $1, ai_data_json = $2::jsonb WHERE id = $3`,

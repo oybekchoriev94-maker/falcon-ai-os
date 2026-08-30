@@ -26,6 +26,8 @@ import { llmJson } from '../core/tools.js';
 // ============================================================
 export const vitalAnomaly = {
   name: 'vital-anomaly',
+  // Sof chegara tekshiruvi — LLM'ga murojaat qilmaydi
+  metered: false,
   description: 'Obhod qiymatlaridan (t°, A/D, puls, saturatsiya) kritik chetlanishlarni topadi.',
   version: '1.0.0',
   category: 'safety',
@@ -106,6 +108,8 @@ const LAB_THRESHOLDS = [
 
 export const labCritical = {
   name: 'lab-critical',
+  // Sof chegara tekshiruvi — LLM'ga murojaat qilmaydi
+  metered: false,
   description: 'Laborator natijadan hayotiy kritik qiymatlarni ajratadi.',
   version: '1.0.0',
   category: 'safety',

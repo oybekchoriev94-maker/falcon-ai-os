@@ -148,7 +148,11 @@ export async function executeAgent(agentName, input = {}, ctx = {}) {
       return fail(agentName, data.code || 'AGENT_ERROR', data.error, { duration_ms });
     }
 
-    await meterUsage(db, agentName);
+    // AI kvotasidan faqat HAQIQATAN LLM ishlatadigan agentlar hisoblanadi.
+    // Sof funksiya agentlari (chegara tekshiruvi, shablon matni) tekin —
+    // aks holda ularni orkestrator orqali o'tkazish (audit va validatsiya
+    // uchun) klinikaning kvotasini bekorga yeb qo'yardi.
+    if (agent.metered !== false) await meterUsage(db, agentName);
     const duration_ms = Date.now() - started;
     log({ agent: agentName, status: 'success', duration: duration_ms, tenant: tenantId });
     await persistAudit(db, { agentName, canonicalId, status: 'success', durationMs: duration_ms, user: ctx.user, requestId: ctx.requestId });

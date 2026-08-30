@@ -51,8 +51,17 @@ describe('Kanonik agentlar xartiyasi', () => {
     expect(dupes).toEqual([]);
   });
 
-  it('34 ta mavjud agent kanoniklarga bog\'langan', () => {
-    expect(ALL_MAPPED).toHaveLength(34);
+  it('xaritadagi har bir nom HAQIQATAN ro\'yxatdan o\'tgan agent', async () => {
+    // Ilgari bu yerda qattiq son (34) tekshirilardi va o'lik agentlar
+    // o'chirilganda test yiqildi. Muhimi son emas: xaritada MAVJUD
+    // BO'LMAGAN agent nomi qolib ketmasin — aks holda coverage hisobi
+    // yolg'on "missing" ko'rsatadi va imkoniyat haqida noto'g'ri
+    // taassurot beradi.
+    const { getAllAgents } = await import('../ai/core/registry.js');
+    await import('../ai/agents/index.js');
+    const registered = getAllAgents().map((a) => a.name);
+    expect(ALL_MAPPED.length).toBeGreaterThan(0);
+    expect(ALL_MAPPED.filter((n) => !registered.includes(n))).toEqual([]);
   });
 
   it('getCanonicalAgent topadi yoki null qaytaradi', () => {
@@ -69,14 +78,16 @@ describe('Kanonik agentlar xartiyasi', () => {
   it('coverage: barcha mapped agentlar ro\'yxatdan o\'tgan bo\'lsa 100%', () => {
     const cov = getCanonicalCoverage(ALL_MAPPED);
     expect(cov.coverage).toBe(100);
-    expect(cov.mapped_found).toBe(34);
+    expect(cov.mapped_found).toBe(ALL_MAPPED.length);
     expect(cov.agents.every((a) => a.missing.length === 0)).toBe(true);
   });
 
   it('coverage: qisman ro\'yxatda missing ko\'rinadi', () => {
-    const cov = getCanonicalCoverage(['inventory-manager']);
-    const pharmacy = cov.agents.find((a) => a.id === 'pharmacy-inventory');
-    expect(pharmacy.coverage).toBe(100);
+    // `inventory-manager` o'chirilgan (chaqiruvchisi yo'q edi) —
+    // mavjud agent bilan sinaymiz.
+    const cov = getCanonicalCoverage(['lab-critical']);
+    const lab = cov.agents.find((a) => a.id === 'laboratory');
+    expect(lab.coverage).toBeGreaterThan(0);
     const history = cov.agents.find((a) => a.id === 'patient-history');
     expect(history.coverage).toBe(0);
     expect(history.missing).toContain('visit-scribe');
