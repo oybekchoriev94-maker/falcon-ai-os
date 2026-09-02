@@ -60,6 +60,7 @@ const navItems = [
   { href: "/alerts", label: "Xavfsizlik", icon: Bell, roles: ["superadmin", "ceo", "admin", "doctor"] },
   { href: "/attendance", label: "Davomat", icon: UserCheck, roles: ["superadmin", "ceo", "admin"] },
   { href: "/xodim-nazorati", label: "Xodim nazorati", icon: ScanFace, roles: ["superadmin", "ceo", "admin"] },
+  { href: "/xodim-reestri", label: "Xodim reestri", icon: Users, roles: ["superadmin", "ceo", "admin"] },
   { href: "/hujjatlar", label: "Hujjatlar", icon: FileText, roles: ["superadmin", "ceo", "admin", "doctor", "receptionist"] },
   { href: "/kiosk-devices", label: "Kiosk qurilmalari", icon: Monitor, roles: ["superadmin", "ceo", "admin"] },
   { href: "/insights", label: "Biznes tahlili", icon: LayoutDashboard, roles: ["superadmin", "ceo", "admin"] },
