@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { q, qGet } from '../db.js';
 import { authMiddleware, validate } from '../shared.js';
 import { requirePermission } from '../rbac.js';
+import { serverFail } from '../services/safe-error.js';
 
 const CODE_RE = /^[a-z0-9][a-z0-9_-]{1,49}$/;
 
@@ -60,7 +61,7 @@ export default function clinicRoutes() {
       }
       res.json({ success: true, clinics: [...byClinic.values()] });
     } catch (e) {
-      res.status(500).json({ error: 'Klinikalarni o\'qib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Klinikalarni o\'qib bo\'lmadi');
     }
   });
 
@@ -82,7 +83,7 @@ export default function clinicRoutes() {
       );
       res.status(201).json({ success: true, clinic: { id, name, code } });
     } catch (e) {
-      res.status(500).json({ error: 'Klinika yaratib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Klinika yaratib bo\'lmadi');
     }
   });
 
@@ -102,7 +103,7 @@ export default function clinicRoutes() {
       if (!updated) return res.status(404).json({ error: 'Klinika topilmadi' });
       res.json({ success: true, clinic: updated });
     } catch (e) {
-      res.status(500).json({ error: 'Klinikani yangilab bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Klinikani yangilab bo\'lmadi');
     }
   });
 
@@ -130,7 +131,7 @@ export default function clinicRoutes() {
       );
       res.status(201).json({ success: true, branch: { id, clinic_id: clinic.id, name, code } });
     } catch (e) {
-      res.status(500).json({ error: 'Filial yaratib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Filial yaratib bo\'lmadi');
     }
   });
 
@@ -150,7 +151,7 @@ export default function clinicRoutes() {
       if (!updated) return res.status(404).json({ error: 'Filial topilmadi' });
       res.json({ success: true, branch: updated });
     } catch (e) {
-      res.status(500).json({ error: 'Filialni yangilab bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Filialni yangilab bo\'lmadi');
     }
   });
 

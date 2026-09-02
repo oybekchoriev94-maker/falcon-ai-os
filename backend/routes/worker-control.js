@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { q, qGet } from '../db.js';
 import { authMiddleware, validate } from '../shared.js';
 import { requirePermission } from '../rbac.js';
+import { serverFail } from '../services/safe-error.js';
 import {
   buildDailyReport, buildZonePresence, detectPresenceAlerts,
   detectZoneAlerts, staffSubjectRef,
@@ -78,7 +79,7 @@ export default function workerControlRoutes() {
       );
       res.json({ success: true, date, ...buildDailyReport(shifts, attendance, vision) });
     } catch (e) {
-      res.status(500).json({ error: 'Davomat hisobotini olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Davomat hisobotini olib bo\'lmadi');
     }
   });
 
@@ -109,7 +110,7 @@ export default function workerControlRoutes() {
         .sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
       res.json({ success: true, date, total: alerts.length, alerts });
     } catch (e) {
-      res.status(500).json({ error: 'Signallarni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Signallarni olib bo\'lmadi');
     }
   });
 
@@ -141,7 +142,7 @@ export default function workerControlRoutes() {
         .map((p) => ({ ...p, staff_name: names.get(p.subject_ref) || null }));
       res.json({ success: true, date, total: presence.length, presence });
     } catch (e) {
-      res.status(500).json({ error: 'Zona faolligini olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Zona faolligini olib bo\'lmadi');
     }
   });
 
@@ -158,7 +159,7 @@ export default function workerControlRoutes() {
       sql += ' ORDER BY shift_date, start_time LIMIT 500';
       res.json({ success: true, shifts: await q(sql, params) });
     } catch (e) {
-      res.status(500).json({ error: 'Smenalarni o\'qib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Smenalarni o\'qib bo\'lmadi');
     }
   });
 
@@ -176,7 +177,7 @@ export default function workerControlRoutes() {
       if (e.code === '23505') {
         return res.status(409).json({ error: `${req.body.staff_name} uchun ${req.body.shift_date} kuni smena allaqachon mavjud` });
       }
-      res.status(500).json({ error: 'Smena qo\'shib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Smena qo\'shib bo\'lmadi');
     }
   });
 
@@ -189,7 +190,7 @@ export default function workerControlRoutes() {
       if (!row) return res.status(404).json({ error: 'Smena topilmadi' });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: 'Smenani o\'chirib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Smenani o\'chirib bo\'lmadi');
     }
   });
 
@@ -203,7 +204,7 @@ export default function workerControlRoutes() {
       );
       res.json({ success: true, rules });
     } catch (e) {
-      res.status(500).json({ error: 'Zona qoidalarini o\'qib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Zona qoidalarini o\'qib bo\'lmadi');
     }
   });
 
@@ -226,7 +227,7 @@ export default function workerControlRoutes() {
       );
       res.status(201).json({ success: true, rule: { id, zone_id, rule_type, severity } });
     } catch (e) {
-      res.status(500).json({ error: 'Zona qoidasini saqlab bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Zona qoidasini saqlab bo\'lmadi');
     }
   });
 
@@ -243,7 +244,7 @@ export default function workerControlRoutes() {
       if (!row) return res.status(404).json({ error: 'Zona qoidasi topilmadi' });
       res.json({ success: true, rule: row });
     } catch (e) {
-      res.status(500).json({ error: 'Zona qoidasini yangilab bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Zona qoidasini yangilab bo\'lmadi');
     }
   });
 

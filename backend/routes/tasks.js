@@ -64,7 +64,7 @@ export default function taskRoutes() {
       const filtered = req.query.overdue === 'true' ? tasks.filter((t) => t.overdue) : tasks;
       res.json({ success: true, total: filtered.length, tasks: filtered });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Vazifalarni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Vazifalarni olib bo\'lmadi');
     }
   });
 
@@ -77,7 +77,7 @@ export default function taskRoutes() {
       );
       res.json({ success: true, ...summarizeTasks(rows) });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Hisobotni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Hisobotni olib bo\'lmadi');
     }
   });
 
@@ -195,7 +195,7 @@ export default function taskRoutes() {
       }
       res.json({ success: true, deleted: true });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'O\'chirilmadi', details: e.message });
+      serverFail(res, e, 'O\'chirilmadi');
     }
   });
 

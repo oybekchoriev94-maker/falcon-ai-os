@@ -95,7 +95,7 @@ export default function hrmsRoutes() {
       );
       res.json({ success: true, enabled: isFrappeEnabled(), staff: stat?.total || 0, synced: stat?.synced || 0 });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Holatni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Holatni olib bo\'lmadi');
     }
   });
 
@@ -134,7 +134,7 @@ export default function hrmsRoutes() {
         res.status(409).json({ success: false, error: 'Bu ismli xodim allaqachon bor' });
         return;
       }
-      res.status(500).json({ success: false, error: 'Xodim qo\'shilmadi', details: e.message });
+      serverFail(res, e, 'Xodim qo\'shilmadi');
     }
   });
 
@@ -296,7 +296,7 @@ export default function hrmsRoutes() {
       }
       res.json({ success: true, from, to, days, total: agg.size, summary: [...agg.values()] });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Hisobotni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Hisobotni olib bo\'lmadi');
     }
   });
 

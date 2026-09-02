@@ -102,7 +102,7 @@ export default function medplumRoutes() {
       );
       res.json({ success: true, enabled: isMedplumEnabled(), mapped: count?.total || 0 });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Holatni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Holatni olib bo\'lmadi');
     }
   });
 

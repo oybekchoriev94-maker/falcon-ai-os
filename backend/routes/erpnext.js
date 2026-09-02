@@ -65,7 +65,7 @@ export default function erpnextRoutes() {
         synced: stat?.items_synced || 0,
       });
     } catch (e) {
-      res.status(500).json({ success: false, error: 'Holatni olib bo\'lmadi', details: e.message });
+      serverFail(res, e, 'Holatni olib bo\'lmadi');
     }
   });
 
