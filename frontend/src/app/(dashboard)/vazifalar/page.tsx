@@ -44,6 +44,7 @@ interface TaskRow {
   status: TaskStatus;
   done_at: string | null;
   result_note: string | null;
+  duty_template_id: string | null;
   created_at: string;
   overdue: boolean;
 }
@@ -266,6 +267,11 @@ export default function VazifalarPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{t.title}</span>
                           <Badge variant="outline" className={cn("text-xs", cfg.cls)}>{cfg.label}</Badge>
+                          {t.duty_template_id && (
+                            <Badge variant="outline" className="text-xs border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                              Kunlik
+                            </Badge>
+                          )}
                           {t.overdue && (
                             <Badge variant="outline" className="gap-1 border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400">
                               <AlertTriangle className="size-3" /> Kechikkan

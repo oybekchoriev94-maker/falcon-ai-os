@@ -41,7 +41,7 @@ export default function taskRoutes() {
     try {
       let sql = `SELECT id, staff_member_id, staff_name, title, description,
                         assigned_by, due_at, status, done_at, result_note,
-                        created_at, updated_at
+                        duty_template_id, created_at, updated_at
                    FROM staff_tasks WHERE tenant_id = $1`;
       const params = [req.user.tenant_id];
       if (req.query.status && ['pending', 'in_progress', 'done'].includes(req.query.status)) {

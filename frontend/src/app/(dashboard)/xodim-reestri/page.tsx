@@ -17,7 +17,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   Users, Plus, Pencil, RefreshCw, Link2, CircleCheck, CircleAlert,
-  Phone, Briefcase, CalendarRange,
+  Phone, Briefcase, CalendarRange, ClipboardList, Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 interface StaffRow {
   id: number;
@@ -100,9 +104,13 @@ export default function XodimReestriPage() {
             <TabsTrigger value="summary" className="gap-1.5">
               <CalendarRange className="size-4" /> Oylik hisobot
             </TabsTrigger>
+            <TabsTrigger value="duties" className="gap-1.5">
+              <ClipboardList className="size-4" /> Vazifa shablonlari
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="staff"><StaffTab frappeEnabled={!!status?.enabled} /></TabsContent>
           <TabsContent value="summary"><SummaryTab /></TabsContent>
+          <TabsContent value="duties"><DutyTemplatesTab /></TabsContent>
         </Tabs>
       </motion.div>
     </motion.div>
@@ -425,6 +433,245 @@ function SummaryTab() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// Vazifa shablonlari — lavozimga biriktirilgan doimiy vazifalar.
+// Har kuni backend/cron/duty-tasks.js shu shablonlar asosida
+// FAOL xodimlarga staff_tasks avtomatik yaratadi (idempotent).
+// ============================================================
+
+interface DutyTemplate {
+  id: string; position: string; title: string; description: string | null;
+  sort_order: number; is_active: boolean;
+}
+
+const emptyDuty = { position: "", title: "", description: "", sort_order: "0" };
+
+function DutyTemplatesTab() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<DutyTemplate | null>(null);
+  const [form, setForm] = useState(emptyDuty);
+
+  const { data: positionsData } = useQuery({
+    queryKey: ["duty-positions"],
+    queryFn: async () => {
+      const res = await api.get<{ positions: string[] }>("/api/v1/duty-templates/positions");
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+  });
+  const positions = positionsData?.positions ?? [];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["duty-templates"],
+    queryFn: async () => {
+      const res = await api.get<{ templates: DutyTemplate[] }>("/api/v1/duty-templates");
+      if (!res.success) throw new Error(res.error);
+      return res;
+    },
+  });
+  const templates = data?.templates ?? [];
+
+  const grouped = templates.reduce<Record<string, DutyTemplate[]>>((acc, t) => {
+    (acc[t.position] ??= []).push(t);
+    return acc;
+  }, {});
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["duty-templates"] });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.position.trim()) throw new Error("Lavozimni tanlang yoki kiriting");
+      if (form.title.trim().length < 3) throw new Error("Sarlavha kamida 3 belgi");
+      const res = await api.post("/api/v1/duty-templates", {
+        position: form.position.trim(), title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        sort_order: Number(form.sort_order) || 0,
+      });
+      if (!res.success) throw new Error(res.error as string);
+      return res;
+    },
+    onSuccess: () => { refresh(); setOpen(false); setForm(emptyDuty); toast.success("Vazifa shabloni qo'shildi"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editing) throw new Error("Shablon tanlanmagan");
+      const res = await api.put(`/api/v1/duty-templates/${editing.id}`, {
+        title: form.title.trim(), description: form.description.trim() || undefined,
+        sort_order: Number(form.sort_order) || 0,
+      });
+      if (!res.success) throw new Error(res.error as string);
+      return res;
+    },
+    onSuccess: () => { refresh(); setEditing(null); toast.success("Yangilandi"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const res = await api.put(`/api/v1/duty-templates/${id}`, { is_active });
+      if (!res.success) throw new Error(res.error as string);
+      return res;
+    },
+    onSuccess: refresh,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete(`/api/v1/duty-templates/${id}`);
+      if (!res.success) throw new Error(res.error as string);
+      return res;
+    },
+    onSuccess: () => { refresh(); toast.success("O'chirildi"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function startEdit(t: DutyTemplate) {
+    setEditing(t);
+    setForm({ position: t.position, title: t.title, description: t.description || "", sort_order: String(t.sort_order) });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Lavozimga biriktirilgan doimiy vazifalar — har kuni soat 20:00 muddat bilan avtomatik yaratiladi
+        </p>
+        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setForm(emptyDuty); }}>
+          <DialogTrigger render={<Button><Plus className="size-4" /> Shablon qo&apos;shish</Button>} />
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Yangi doimiy vazifa</DialogTitle>
+              <DialogDescription>Bir lavozimdagi barcha faol xodimlarga har kuni beriladi</DialogDescription>
+            </DialogHeader>
+            <DutyForm form={form} setForm={setForm} positions={positions} lockPosition={false} />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>Bekor qilish</Button>
+              <Button onClick={() => addMutation.mutate()} disabled={addMutation.isPending}>
+                {addMutation.isPending ? "Saqlanmoqda..." : "Saqlash"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {!positions.length && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          Hali hech bir xodimga lavozim belgilanmagan — avval &quot;Xodimlar&quot; tabida lavozim kiriting,
+          keyin shu yerda o&apos;sha lavozim nomini tanlang (harfma-harf bir xil bo&apos;lishi shart).
+        </p>
+      )}
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : !templates.length ? (
+            <div className="py-16 text-center">
+              <ClipboardList className="mx-auto size-10 text-muted-foreground/40" />
+              <p className="mt-3 text-sm text-muted-foreground">Hali vazifa shabloni qo&apos;shilmagan</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {Object.entries(grouped).map(([position, items]) => (
+                <div key={position} className="p-4">
+                  <p className="mb-2 text-sm font-semibold">{position}</p>
+                  <div className="space-y-1.5">
+                    {items.map((t) => (
+                      <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className={cn("text-sm font-medium", !t.is_active && "text-muted-foreground line-through")}>{t.title}</p>
+                          {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Switch
+                            checked={t.is_active}
+                            onCheckedChange={(v) => toggleActiveMutation.mutate({ id: t.id, is_active: v })}
+                            disabled={toggleActiveMutation.isPending}
+                          />
+                          <Button variant="ghost" size="icon-sm" onClick={() => startEdit(t)}>
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon-sm" className="text-destructive"
+                            onClick={() => deleteMutation.mutate(t.id)} disabled={deleteMutation.isPending}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!editing} onOpenChange={(v) => { if (!v) setEditing(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Shablonni tahrirlash</DialogTitle>
+            <DialogDescription>{editing?.position}</DialogDescription>
+          </DialogHeader>
+          <DutyForm form={form} setForm={setForm} positions={positions} lockPosition />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Bekor qilish</Button>
+            <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Saqlanmoqda..." : "Saqlash"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function DutyForm({ form, setForm, positions, lockPosition }: {
+  form: typeof emptyDuty; setForm: (f: typeof emptyDuty) => void;
+  positions: string[]; lockPosition: boolean;
+}) {
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <Label>Lavozim</Label>
+        {lockPosition ? (
+          <Input value={form.position} disabled />
+        ) : positions.length ? (
+          <Select value={form.position} onValueChange={(v) => { if (v !== null) setForm({ ...form, position: v }); }}>
+            <SelectTrigger><SelectValue placeholder="Tanlang" /></SelectTrigger>
+            <SelectContent>
+              {positions.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })}
+            placeholder="Masalan: hamshira" />
+        )}
+      </div>
+      <div className="grid gap-2">
+        <Label>Vazifa sarlavhasi</Label>
+        <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+          placeholder="Masalan: Dorixona haroratini tekshirish" />
+      </div>
+      <div className="grid gap-2">
+        <Label>Tavsif (ixtiyoriy)</Label>
+        <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+          rows={2} placeholder="Batafsil ko'rsatma" />
+      </div>
+      <div className="grid gap-2">
+        <Label>Tartib raqami</Label>
+        <Input type="number" min={0} value={form.sort_order}
+          onChange={(e) => setForm({ ...form, sort_order: e.target.value })} className="w-24" />
+      </div>
     </div>
   );
 }

@@ -63,6 +63,7 @@ import medplumRoutes from './backend/routes/medplum.js';
 import hrmsRoutes from './backend/routes/hrms.js';
 import erpnextRoutes from './backend/routes/erpnext.js';
 import taskRoutes from './backend/routes/tasks.js';
+import dutyTemplateRoutes from './backend/routes/duty-templates.js';
 import ocrRoutes from './backend/routes/ocr.js';
 import tmaRoutes from './backend/routes/tma.js';
 import adminRoutes from './backend/routes/admin.js';
@@ -81,6 +82,7 @@ import attendanceRoutes from './backend/routes/attendance.js';
 import webhookRoutes from './backend/routes/webhooks.js';
 import { startPatientReminderCron } from './backend/cron/patient-reminders.js';
 import { startQueueNotifyCron } from './backend/cron/queue-notify.js';
+import { startDutyTaskCron } from './backend/cron/duty-tasks.js';
 import { startVoicePurgeCron } from './backend/services/voice-store.js';
 import { createEdgeAdminRoutes, createEdgeIngestRoutes } from './backend/routes/edge.js';
 import { initEmail, sendWelcomeEmail } from './backend/services/email.js';
@@ -469,6 +471,7 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
   targetApp.use(`${API_PREFIX}/hrms`, hrmsRoutes());
   targetApp.use(`${API_PREFIX}/erpnext`, erpnextRoutes());
   targetApp.use(`${API_PREFIX}/tasks`, taskRoutes());
+  targetApp.use(`${API_PREFIX}/duty-templates`, dutyTemplateRoutes());
   // PR #8: hujjat elektronlashtirish (OCR/STT/AI) — LLM limiti himoyasi bilan
   targetApp.use(`${API_PREFIX}/ocr`, tenantRateLimit('ai'), ocrRoutes(upload));
   targetApp.use(`${API_PREFIX}/admin`, authMiddleware, checkRole('superadmin'), adminRoutes());
@@ -640,6 +643,7 @@ function startServer(port) {
     // qismlari ichkarida token yo'qligini o'zi tekshiradi (jim o'tkazib yuboradi).
     startPatientReminderCron();
     startQueueNotifyCron();
+    startDutyTaskCron();
     // Muddati o'tgan ovozli diktantlarni tozalaydi. Transkripsiya matni
     // bazada QOLADI — o'chadigan narsa faqat audio fayl (disk + maxfiylik).
     startVoicePurgeCron(getPool());
