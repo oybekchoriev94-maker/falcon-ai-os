@@ -36,14 +36,17 @@ const pool = new pg.Pool({ connectionString, max: 1 });
 try {
   const client = await pool.connect();
   try {
-    const tenants = await client.query('SELECT id, name FROM tenants ORDER BY created_at LIMIT 5');
-    if (tenants.rowCount === 0) throw new Error('Hech qanday tenant topilmadi');
-    if (tenants.rowCount > 1) {
-      console.error('Bir nechta tenant topildi — qaysi biri kerakligini aniq belgilash lozim:');
-      for (const t of tenants.rows) console.error(`  ${t.id}  (${t.name})`);
-      process.exit(1);
+    let tenantId = process.env.EDGE_TENANT_ID || '';
+    if (!tenantId) {
+      const tenants = await client.query('SELECT id, name FROM tenants ORDER BY created_at LIMIT 5');
+      if (tenants.rowCount === 0) throw new Error('Hech qanday tenant topilmadi');
+      if (tenants.rowCount > 1) {
+        console.error('Bir nechta tenant topildi — EDGE_TENANT_ID env orqali aniq belgilang:');
+        for (const t of tenants.rows) console.error(`  ${t.id}  (${t.name})`);
+        process.exit(1);
+      }
+      tenantId = tenants.rows[0].id;
     }
-    const tenantId = tenants.rows[0].id;
 
     const signingKey = generateEdgeSigningSecret();
     const keyId = `edge-${randomUUID()}`;
