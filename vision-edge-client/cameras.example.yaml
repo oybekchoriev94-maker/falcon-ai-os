@@ -1,0 +1,24 @@
+# Har bir kamera — NVR'dagi bitta kanal. channel — Hikvision NVR kanal raqami
+# (odatda 1, 2, 3...). zone_id backend'dagi zona qoidalari va ombor
+# kamera-dalili bilan ANIQ mos kelishi kerak (masalan "ombor").
+#
+# Bu faylni cameras.yaml nomiga ko'chirib, haqiqiy kameralar bilan to'ldiring.
+
+cameras:
+  - camera_id: ombor-01
+    channel: 1
+    zone_id: ombor
+    display_name: "Dorixona ombori — kirish"
+    enabled: true
+
+  - camera_id: qabul-01
+    channel: 2
+    zone_id: qabul
+    display_name: "Qabul bo'limi"
+    enabled: true
+
+  - camera_id: dalon-01
+    channel: 3
+    zone_id: dalon
+    display_name: "Bosh dahliz"
+    enabled: false

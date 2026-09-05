@@ -1,0 +1,22 @@
+[Unit]
+Description=Falcon Vision Edge - kamera nazorati klienti
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=falcon-edge
+Group=falcon-edge
+WorkingDirectory=/opt/falcon-vision-edge
+EnvironmentFile=/opt/falcon-vision-edge/.env
+ExecStart=/opt/falcon-vision-edge/venv/bin/python -m vision_edge.main
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# State fayllar (hash zanjiri, navbat) shu foydalanuvchiga tegishli bo'lishi kerak
+ReadWritePaths=/var/lib/falcon-vision-edge
+
+[Install]
+WantedBy=multi-user.target
