@@ -1,0 +1,51 @@
+# ============================================================
+# Falcon STT (rubaiSTT v2, GPU) — klinika GPU kompyuterida MUSTAQIL
+# ishga tushirish uchun (asosiy repo ildizidagi docker-compose.yml
+# VPS uchun mo'ljallangan — u CPU, int8, boshqa maqsad).
+#
+# MUHIM: bu xizmat 127.0.0.1'ga bog'lanadi — barqaror manzil.
+# SSH reverse tunnel (ollama-tunnel.service) shu manzilga ko'rsatilishi
+# kerak, Docker'ning ICHKI (172.x.x.x) IP'siga EMAS — u qayta ishga
+# tushirilganda o'zgarib qolishi mumkin va aynan shu sabab STT
+# "ba'zida ishlab, ba'zida ishlamay qolgan" edi.
+#
+# Model: ./stt-models/rubaistt-v2-medium-ct2 papkasida oldindan
+# tayyor turishi kerak (scripts/stt-compare/02-convert-model.sh).
+#
+# Ishlatish: shu papkada `docker compose up -d --build`
+# ============================================================
+services:
+  stt:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      MODEL_NAME: /models/rubaistt-v2-medium-ct2
+      MODEL_DIR: /cache
+      DEVICE: cuda
+      COMPUTE_TYPE: float16
+      STT_CONCURRENCY: "2"
+      MAX_AUDIO_MB: "25"
+      STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
+    volumes:
+      - stt-cache:/cache
+      - ../stt-models:/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  stt-cache:
