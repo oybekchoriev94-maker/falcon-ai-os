@@ -18,12 +18,24 @@ export const sha256 = (s) => crypto.createHash('sha256').update(String(s)).diges
 /**
  * Express middleware yasaydi.
  *
- * @param {object} pool         pg Pool
- * @param {string[]} allowKinds Ruxsat etilgan qurilma turlari.
- *                              Masalan ['attendance'] — kiosk planshetining
- *                              tokeni davomat endpointiga kira olmasin.
+ * @param {object} pool           pg Pool — tenant kontekst o'rnatilgandan
+ *                                keyingi so'rovlar uchun (route handler'lar).
+ * @param {string[]} allowKinds   Ruxsat etilgan qurilma turlari.
+ *                                Masalan ['attendance'] — kiosk planshetining
+ *                                tokeni davomat endpointiga kira olmasin.
+ * @param {object} [lookupPool]   RLS'ni chetlab o'tadigan pool (platformPool).
+ *
+ * MUHIM (aniqlangan production xato): qurilma TOKEN orqali qidiriladi —
+ * shu payt tenant hali NOMA'LUM (aynan shu qidiruv orqali aniqlanadi).
+ * kiosk_devices'da RLS yoqilgan (`tenant_id = current_setting('app.tenant_id')`),
+ * va tenant kontekst hali o'rnatilmagani uchun bu SELECT har doim 0 qator
+ * qaytarardi — token to'g'ri bo'lsa ham "BAD_DEVICE_TOKEN". Xuddi shu
+ * muammo edge-auth.js'da platformPool bilan hal qilingan; shu yerda ham
+ * xuddi shunday — birinchi qidiruv RLS'ni chetlab o'tadigan pool bilan,
+ * tenant aniqlangach esa bindTenantDbContext orqali qolgan hammasi
+ * odatdagidek tenant-cheklangan bo'lib qoladi.
  */
-export function makeDeviceAuth(pool, allowKinds = null) {
+export function makeDeviceAuth(pool, allowKinds = null, lookupPool = pool) {
   return async function deviceAuth(req, res, next) {
     const token = req.headers['x-kiosk-token'] || req.headers['x-device-token'] || '';
     if (!token) {
@@ -32,7 +44,7 @@ export function makeDeviceAuth(pool, allowKinds = null) {
       });
     }
     try {
-      const { rows } = await pool.query(
+      const { rows } = await lookupPool.query(
         `SELECT id, tenant_id, name, kind, allowed_ips
            FROM kiosk_devices
           WHERE token_hash = $1 AND is_active = true`,

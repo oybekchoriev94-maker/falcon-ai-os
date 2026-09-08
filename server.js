@@ -507,9 +507,9 @@ export async function mountApiRoutes(targetApp, pool, { seedUsers = true } = {})
     // Bemor Telegram bot webhook - auth yo'q (Telegram Server -> Falcon), secret bilan himoyalangan
     targetApp.use(`${p}/patient-bot`, patientBotRoutes(pool));
     // Kiosk - qurilma tokeni bilan himoyalangan (X-Kiosk-Token sarlavhasi).
-    targetApp.use(`${p}/kiosk`, tenantRateLimit('api'), kioskRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/kiosk`, tenantRateLimit('api'), kioskRoutes(pool, authMiddleware, checkRole, getPlatformPool()));
     // Xodimlar davomati - agent qurilma tokeni bilan hodisa yuboradi, hisobotlar JWT bilan o'qiladi.
-    targetApp.use(`${p}/attendance`, tenantRateLimit('api'), attendanceRoutes(pool, authMiddleware, checkRole));
+    targetApp.use(`${p}/attendance`, tenantRateLimit('api'), attendanceRoutes(pool, authMiddleware, checkRole, getPlatformPool()));
   }
 
   mountRoutes('/api');

@@ -20,10 +20,12 @@ import { checkInAppointment } from '../services/appointment-checkin.js';
 // navbat qayta yuborilsa — server oxirgi to'siq bo'lib qoladi.
 const DEDUP_WINDOW_MIN = 3;
 
-export default function attendanceRoutes(pool, authMiddleware, checkRole) {
+export default function attendanceRoutes(pool, authMiddleware, checkRole, platformPool) {
   const router = Router();
   const q = async (sql, p = []) => (await pool.query(sql, p)).rows;
-  const deviceAuth = makeDeviceAuth(pool, ['attendance']);
+  // platformPool — RLS'ni chetlab o'tadi, token-orqali-qidiruv uchun kerak
+  // (device-auth.js'dagi izohga qarang: tenant hali noma'lum bo'lgan payt).
+  const deviceAuth = makeDeviceAuth(pool, ['attendance'], platformPool || pool);
 
   // ── AGENT: hodisalarni qabul qilish ───────────────────────
 

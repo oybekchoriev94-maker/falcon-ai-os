@@ -62,7 +62,7 @@ function checkRate(key, limit, windowMs) {
   return b.n <= limit;
 }
 
-export default function kioskRoutes(pool, authMiddleware, checkRole) {
+export default function kioskRoutes(pool, authMiddleware, checkRole, platformPool) {
   const router = Router();
   const q = async (sql, p = []) => (await pool.query(sql, p)).rows;
   const qGet = async (sql, p = []) => (await pool.query(sql, p)).rows[0] || null;
@@ -78,7 +78,9 @@ export default function kioskRoutes(pool, authMiddleware, checkRole) {
   // `makeDeviceAuth` da bor edi, lekin kiosk o'z nusxasini ishlatib,
   // uni o'tkazib yuborardi.
   const KIOSK_KINDS = ['entry', 'queue_tv', 'result'];
-  const baseDeviceAuth = makeDeviceAuth(pool, KIOSK_KINDS);
+  // platformPool — RLS'ni chetlab o'tadi, token-orqali-qidiruv uchun kerak
+  // (device-auth.js'dagi izohga qarang: tenant hali noma'lum bo'lgan payt).
+  const baseDeviceAuth = makeDeviceAuth(pool, KIOSK_KINDS, platformPool || pool);
 
   // Umumiy middleware `req.device` / `req.deviceTenantId` qo'yadi;
   // kiosk kodi esa `req.kioskDevice` / `req.kioskTenantId` kutadi
