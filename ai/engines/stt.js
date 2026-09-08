@@ -152,19 +152,36 @@ async function postToOneServer(baseUrl, audioBuffer, filename, opts) {
 }
 
 /**
- * Asosiy STT'ga yuboradi; u yetib bo'lmasa zaxiraga o'tadi.
+ * Asosiy STT'ga yuboradi; u yetib bo'lmasa YOKI server o'zi nosoz bo'lsa
+ * (5xx — masalan model yuklanmagan) zaxiraga o'tadi.
  *
- * Faqat ULANISH xatosida (GPU kompyuter o'chiq, tunnel uzilgan, timeout)
- * zaxiraga o'tamiz. Server javob bergan bo'lsa — hatto xato bilan ham —
- * o'sha javobni qaytaramiz: masalan "til qo'llab-quvvatlanmaydi" (400)
- * yoki "audio juda katta" (413) zaxirada ham xuddi shunday bo'ladi,
- * qayta urinish faqat vaqt yo'qotadi va bemorni kutdiradi.
+ * ULANISH xatosida (GPU kompyuter o'chiq, tunnel uzilgan, timeout) va
+ * 5xx javobida (server ishlayapti, lekin o'zi nosoz) — zaxiraga o'tamiz.
+ * 4xx javobida (masalan "til qo'llab-quvvatlanmaydi" 400 yoki "audio
+ * juda katta" 413) o'sha javobni qaytaramiz: bu SO'ROVNING o'zidagi
+ * muammo, zaxirada ham xuddi shunday bo'ladi — qayta urinish faqat
+ * vaqt yo'qotadi va bemorni kutdiradi.
+ *
+ * MUHIM: 5xx uchun ham fallback qilinishi shart — aks holda asosiy
+ * server "javob beryapti, lekin ishlamayapti" holatida (masalan
+ * "Model is not loaded") STT butunlay to'xtab qoladi, holbuki zaxira
+ * (VPS'ning o'z konteyneri) sog'lom turgan bo'lishi mumkin.
  */
 async function postToWhisper(audioBuffer, filename, opts) {
+  const canFallback = WHISPER_FALLBACK_URL && WHISPER_FALLBACK_URL !== WHISPER_URL;
   try {
-    return await postToOneServer(WHISPER_URL, audioBuffer, filename, opts);
+    const res = await postToOneServer(WHISPER_URL, audioBuffer, filename, opts);
+    if (res.status >= 500 && canFallback) {
+      const body = await res.clone().json().catch(() => ({}));
+      console.warn(
+        `[STT] Asosiy STT nosoz javob berdi (${WHISPER_URL}, HTTP ${res.status}` +
+        `${body.detail ? `: ${body.detail}` : ''}). Zaxiraga o'tilmoqda: ${WHISPER_FALLBACK_URL}`
+      );
+      return await postToOneServer(WHISPER_FALLBACK_URL, audioBuffer, filename, opts);
+    }
+    return res;
   } catch (e) {
-    if (!WHISPER_FALLBACK_URL || WHISPER_FALLBACK_URL === WHISPER_URL) throw e;
+    if (!canFallback) throw e;
     console.warn(
       `[STT] Asosiy STT javob bermadi (${WHISPER_URL}): ${e.message}. ` +
       `Zaxiraga o'tilmoqda: ${WHISPER_FALLBACK_URL}`
