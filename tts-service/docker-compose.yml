@@ -1,0 +1,38 @@
+# ============================================================
+# Falcon TTS (OmniVoice) — klinika GPU kompyuterida MUSTAQIL ishga
+# tushirish uchun (asosiy repo ildizidagi docker-compose.yml VPS
+# uchun mo'ljallangan, bu esa faqat klinika GPU'sida).
+#
+# Ishlatish: shu papkada `docker compose up -d --build`
+# ============================================================
+services:
+  tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Faqat lokal (127.0.0.1) — tashqariga Cloudflare Tunnel orqali
+      # ochiladi, port to'g'ridan-to'g'ri internetga chiqarilmaydi.
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - tts-cache:/cache
+      - tts-voices:/voices
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+volumes:
+  tts-cache:
+  tts-voices:

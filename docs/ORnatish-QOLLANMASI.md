@@ -4,11 +4,16 @@ Tizim **ikki qismdan** iborat va ular bir-birisiz ham ishlaydi:
 
 ```
 ┌─────────────────────────────┐         ┌──────────────────────────────┐
-│  VPS (falconmedai.uz)       │         │  Klinika kompyuteri          │
+│  VPS (falconmedai.uz)       │         │  Klinika kompyuteri (Windows)│
 │  • Backend + Next.js        │◄──HTTPS─┤  • Face ID agent (Python)    │
 │  • Postgres, STT, Caddy     │  token  │  • USB kamera                │
-│  • GitHub'dan avtomatik     │         │  • (ixtiyoriy) Ollama LLM,   │
-│    deploy (CI/CD)           │         │    GPU STT/TTS               │
+│  • GitHub'dan avtomatik     │         └──────────────────────────────┘
+│    deploy (CI/CD)           │
+│                             │         ┌──────────────────────────────┐
+│                             │◄─HMAC───┤  Klinika GPU (Ubuntu)        │
+│                             │  edge   │  • Vision Edge (NVR kamera)  │
+│                             │◄─tunnel─┤  • Omni Voice TTS            │
+│                             │         │  • (ixtiyoriy) Ollama LLM    │
 └─────────────────────────────┘         └──────────────────────────────┘
         ▲ Shifokorlar brauzerdan va Telegram'dan kiradi
 ```
@@ -120,26 +125,29 @@ Qisqacha (Windows):
 git clone https://github.com/oybekchoriev94-maker/falcon-ai-os.git C:\falcon
 cd C:\falcon\agent\attendance
 
-# 2. Muhit
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
+# 2. BITTA skript — venv, kutubxonalar, config.json, modellar
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
+`install.ps1` dasturiy qismni tayyorlaydi va oxirida qolgan qo'lda
+qadamlarni (kamerani o'lchash, xodim suratlari, token) aniq
+ko'rsatadi:
+
+```powershell
 # 3. Kamerani O'LCHANG (eng muhim qadam!)
-python measure-camera.py --device 0 --show
+.\venv\Scripts\python.exe measure-camera.py --device 0 --show
 # Yuz 80px+ chiqishi shart. Kam bo'lsa — kamera joyini o'zgartiring.
 
 # 4. Xodimlar suratlari → faces/ papkaga (har biriga 2-3 surat)
-python enroll.py
+.\venv\Scripts\python.exe enroll.py
 
 # 5. Token: falconmedai.uz → Kiosk qurilmalari → Yangi qurilma → Turi: Davomat
-# config.example.json nusxasini config.json qilib, tokenni yozing
-copy config.example.json config.json
+# config.json faylida device_token'ni yozing
 notepad config.json
 
 # 6. Sinov va doimiy ishga tushirish
-python agent.py --preview   # oynada ko'rinadi
-python agent.py             # oynasiz
+.\venv\Scripts\python.exe agent.py --preview   # oynada ko'rinadi
+.\venv\Scripts\python.exe agent.py             # oynasiz
 ```
 
 Doimiy ishlashi uchun: `Win+R` → `shell:startup` papkaga `pythonw.exe agent.py`
@@ -152,16 +160,30 @@ da yig'iladi, aloqa tiklangach avtomatik jo'natiladi.
 
 ---
 
-## 3-qism (ixtiyoriy): Klinika GPU'sida og'ir AI
+## 3-qism: Klinika GPU kompyuteri — Vision Edge + Omni Voice
 
-Agar klinikada kuchli kompyuter (GPU, 8+ GB RAM) bo'lsa, og'ir
-dvigatellarni VPS o'rniga **o'sha yerda** yurgizish mumkin:
+Kuchli kompyuter (GPU, masalan RTX 2060 SUPER, Ubuntu) bo'lsa, ikkita
+xizmat shu yerda ishlaydi. **Bitta skript ikkalasini birga sozlaydi:**
 
-| Dvigatel | Qayerda | Yoqish |
+```bash
+git clone https://github.com/oybekchoriev94-maker/falcon-ai-os.git ~/falcon
+cd ~/falcon
+sudo bash clinic-gpu-install.sh
+```
+
+Skript nima qiladi: NVIDIA/Docker/nvidia-container-toolkit tekshiradi
+va o'rnatadi, Vision Edge uchun Python venv yaratadi, Omni Voice
+TTS'ni GPU konteynerda ishga tushiradi, systemd xizmatlarini
+tayyorlaydi. Oxirida siz to'ldirishingiz kerak bo'lgan narsalarni
+(NVR ma'lumotlari, kamera ro'yxati, Cloudflare Tunnel) aniq ro'yxat
+qilib chiqaradi.
+
+| Dvigatel | Qayerda | Batafsil |
 |---|---|---|
-| LLM (Qwen) | Klinika PC — Ollama | `.env`: `OLLAMA_URL=http://<klinika-ip>:11434` |
-| STT (rubaistt-v2) | Klinika GPU | `scripts/stt-compare/` bilan konvertatsiya → SSH reverse tunnel yoki Tailscale |
-| TTS (OmniVoice) | Klinika GPU | `docker compose --profile tts up -d` yoki tunnel |
+| Vision Edge (NVR kamera nazorati) | Klinika GPU | [`vision-edge-client/README.md`](../vision-edge-client/README.md) |
+| Omni Voice (TTS, navbat e'loni) | Klinika GPU | Cloudflare Tunnel orqali VPS'ga ulanadi (`clinic-gpu-install.sh` chiqishida ko'rsatiladi) |
+| LLM (Qwen) — ixtiyoriy | Klinika PC — Ollama | `.env`: `OLLAMA_URL=http://<klinika-ip>:11434` |
+| STT (rubaistt-v2) | Klinika GPU (faqat konvertatsiya uchun, doimiy xizmat emas) | `scripts/stt-compare/` — natija VPS'ga scp qilinadi |
 
 VPS'dagi zaxira STT doim tayyor turadi — klinika GPU'si o'chsa ham
 ovozli diktant to'xtamaydi (`WHISPER_FALLBACK_URL`).
