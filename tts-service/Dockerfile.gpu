@@ -24,10 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # OmniVoice talabi: torch 2.8.0+cu128
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN pip3 install --no-cache-dir \
       torch==2.8.0+cu128 torchaudio==2.8.0+cu128 \
       --extra-index-url https://download.pytorch.org/whl/cu128
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN pip3 install --no-cache-dir \
       "omnivoice" soundfile fastapi uvicorn
 
 WORKDIR /app
