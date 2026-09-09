@@ -141,7 +141,7 @@ async def save_voice(req: VoiceRequest, authorization: str | None = Header(defau
         os.unlink(tmp_path)
     out = VOICES_DIR / f"{name}.pt"
     prompt.save(str(out))
-    return JSONResponse({"success": True, voice: name, voices: _list_voices()})
+    return JSONResponse({"success": True, "voice": name, "voices": _list_voices()})
 
 
 def _decode_audio(b64: str) -> bytes:
