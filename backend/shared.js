@@ -377,7 +377,10 @@ export const schemas = {
     cost_price: z.number().nonnegative().optional(),
     min_stock: z.number().nonnegative().optional(),
     batch_number: z.string().max(100).optional(),
-    expiration_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+    expiration_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    // Shtrix-kod: EAN-8/13, Code128, QR — turli uzunlik va belgilar
+    // bo'lishi mumkin, shuning uchun qat'iy format majburlanmaydi.
+    barcode: z.string().trim().min(4).max(64).optional()
   }),
   inventoryConsume: z.object({
     procedure_name: z.string().min(2).max(255).optional(),

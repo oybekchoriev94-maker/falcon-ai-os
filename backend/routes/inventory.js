@@ -121,7 +121,7 @@ export default function inventoryRoutes(
     validate(schemas.inventoryAdd),
     async (req, res) => {
       try {
-        const { name, sku, category, quantity, unit, cost_price, min_stock, batch_number, expiration_date } = req.body;
+        const { name, sku, category, quantity, unit, cost_price, min_stock, batch_number, expiration_date, barcode } = req.body;
         const tenantId = getTenantId(req);
         const qty = quantity;
         const userId = req.user?.id || req.user?.username || 'admin';
@@ -136,9 +136,15 @@ export default function inventoryRoutes(
           if (existing) {
             const before = existing.current_stock || 0;
             const after = before + qty;
+            // Shtrix-kod faqat hali biriktirilmagan bo'lsa yoziladi —
+            // mavjud kodni jimgina almashtirib yubormaslik uchun.
             await q(
-              "UPDATE inventory_items SET current_stock = current_stock + $1, updated_at = NOW() WHERE tenant_id = $2 AND sku = $3",
-              [qty, tenantId, sku]
+              `UPDATE inventory_items
+                  SET current_stock = current_stock + $1,
+                      barcode = COALESCE(barcode, $4),
+                      updated_at = NOW()
+                WHERE tenant_id = $2 AND sku = $3`,
+              [qty, tenantId, sku, barcode || null]
             );
             const batchRows = await q(
               "INSERT INTO inventory_batches (tenant_id, item_id, batch_number, quantity, expiration_date) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -160,8 +166,8 @@ export default function inventoryRoutes(
             };
           } else {
             const newItemRows = await q(
-              "INSERT INTO inventory_items (tenant_id, name, sku, category, current_stock, unit, cost_price, min_stock) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-              [tenantId, name, sku, category || null, qty, unit || 'dona', cost_price || null, min_stock || null]
+              "INSERT INTO inventory_items (tenant_id, name, sku, category, current_stock, unit, cost_price, min_stock, barcode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
+              [tenantId, name, sku, category || null, qty, unit || 'dona', cost_price || null, min_stock || null, barcode || null]
             );
             const newItem = newItemRows[0];
             const batchRows = await q(
@@ -412,18 +418,76 @@ export default function inventoryRoutes(
     }
   );
 
-  // GET /inventory/search — search items by name or SKU
+  // GET /inventory/search — search items by name, SKU or barcode
   router.get('/inventory/search', authMiddleware, async (req, res) => {
     try {
       const tenantId = getTenantId(req);
       const qry = req.query.q || '';
       if (qry.length < 1) return res.json({ success: true, items: [] });
       const items = await q(
-        "SELECT * FROM inventory_items WHERE tenant_id = $1 AND (name ILIKE $2 OR sku ILIKE $3) LIMIT 15",
-        [tenantId, `%${qry}%`, `%${qry}%`]
+        `SELECT * FROM inventory_items
+          WHERE tenant_id = $1 AND (name ILIKE $2 OR sku ILIKE $2 OR barcode = $3)
+          LIMIT 15`,
+        [tenantId, `%${qry}%`, qry]
       );
       res.json({ success: true, items });
     } catch (e) { safeError(res, e); }
+  });
+
+  // ── SHTRIX-KOD (skaner) ─────────────────────────────────────
+  //
+  // Ikkala usul bir xil endpointga keladi:
+  //   - USB skaner: maydonga kodni "yozadi", frontend shu yerga so'raydi
+  //   - Telefon kamerasi: BarcodeDetector aniqlagan kod shu yerga keladi
+  //
+  // Topilmasa 404 + NOT_FOUND — frontend shunda "yangi tovar sifatida
+  // qo'shasizmi?" deb so'raydi (kod avtomatik to'ldirilgan holda).
+
+  // GET /inventory/by-barcode/:code — shtrix-kod bo'yicha tovarni topish
+  router.get('/inventory/by-barcode/:code', authMiddleware, async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const code = String(req.params.code || '').trim();
+      if (code.length < 4 || code.length > 64) {
+        throw routeError(400, "Shtrix-kod 4-64 belgidan iborat bo'lishi kerak");
+      }
+      const item = await qGet(
+        'SELECT * FROM inventory_items WHERE tenant_id = $1 AND barcode = $2',
+        [tenantId, code]
+      );
+      if (!item) {
+        return res.status(404).json({
+          success: false, code: 'NOT_FOUND', barcode: code,
+          error: "Bu shtrix-kod hech qaysi tovarga biriktirilmagan",
+        });
+      }
+      res.json({ success: true, item });
+    } catch (e) { safeError(res, e, e.status || 500); }
+  });
+
+  // PUT /inventory/items/:id/barcode — mavjud tovarga kod biriktirish
+  // (bir marta skanerlab, keyingi safar shu kod bilan topiladi)
+  router.put('/inventory/items/:id/barcode', authMiddleware, checkRole('admin', 'ceo'), async (req, res) => {
+    try {
+      const tenantId = getTenantId(req);
+      const code = String(req.body?.barcode || '').trim();
+      if (code.length < 4 || code.length > 64) {
+        throw routeError(400, "Shtrix-kod 4-64 belgidan iborat bo'lishi kerak");
+      }
+      const taken = await qGet(
+        'SELECT id, name FROM inventory_items WHERE tenant_id = $1 AND barcode = $2 AND id <> $3',
+        [tenantId, code, req.params.id]
+      );
+      if (taken) {
+        throw routeError(409, `Bu kod allaqachon boshqa tovarga biriktirilgan: ${taken.name}`);
+      }
+      const updated = await qGet(
+        'UPDATE inventory_items SET barcode = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3 RETURNING id, name, sku, barcode',
+        [code, tenantId, req.params.id]
+      );
+      if (!updated) throw routeError(404, 'Tovar topilmadi');
+      res.json({ success: true, item: updated });
+    } catch (e) { safeError(res, e, e.status || 500); }
   });
 
   // ============================================================
