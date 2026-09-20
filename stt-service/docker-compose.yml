@@ -26,9 +26,19 @@ services:
       MODEL_NAME: /models/rubaistt-v2-medium-ct2
       MODEL_DIR: /cache
       DEVICE: cuda
-      COMPUTE_TYPE: float16
+      # int8 — VRAM sarfini ~2 barobar kamaytiradi (float16'ga nisbatan),
+      # tezlikka deyarli ta'sir qilmaydi. Aynan shu GPU'da STT, TTS va
+      # Ollama (LLM) birga ishlashi kerak bo'lgani uchun kerak — Ollama
+      # yetarli bo'sh VRAM topolmasa, modelni QISMAN protsessorga
+      # tashlab, 5-10 baravar sekinlashadi (o'lchangan: 10 so'z/soniya).
+      COMPUTE_TYPE: ${STT_COMPUTE_TYPE:-int8}
       STT_CONCURRENCY: "2"
       MAX_AUDIO_MB: "25"
+      # Dekodlash tezligi/aniqligi muvozanati:
+      #   3 — sukut (aniqroq, sekinroq)
+      #   1 — greedy (ancha tez, qisqa diktantlarda farq odatda sezilmaydi)
+      # Klinikada ikkalasini o'lchab tanlang: .env da BEAM_SIZE=1
+      BEAM_SIZE: ${BEAM_SIZE:-3}
       STT_AUTH_TOKEN: ${STT_AUTH_TOKEN:-}
     volumes:
       - stt-cache:/cache
