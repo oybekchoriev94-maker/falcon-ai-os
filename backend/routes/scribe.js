@@ -3,6 +3,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { MEDICAL_SKILLS, listSpecializations, resolveSpecialization } from '../../ai/protocols/medical-skills.js';
 import { SUPPORTED_LANGUAGES } from '../../ai/engines/stt.js';
 import { validateMedications } from '../services/medication-check.js';
+// MUHIM: bular ilgari so'rov ichida `await import(...)` bilan dinamik
+// yuklanardi. Bu modullar server.js'da allaqachon statik import qilingan
+// (keshda), lekin so'rov ichidagi dinamik import AsyncLocalStorage tenant
+// kontekstini (bindTenantDbContext) uzib qo'yishi mumkin ekan — natijada
+// import'dan KEYINGI barcha so'rovlar tenant kontekstisiz ishlab, RLS
+// "new row violates row-level security policy" xatosi bilan yiqilardi
+// (patient_consultations'ga yozishda aniqlandi — INSERT'ning WITH CHECK
+// buni ochiq ko'rsatdi, SELECT'lar esa jimgina bo'sh natija qaytarardi).
+// Statik importga o'tkazish bu xavfni butunlay yo'q qiladi.
+import { transcribe, llm } from '../../ai/orchestrator.js';
+import { saveRecording, markTranscribed, markFailed } from '../services/voice-store.js';
+import { trackAiRequest } from '../metrics.js';
+import { generateReportPdf } from '../services/pdfGenerator.js';
 
 // Whisper sonlarni so'z bilan chiqaradi ("qirq besh"). LLM ajratishda raqamga o'giramiz.
 const NUMBER_RULE =
@@ -39,9 +52,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
   router.post('/transcribe', authMiddleware, checkRole('doctor', 'admin'), upload.single('audio'), async (req, res) => {
     try {
       const tenantId = req.user?.tenant_id || req.tenant_id;
-      const { transcribe, llm } = await import('../../ai/orchestrator.js');
-      const { saveRecording, markTranscribed, markFailed } =
-        await import('../services/voice-store.js');
       let text;
       let sttLanguage = null;
       let rec = null;
@@ -121,7 +131,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         );
       }
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
-      const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
       res.json({ success: true, transcription: text, language: sttLanguage, data: result, consultation_id: consId, status: 'draft', medication_warnings: medCheck.warnings, auto_consumption: consumption });
     } catch (e) { serverError(res, e); }
@@ -135,7 +144,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         return res.status(400).json({ success: false, error: 'Audio fayl yoki diktant matni talab qilinadi' });
       }
       const tenantId = req.user?.tenant_id || req.tenant_id;
-      const { transcribe, llm } = await import('../../ai/orchestrator.js');
       // Balans/billing tekshiruvi faqat AI_SCRIBE_BILLING=true bo'lganda qo'llanadi.
       // Sukut bo'yicha o'chiq — klinika AI Scribe'dan darhol foydalana oladi;
       // pullik metering kerak bo'lsa .env da yoqiladi.
@@ -155,8 +163,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
         "Siz shifokor yordamchisisiz. Ovozli matndan: bemor ismi, tashxis, muolaja nomi, buyurilgan dorilarni ajratib, faqat JSON qaytaring: {\"patient_name\":\"...\",\"diagnosis\":\"...\",\"procedure\":\"...\",\"medicines\":\"...\"}";
       let text, sttLanguage = null;
       let rec = null;
-      const { saveRecording, markTranscribed, markFailed } =
-        await import('../services/voice-store.js');
       if (req.file) {
         // AVVAL DISKKA — transkripsiya yiqilsa diktant yo'qolmasin
         rec = await saveRecording(pool, {
@@ -206,7 +212,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
 
       let pdfUrl = null;
       try {
-        const { generateReportPdf } = await import('../services/pdfGenerator.js');
         const pdf = await generateReportPdf({
           id: reportId, patient_name: result.patient_name || "Noma'lum",
           doctor_name: req.user?.name || req.user?.username || 'Noma\'lum',
@@ -231,7 +236,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       }
 
       await q(`INSERT INTO usage_metering (tenant_id, metric, count, date) VALUES ($1, 'ai_requests', 1, CURRENT_DATE) ON CONFLICT (tenant_id, metric, date) DO UPDATE SET count = usage_metering.count + 1`, [tenantId]);
-      const { trackAiRequest } = await import('../metrics.js');
       trackAiRequest('scribe', tenantId);
       res.json({ success: true, transcription: text, language: sttLanguage || null, data: result, consultation_id: consId, specialization, report_id: reportId, pdf_url: pdfUrl, telegram_notified: !!telegramId, medication_warnings: medCheck.warnings });
     } catch (e) { serverError(res, e); }
@@ -369,7 +373,6 @@ export default function scribeRoutes(pool, authMiddleware, checkRole, upload, se
       });
       const deterministic = lines.join('\n');
       try {
-        const { llm } = await import('../../ai/orchestrator.js');
         const ai = await llm(
           "Siz klinik yordamchisiz. Bemorning oldingi qabul yozuvlaridan qisqa, faktga asoslangan xulosa tuzing (3-5 jumla). Yangi ma'lumot o'ylab topmang. Faqat matn qaytaring.",
           deterministic
