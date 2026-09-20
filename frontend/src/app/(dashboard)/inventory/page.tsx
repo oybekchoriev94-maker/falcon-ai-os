@@ -246,6 +246,23 @@ export default function InventoryPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Amallar mobil karta va desktop jadvalda bir xil — takrorlanmasin
+  function openReceiveFor(item: Item) {
+    setReceiveForm({
+      ...emptyReceive,
+      name: item.name, sku: item.sku,
+      category: item.category || "", unit: item.unit,
+      barcode: item.barcode || "",
+    });
+    setReceiveOpen(true);
+  }
+  function openConsumeFor(item: Item) {
+    setConsumeFor(item); setConsumeQty("1"); setConsumeReason("");
+  }
+  function openBindFor(item: Item) {
+    setBindFor(item); setBindCode("");
+  }
+
   const stats = [
     { label: "Tovar turlari", value: items.length, icon: Package, color: "from-blue-500/20 to-blue-500/5" },
     { label: "Kam qolgan", value: data?.low_count ?? 0, icon: AlertTriangle, color: "from-red-500/20 to-red-500/5" },
@@ -361,31 +378,28 @@ export default function InventoryPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nomi</TableHead>
-                      <TableHead>Kategoriya</TableHead>
-                      <TableHead className="text-right">Qoldiq</TableHead>
-                      <TableHead>Shtrix-kod</TableHead>
-                      <TableHead>Eng yaqin muddat</TableHead>
-                      <TableHead>Holati</TableHead>
-                      <TableHead className="text-right">Amallar</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((item) => {
-                      const status = getStatus(item);
-                      const Icon = CATEGORY_ICONS[item.category || ""] || Package;
-                      return (
-                        <TableRow key={item.id} className={cn(
-                          status === "low" && "bg-red-500/5",
-                          status === "expired" && "bg-destructive/10",
-                        )}>
-                          <TableCell>
-                            <div className="font-medium">{item.name}</div>
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <>
+                {/* ── TELEFON: karta ko'rinishi ──
+                    7 ustunli jadval kichik ekranda yon tomonga siljishga
+                    majbur qilardi — ombor esa aynan telefonda, dori qutisi
+                    qo'lda turganda ishlatiladi. */}
+                <div className="divide-y md:hidden">
+                  {filtered.map((item) => {
+                    const status = getStatus(item);
+                    const Icon = CATEGORY_ICONS[item.category || ""] || Package;
+                    return (
+                      <div key={item.id} className={cn(
+                        "p-4",
+                        status === "low" && "bg-red-500/5",
+                        status === "expired" && "bg-destructive/10",
+                      )}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium leading-tight">{item.name}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Icon className="size-3.5" />{item.category || "—"}
+                              </span>
                               <span className="font-mono">{item.sku}</span>
                               {item.batch_count > 0 && (
                                 <span className="flex items-center gap-0.5">
@@ -393,72 +407,148 @@ export default function InventoryPage() {
                                 </span>
                               )}
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              <Icon className="size-3.5 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">{item.category || "—"}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={cn(
-                              "font-semibold tabular-nums",
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className={cn(
+                              "text-lg font-bold tabular-nums leading-none",
                               status === "low" && "text-red-500",
                               status === "expired" && "text-destructive",
-                            )}>{item.current_stock}</span>
-                            <span className="ml-1 text-xs text-muted-foreground">{item.unit}</span>
-                          </TableCell>
-                          <TableCell>
-                            {item.barcode ? (
-                              <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                                <Barcode className="size-3.5" />{item.barcode}
-                              </span>
-                            ) : canBind ? (
-                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                                onClick={() => { setBindFor(item); setBindCode(""); }}>
-                                <Barcode className="size-3.5" /> Biriktirish
+                            )}>{item.current_stock}</div>
+                            <div className="text-xs text-muted-foreground">{item.unit}</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <StatusBadge status={status} />
+                          {item.nearest_batch?.expiration_date && (
+                            <span>Muddat: {formatDate(item.nearest_batch.expiration_date)}</span>
+                          )}
+                          {item.barcode && (
+                            <span className="flex items-center gap-1 font-mono">
+                              <Barcode className="size-3.5" />{item.barcode}
+                            </span>
+                          )}
+                        </div>
+
+                        {(canReceive || canConsume || (!item.barcode && canBind)) && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {canReceive && (
+                              <Button variant="outline" size="sm" className="flex-1"
+                                onClick={() => openReceiveFor(item)}>
+                                <Plus className="size-4" /> Kirim
                               </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/50">—</span>
                             )}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {formatDate(item.nearest_batch?.expiration_date ?? null)}
-                          </TableCell>
-                          <TableCell><StatusBadge status={status} /></TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              {canReceive && (
+                            {canConsume && (
+                              <Button variant="outline" size="sm" className="flex-1"
+                                onClick={() => openConsumeFor(item)}>
+                                <Minus className="size-4" /> Chiqim
+                              </Button>
+                            )}
+                            {!item.barcode && canBind && (
+                              <Button variant="ghost" size="sm" className="flex-1"
+                                onClick={() => openBindFor(item)}>
+                                <Barcode className="size-4" /> Kod biriktirish
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── PLANSHET/KOMPYUTER: jadval ── */}
+                <div className="hidden overflow-x-auto md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nomi</TableHead>
+                        <TableHead>Kategoriya</TableHead>
+                        <TableHead className="text-right">Qoldiq</TableHead>
+                        <TableHead>Shtrix-kod</TableHead>
+                        <TableHead>Eng yaqin muddat</TableHead>
+                        <TableHead>Holati</TableHead>
+                        <TableHead className="text-right">Amallar</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((item) => {
+                        const status = getStatus(item);
+                        const Icon = CATEGORY_ICONS[item.category || ""] || Package;
+                        return (
+                          <TableRow key={item.id} className={cn(
+                            status === "low" && "bg-red-500/5",
+                            status === "expired" && "bg-destructive/10",
+                          )}>
+                            <TableCell>
+                              <div className="font-medium">{item.name}</div>
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <span className="font-mono">{item.sku}</span>
+                                {item.batch_count > 0 && (
+                                  <span className="flex items-center gap-0.5">
+                                    <Layers className="size-3" />{item.batch_count}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5">
+                                <Icon className="size-3.5 text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">{item.category || "—"}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={cn(
+                                "font-semibold tabular-nums",
+                                status === "low" && "text-red-500",
+                                status === "expired" && "text-destructive",
+                              )}>{item.current_stock}</span>
+                              <span className="ml-1 text-xs text-muted-foreground">{item.unit}</span>
+                            </TableCell>
+                            <TableCell>
+                              {item.barcode ? (
+                                <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                                  <Barcode className="size-3.5" />{item.barcode}
+                                </span>
+                              ) : canBind ? (
                                 <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                                  onClick={() => {
-                                    setReceiveForm({
-                                      ...emptyReceive,
-                                      name: item.name, sku: item.sku,
-                                      category: item.category || "", unit: item.unit,
-                                      barcode: item.barcode || "",
-                                    });
-                                    setReceiveOpen(true);
-                                  }}>
-                                  <Plus className="size-3.5" /> Kirim
+                                  onClick={() => openBindFor(item)}>
+                                  <Barcode className="size-3.5" /> Biriktirish
                                 </Button>
-                              )}
-                              {canConsume && (
-                                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
-                                  onClick={() => { setConsumeFor(item); setConsumeQty("1"); setConsumeReason(""); }}>
-                                  <Minus className="size-3.5" /> Chiqim
-                                </Button>
-                              )}
-                              {!canReceive && !canConsume && (
+                              ) : (
                                 <span className="text-xs text-muted-foreground/50">—</span>
                               )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {formatDate(item.nearest_batch?.expiration_date ?? null)}
+                            </TableCell>
+                            <TableCell><StatusBadge status={status} /></TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-end gap-1">
+                                {canReceive && (
+                                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                                    onClick={() => openReceiveFor(item)}>
+                                    <Plus className="size-3.5" /> Kirim
+                                  </Button>
+                                )}
+                                {canConsume && (
+                                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                                    onClick={() => openConsumeFor(item)}>
+                                    <Minus className="size-3.5" /> Chiqim
+                                  </Button>
+                                )}
+                                {!canReceive && !canConsume && (
+                                  <span className="text-xs text-muted-foreground/50">—</span>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -484,7 +574,7 @@ export default function InventoryPage() {
               <Input value={receiveForm.name} onChange={(e) => setReceiveForm({ ...receiveForm, name: e.target.value })}
                 placeholder="Masalan: Paratsetamol 500mg" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>SKU (ichki kod)</Label>
                 <Input value={receiveForm.sku} onChange={(e) => setReceiveForm({ ...receiveForm, sku: e.target.value })}
@@ -500,7 +590,7 @@ export default function InventoryPage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Miqdor</Label>
                 <Input type="number" min={0} value={receiveForm.quantity}
@@ -525,7 +615,7 @@ export default function InventoryPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Narxi (dona)</Label>
                 <Input type="number" min={0} value={receiveForm.cost_price}
@@ -538,7 +628,7 @@ export default function InventoryPage() {
                   placeholder="ogohlantirish uchun" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Partiya raqami</Label>
                 <Input value={receiveForm.batch_number}
