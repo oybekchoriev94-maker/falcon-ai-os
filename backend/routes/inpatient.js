@@ -502,10 +502,10 @@ export default function(pool, authMiddleware, checkRole, upload) {
 
       const id = uuidv4();
       await q(
-        `INSERT INTO prescriptions (id, admission_id, doctor_id, doctor_name,
+        `INSERT INTO prescriptions (id, tenant_id, admission_id, doctor_id, doctor_name,
            medicine_name, dosage, route, frequency, start_date, end_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [id, admission_id, req.user?.id || null, req.user?.name || null,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, tenantId, admission_id, req.user?.id || null, req.user?.name || null,
          medicine_name, dosage || null, route || 'ichish', frequency || null,
          start_date || null, end_date || null]
       );
@@ -575,9 +575,9 @@ export default function(pool, authMiddleware, checkRole, upload) {
 
       const id = uuidv4();
       await q(
-        `INSERT INTO inpatient_services (id, admission_id, service_name, quantity, price, total, performed_by, performed_by_name, date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [id, admission_id, service_name, qty, parseFloat(price), total,
+        `INSERT INTO inpatient_services (id, tenant_id, admission_id, service_name, quantity, price, total, performed_by, performed_by_name, date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, tenantId, admission_id, service_name, qty, parseFloat(price), total,
          performed_by || null, performed_by_name || null,
          date || new Date().toISOString().split('T')[0]]
       );
@@ -605,10 +605,10 @@ export default function(pool, authMiddleware, checkRole, upload) {
 
       const id = uuidv4();
       await q(
-        `INSERT INTO discharges (id, admission_id, discharge_date, discharge_type,
+        `INSERT INTO discharges (id, tenant_id, admission_id, discharge_date, discharge_type,
            diagnosis_final, icd10_code, recommendations, follow_up_date, epicrisis_text)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [id, admission_id,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, tenantId, admission_id,
          discharge_date || new Date().toISOString().split('T')[0],
          discharge_type || 'tuzalgan',
          diagnosis_final || admission.diagnosis_initial,
